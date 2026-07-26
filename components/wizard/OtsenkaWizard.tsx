@@ -12,6 +12,7 @@ import type {
 import { AddressConfirmStep } from "./AddressConfirmStep";
 import { ParamsStep } from "./ParamsStep";
 import { ResultStep } from "./ResultStep";
+import { ContactStep, type ContactInfo } from "./ContactStep";
 import { WizardProgress } from "./WizardProgress";
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -23,6 +24,7 @@ export function OtsenkaWizard() {
   const [step, setStep] = useState<WizardStep>(1);
   const [match, setMatch] = useState<AddressMatchResult>(() => matchAddress(address));
   const [valuation, setValuation] = useState<ValuationResult | null>(null);
+  const [submitted, setSubmitted] = useState<ContactInfo | null>(null);
 
   return (
     <div className="flex flex-col gap-8">
@@ -52,6 +54,19 @@ export function OtsenkaWizard() {
 
       {step === 3 && valuation && (
         <ResultStep valuation={valuation} onContinue={() => setStep(4)} />
+      )}
+
+      {step === 4 && !submitted && (
+        <ContactStep onSubmit={(contact) => setSubmitted(contact)} />
+      )}
+
+      {step === 4 && submitted && (
+        <div className="rounded-card bg-white p-8 shadow-sm">
+          <h2 className="text-2xl font-semibold">Спасибо, {submitted.name}!</h2>
+          <p className="mt-2 text-ink/70">
+            Мы свяжемся с вами по номеру {submitted.phone} в ближайшее время.
+          </p>
+        </div>
       )}
     </div>
   );

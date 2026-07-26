@@ -11,6 +11,7 @@ import type {
 } from "@/lib/mock/types";
 import { AddressConfirmStep } from "./AddressConfirmStep";
 import { ParamsStep } from "./ParamsStep";
+import { ResultStep } from "./ResultStep";
 import { WizardProgress } from "./WizardProgress";
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -47,6 +48,10 @@ export function OtsenkaWizard() {
             setStep(3);
           }}
         />
+      )}
+
+      {step === 3 && valuation && (
+        <ResultStep valuation={valuation} onContinue={() => setStep(4)} />
       )}
     </div>
   );

@@ -51,6 +51,11 @@ export function ResultStep({ valuation, onContinue }: ResultStepProps) {
         <p className="mt-2 text-sm text-ink/60">Максимальная цена, дольше по срокам</p>
       </div>
 
+      <p className="sm:col-span-2 text-xs text-ink/50">
+        Точный расчёт также учитывает этаж и состояние ремонта — эксперт
+        уточнит его при следующем шаге.
+      </p>
+
       <button
         type="button"
         onClick={onContinue}

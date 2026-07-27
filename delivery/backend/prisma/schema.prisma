@@ -1164,7 +1164,8 @@ model CrmProperty {
   offers                Offer[]
   customFieldValues     CustomFieldValue[]
   events                Event[]
-  
+  viewingRequests       ViewingRequest[]
+
   aiRecommendation      String?         @map("ai_recommendation") @db.Text
 
   @@index([sellerId])
@@ -1301,4 +1302,17 @@ enum CustomFieldType {
 enum CustomFieldEntity {
   SELLER
   PROPERTY
+}
+
+model ViewingRequest {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  name       String
+  phone      String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  property   CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("viewing_requests")
 }

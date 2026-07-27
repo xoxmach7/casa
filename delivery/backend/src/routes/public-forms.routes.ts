@@ -101,6 +101,13 @@ publicFormsRouter.post('/:id/submit', async (req: Request, res: Response): Promi
             normalizedData['type'] ||
             'PROPERTY';
 
+        const expectedPriceVal =
+            normalizedData['expectedprice'] ||
+            normalizedData['ожидаемая цена'] ||
+            normalizedData['expected_price'];
+
+        const parsedExpectedPrice = expectedPriceVal ? Number(expectedPriceVal) : undefined;
+
         // Build generic notes from ALL fields for safety
         const fullNoteContent = Object.entries(formData)
             .map(([key, value]) => `${key}: ${value}`)
@@ -123,6 +130,7 @@ publicFormsRouter.post('/:id/submit', async (req: Request, res: Response): Promi
                     lastName,
                     phone: phoneVal,
                     source: `FORM: ${form.title}`,
+                    expectedPrice: parsedExpectedPrice,
                     managerComment: `Данные формы:\n${fullNoteContent}\n\n${isFallback ? '[WARNING: No brokers assigned, sent to Admin]' : ''}\n${brokerId ? '[PERSONAL LINK]' : ''}`,
                     funnelStage: 'CONTACT', // Start stage of Seller Funnel
                 }

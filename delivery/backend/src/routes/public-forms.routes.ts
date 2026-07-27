@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { DealStage, DealStatus } from '@prisma/client';
 import { z } from 'zod';
+import { pickBroker } from '../lib/lead-assignment';
 
 export const publicFormsRouter = Router();
 
@@ -39,28 +40,13 @@ publicFormsRouter.post('/:id/submit', async (req: Request, res: Response): Promi
             return;
         }
 
-        let assignedBrokerId = brokerId;
-
-        // Logic for Round Robin if no specific broker provided
-        if (!assignedBrokerId && form.distributionType === 'ROUND_ROBIN' && form.brokers.length > 0) {
-            // Find broker with LEAST deals today or just strict rotation
-            // Simple Round Robin: Find last deal created from this form, see who got it, pick next.
-            // OR: Random for now, or fetch usage stats.
-            // Let's implement simple "Least Recently Used" or "Random" for simplicity first version.
-
-            // Random distribution among enabled brokers
-            const randomIndex = Math.floor(Math.random() * form.brokers.length);
-            assignedBrokerId = form.brokers[randomIndex].id;
-        }
-
-        let isFallback = false;
-        if (!assignedBrokerId) {
-            // Fallback to Admin or leave unassigned?
-            // Let's assign to first available admin if no broker found
-            const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
-            assignedBrokerId = admin?.id;
-            isFallback = true;
-        }
+        const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+        const { brokerId: assignedBrokerId, isFallback } = pickBroker({
+            explicitBrokerId: brokerId,
+            distributionType: form.distributionType as 'MANUAL' | 'ROUND_ROBIN',
+            brokerPool: form.brokers.map((b) => b.id),
+            fallbackBrokerId: admin?.id,
+        });
 
         if (!assignedBrokerId) {
             res.status(500).json({ error: 'No broker available to assign deal' });

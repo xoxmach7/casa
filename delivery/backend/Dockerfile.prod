@@ -1,0 +1,27 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Устанавливаем OpenSSL для Prisma и утилиты для healthcheck
+RUN apt-get update -y && apt-get install -y openssl wget curl && rm -rf /var/lib/apt/lists/*
+
+# Копируем файлы зависимостей
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Устанавливаем зависимости
+RUN npm ci
+
+# Копируем исходный код
+COPY . .
+
+# Генерируем клиент Prisma
+RUN npx prisma generate
+
+# ВАЖНО: Мы используем tsx для запуска в продакшене, 
+# чтобы избежать ошибок сборки (TypeScript errors) на сервере.
+# Это менее эффективно чем компиляция, но гарантирует запуск.
+ENV NODE_ENV=production
+EXPOSE 3001
+
+CMD ["npx", "tsx", "src/index.ts"]

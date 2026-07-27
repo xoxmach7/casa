@@ -1,0 +1,1304 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String              @id @default(cuid())
+  email               String              @unique
+  password            String
+  role                UserRole
+  firstName           String              @map("first_name")
+  lastName            String              @map("last_name")
+  phone               String?
+  city                String? // New: broker city
+  balance             Decimal             @default(0) @db.Decimal(15, 2) // New: current balance
+  casaFee             Decimal             @default(0) @map("casa_fee") @db.Decimal(15, 2) // New: total Casa fees
+  certificationStatus CertificationStatus @default(IN_PROGRESS) @map("certification_status") // New
+  curatorId           String?             @map("curator_id") // New: assigned curator
+  curatorName         String?             @map("curator_name") // Curator display name
+  curatorPhone        String?             @map("curator_phone") // Curator phone
+  curatorEmail        String?             @map("curator_email") // Curator email  
+  curatorWhatsApp     String?             @map("curator_whatsapp") // Curator WhatsApp
+  isActive            Boolean             @default(true) @map("is_active")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  bookings       Booking[]
+  clients        Client[]
+  projects       Project[]        @relation("DeveloperProjects")
+  courseProgress CourseProgress[]
+  notifications  Notification[]
+  tasks          Task[]
+  deals          Deal[]
+  properties     Property[]       @relation("BrokerProperties")
+  curator        User?            @relation("CuratorBrokers", fields: [curatorId], references: [id])
+  brokers        User[]           @relation("CuratorBrokers")
+  payments       Payment[]
+  forms          LeadForm[]       @relation("FormBrokers")
+  // CASA CRM Relations
+  sellers        Seller[]         @relation("BrokerSellers")
+  crmProperties  CrmProperty[]    @relation("BrokerCrmProperties")
+  buyers         Buyer[]          @relation("BrokerBuyers")
+  customFunnels  CustomFunnel[]
+  customFields   CustomField[]
+  events         Event[]
+  subscriptions  Subscription[]
+  mortgageApplications MortgageApplication[] @relation("BrokerApplications")
+
+  @@map("users")
+}
+
+
+model Client {
+  id             String       @id @default(cuid())
+  iin            String       @unique
+  firstName      String       @map("first_name")
+  lastName       String       @map("last_name")
+  middleName     String?      @map("middle_name") @db.VarChar
+  phone          String
+  email          String?
+  city           String?      // город клиента
+  clientType     ClientType   @default(BUYER) @map("client_type") // New: BUYER/SELLER
+  budget         Decimal?     @db.Decimal(15, 2) // New: client budget
+  status         ClientStatus @default(NEW)
+  monthlyIncome  Decimal?     @map("monthly_income") @db.Decimal(15, 2)
+  initialPayment Decimal?     @map("initial_payment") @db.Decimal(15, 2)
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  brokerId       String       @map("broker_id")
+
+  // Relations
+  bookings             Booking[]
+  documents            ClientDocument[]
+  broker               User                  @relation(fields: [brokerId], references: [id])
+  mortgageCalculations MortgageCalculation[]
+  sellingProperties    Property[]            @relation("SellerProperties")
+  boughtProperties     Property[]            @relation("BuyerProperties")
+  deals                Deal[]
+  events               Event[]
+  mortgageApplications MortgageApplication[]
+
+  @@index([brokerId])
+  @@index([status])
+  @@index([clientType])
+  @@map("clients")
+}
+
+// ... (at the end of file)
+
+// =========================================
+// CALENDAR & EVENTS (Phase 8)
+// =========================================
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime @map("start_date")
+  endDate     DateTime @map("end_date")
+  type        EventType
+  location    String?
+  
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId    String?  @map("client_id")
+  client      Client?  @relation(fields: [clientId], references: [id]) 
+  
+  propertyId  String?  @map("property_id")
+  property    CrmProperty? @relation(fields: [propertyId], references: [id])
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([startDate])
+  @@map("events")
+}
+
+enum EventType {
+  SHOWING
+  MEETING
+  CALL
+  OTHER
+}
+
+// =========================================
+// SUBSCRIPTIONS (Подписки)
+// =========================================
+
+model Subscription {
+  id          String             @id @default(cuid())
+  userId      String             @map("user_id")
+  plan        SubscriptionPlan   @default(FREE)
+  status      SubscriptionStatus @default(ACTIVE)
+  startsAt    DateTime           @default(now()) @map("starts_at")
+  expiresAt   DateTime?          @map("expires_at")
+  amount      Decimal?           @db.Decimal(15, 2)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+enum SubscriptionPlan {
+  FREE       // Бесплатный (ограниченный)
+  BASIC      // Базовый (CRM + заявки)
+  PRO        // Про (CRM + заявки + обучение)
+  ENTERPRISE // Корпоративный (агентства)
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// =========================================
+// MORTGAGE APPLICATIONS (Заявки в банки)
+// =========================================
+
+model MortgageApplication {
+  id              String                    @id @default(cuid())
+  clientId        String                    @map("client_id")
+  bankName        String                    @map("bank_name")
+  programName     String?                   @map("program_name")
+  loanAmount      Decimal                   @map("loan_amount") @db.Decimal(15, 2)
+  termMonths      Int                       @map("term_months")
+  interestRate    Decimal?                  @map("interest_rate") @db.Decimal(5, 2)
+  status          MortgageApplicationStatus @default(DRAFT)
+  responseDate    DateTime?                 @map("response_date")
+  responseNotes   String?                   @map("response_notes") @db.Text
+  brokerId        String                    @map("broker_id")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+
+  client          Client                    @relation(fields: [clientId], references: [id])
+  broker          User                      @relation("BrokerApplications", fields: [brokerId], references: [id])
+
+  @@index([clientId])
+  @@index([brokerId])
+  @@index([status])
+  @@map("mortgage_applications")
+}
+
+enum MortgageApplicationStatus {
+  DRAFT      // Черновик
+  SUBMITTED  // Подана
+  REVIEWING  // На рассмотрении
+  APPROVED   // Одобрена
+  REJECTED   // Отклонена
+  CANCELLED  // Отменена
+}
+
+model Project {
+  id               String         @id @default(cuid())
+  name             String
+  description      String?
+  city             String
+  district         String? // New: район
+  address          String
+  lat              Float?  // Широта для карты
+  lng              Float?  // Долгота для карты
+  class            String? // эконом, комфорт, бизнес
+  buildingStatus   BuildingStatus @default(UNDER_CONSTRUCTION) @map("building_status") // New
+  deliveryDate     DateTime?      @map("delivery_date")
+  developerName    String?        @map("developer_name") // New: застройщик
+  developerPhone   String?        @map("developer_phone") // New
+  crmUrl           String?        @map("crm_url") // Ссылка на CRM застройщика
+  bonus            String? // New: бонусы и акции
+  promotions       String?        @map("promotions") // Специальные акции и условия
+  mortgagePrograms String[]       @default([]) @map("mortgage_programs") // Доступные программы ипотеки
+  images           String[]
+  videoUrl         String?        @map("video_url") // New
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  developerId      String         @map("developer_id")
+
+  // Relations
+  apartments Apartment[]
+  sellers   Seller[]
+  developer  User        @relation("DeveloperProjects", fields: [developerId], references: [id])
+
+  @@index([developerId])
+  @@index([city])
+  @@index([district])
+  @@index([buildingStatus])
+  @@map("projects")
+}
+
+model Apartment {
+  id          String          @id @default(cuid())
+  number      String
+  floor       Int
+  rooms       Int
+  area        Decimal         @db.Decimal(10, 2)
+  price       Decimal         @db.Decimal(15, 2)
+  status      ApartmentStatus @default(AVAILABLE)
+  layoutImage String?         @map("layout_image")
+  images      String[]        @default([]) // New: дополнительные фото квартиры
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  projectId   String          @map("project_id")
+
+  // Relations
+  sellers              Seller[]
+  project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bookings             Booking[]
+  mortgageCalculations MortgageCalculation[]
+
+  @@unique([projectId, number])
+  @@index([projectId])
+  @@index([status])
+  @@index([rooms])
+  @@map("apartments")
+}
+
+model Booking {
+  id          String        @id @default(cuid())
+  status      BookingStatus @default(PENDING)
+  expiresAt   DateTime      @map("expires_at")
+  notes       String?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  clientId    String        @map("client_id")
+  apartmentId String        @map("apartment_id")
+  brokerId    String        @map("broker_id")
+  apartment   Apartment     @relation(fields: [apartmentId], references: [id])
+  broker      User          @relation(fields: [brokerId], references: [id])
+  client      Client        @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@index([apartmentId])
+  @@index([brokerId])
+  @@index([status])
+  @@map("bookings")
+}
+
+model MortgageCalculation {
+  id             String     @id @default(cuid())
+  propertyPrice  Decimal    @map("property_price") @db.Decimal(15, 2)
+  initialPayment Decimal    @map("initial_payment") @db.Decimal(15, 2)
+  loanAmount     Decimal    @map("loan_amount") @db.Decimal(15, 2)
+  interestRate   Decimal    @map("interest_rate") @db.Decimal(5, 2)
+  termMonths     Int        @map("term_months")
+  monthlyPayment Decimal    @map("monthly_payment") @db.Decimal(15, 2)
+  totalPayment   Decimal    @map("total_payment") @db.Decimal(15, 2)
+  overpayment    Decimal    @db.Decimal(15, 2)
+  bankName       String?    @map("bank_name")
+  programName    String?    @map("program_name")
+  apartmentId    String?    @map("apartment_id")
+  apartmentInfo  String?    @map("apartment_info")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  clientId       String     @map("client_id")
+  client         Client     @relation(fields: [clientId], references: [id])
+  apartment      Apartment? @relation(fields: [apartmentId], references: [id])
+
+  @@index([clientId])
+  @@index([apartmentId])
+  @@map("mortgage_calculations")
+}
+
+model ClientDocument {
+  id         String   @id @default(cuid())
+  name       String
+  type       String
+  fileUrl    String   @map("file_url")
+  fileSize   Int      @map("file_size")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  clientId   String   @map("client_id")
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_documents")
+}
+
+enum UserRole {
+  ADMIN
+  BROKER
+  DEVELOPER
+  REALTOR
+  AGENCY
+}
+
+enum ClientStatus {
+  NEW
+  IN_PROGRESS
+  DEAL_CLOSED
+  REJECTED
+}
+
+enum ClientType {
+  BUYER
+  SELLER
+  NEW_BUILDING
+}
+
+enum ApartmentStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  COMPLETED
+}
+
+enum BuildingStatus {
+  UNDER_CONSTRUCTION
+  COMPLETED
+  READY_TO_MOVE
+}
+
+enum CertificationStatus {
+  IN_PROGRESS
+  CERTIFIED
+  INACTIVE
+}
+
+enum NotificationType {
+  SYSTEM
+  CURATOR
+  DEAL
+  BONUS
+  TRAINING
+}
+
+enum DealStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// New Models for v1.2
+
+model Course {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  content      String   @db.Text
+  duration     Int // minutes
+  order        Int      @default(0)
+  videoUrl     String?  @map("video_url") // Ссылка на видеоурок
+  materials    String[] @default([]) // Ссылки на материалы (PDF, DOC)
+  checklist    String[] @default([]) // Пункты чек-листа для курса
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  progress CourseProgress[]
+
+  @@map("courses")
+}
+
+model CourseProgress {
+  id              String    @id @default(cuid())
+  progressPercent Int       @default(0) @map("progress_percent")
+  isCompleted     Boolean   @default(false) @map("is_completed")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  userId          String    @map("user_id")
+  courseId        String    @map("course_id")
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("course_progress")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  isRead    Boolean          @default(false) @map("is_read")
+  createdAt DateTime         @default(now()) @map("created_at")
+  userId    String           @map("user_id")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model MortgageProgram {
+  id             String   @id @default(cuid())
+  bankName       String   @map("bank_name")
+  programName    String   @map("program_name")
+  interestRate   Decimal  @map("interest_rate") @db.Decimal(5, 2)
+  minDownPayment Decimal  @map("min_down_payment") @db.Decimal(5, 2) // percent
+  maxTerm        Int      @map("max_term") // months
+  propertyType   String   @map("property_type") // NEW_BUILDING, SECONDARY
+  requirements   String   @db.Text
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([bankName])
+  @@index([propertyType])
+  @@map("mortgage_programs")
+}
+
+
+model Deal {
+  id          String     @id @default(cuid())
+  amount      Decimal    @db.Decimal(15, 2)
+  commission  Decimal    @db.Decimal(15, 2) // broker commission
+  casaFee     Decimal    @map("casa_fee") @db.Decimal(15, 2) // Casa fee
+  status      DealStatus @default(IN_PROGRESS)
+  stage       DealStage  @default(CONSULTATION) // New: Kanban stage
+  order       Int        @default(0) // New: Order in column
+  color       String     @default("#3B82F6") // New: Card color
+  source      String     @default("MANUAL") // New: MANUAL, FORM, BOT
+  objectType  String     @map("object_type") // PROPERTY, APARTMENT, BOOKING
+  objectId    String?    @map("object_id") // ID объекта (property/apartment)
+  clientId    String?    @map("client_id") // покупатель
+  notes       String?    @db.Text
+  isTradeIn   Boolean    @default(false) @map("is_trade_in") // TradeIn сделка
+  tradeInPropertyId String? @map("trade_in_property_id") // Старая квартира клиента
+  tradeInProjectId  String? @map("trade_in_project_id")  // ЖК застройщика для обмена
+  tradeInCommission Decimal? @map("trade_in_commission") @db.Decimal(5, 2) // % комиссии TradeIn
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  brokerId    String     @map("broker_id")
+
+  // Relations
+  broker User    @relation(fields: [brokerId], references: [id])
+  client Client? @relation(fields: [clientId], references: [id])
+
+  @@index([brokerId])
+  @@index([clientId])
+  @@index([status])
+  @@index([stage])
+  @@index([completedAt])
+  @@map("deals")
+}
+
+model LeadForm {
+  id               String   @id @default(cuid())
+  title            String
+  fields           Json     // [{ label, type, required, options }]
+  distributionType String   @default("MANUAL") @map("distribution_type") // MANUAL, ROUND_ROBIN
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  brokers User[] @relation("FormBrokers") // Brokers enabled for this form
+
+  @@map("lead_forms")
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?   @db.Text
+  isCompleted Boolean   @default(false) @map("is_completed")
+  dueDate     DateTime? @map("due_date")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  userId      String    @map("user_id")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isCompleted])
+  @@map("tasks")
+}
+
+// ... (Property model remains unchanged) ...
+// Secondary Real Estate (Вторичная недвижимость)
+model Property {
+  id          String         @id @default(cuid())
+  title       String // "3-комнатная квартира в центре"
+  description String?        @db.Text
+  propertyType PropertyType  @default(APARTMENT) @map("property_type") // APARTMENT, HOUSE, COMMERCIAL, LAND
+  city        String
+  district    String?
+  address     String
+  floor       Int?
+  totalFloors Int?           @map("total_floors")
+  rooms       Int?
+  area        Decimal        @db.Decimal(10, 2)
+  price       Decimal        @db.Decimal(15, 2)
+  status      PropertyStatus @default(ACTIVE)
+  images      String[]       @default([])
+  videoUrl    String?        @map("video_url")
+  yearBuilt   Int?           @map("year_built")
+  condition   String? // ЕВРОРЕМОНТ, ТРЕБУЕТ РЕМОНТА, и т.д.
+  features    String[] // ["БАЛКОН", "ПАРКОВКА", "МЕБЕЛЬ"]
+  notes       String?        @db.Text
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  brokerId    String         @map("broker_id")
+  sellerId    String?        @map("seller_id") // Client who is selling
+  buyerId     String?        @map("buyer_id") // Client who bought it
+
+  // Relations
+  broker User    @relation("BrokerProperties", fields: [brokerId], references: [id])
+  seller Client? @relation("SellerProperties", fields: [sellerId], references: [id])
+  buyer  Client? @relation("BuyerProperties", fields: [buyerId], references: [id])
+
+  @@index([brokerId])
+  @@index([sellerId])
+  @@index([buyerId])
+  @@index([status])
+  @@index([city])
+  @@index([propertyType])
+  @@map("properties")
+}
+
+enum PropertyType {
+  APARTMENT // Квартира
+  HOUSE // Дом
+  COMMERCIAL // Коммерция
+  LAND // Участок
+}
+
+enum PropertyStatus {
+  ACTIVE // Активен
+  SOLD // Продан
+  RESERVED // Зарезервирован
+  ARCHIVED // Снят с публикации
+}
+
+// Payment History (История операций баланса)
+model Payment {
+  id          String      @id @default(cuid())
+  amount      Decimal     @db.Decimal(15, 2)
+  type        PaymentType // INCOME или EXPENSE
+  description String
+  createdAt   DateTime    @default(now()) @map("created_at")
+  userId      String      @map("user_id")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+enum PaymentType {
+  INCOME
+  EXPENSE
+}
+
+enum DealStage {
+  CONSULTATION // Консультация
+  CONTRACT     // Договор
+  PROMOTION    // Продвижение
+  SHOWINGS     // Показы
+}
+
+// =========================================
+// CASA CRM - SELLER-PROPERTY SYSTEM
+// =========================================
+
+// Класс объекта недвижимости (авто-расчёт)
+enum PropertyClass {
+  OLD_FUND       // Старфонд (yearBuilt <= 1980)
+  ECONOMY        // Эконом
+  COMFORT        // Комфорт
+  COMFORT_PLUS   // Комфорт+
+  BUSINESS       // Бизнес-класс (все 13 условий)
+}
+
+// Тип CASA-стратегии (авто-расчёт на основе правил)
+enum StrategyType {
+  MARKET_SALE           // S1: Рыночная продажа
+  URGENT_SALE           // S2: Срочная продажа
+  SALE_TO_PURCHASE      // S3: Продажа для покупки
+  EXPECTATION_ALIGNMENT // S4: Выравнивание ожиданий
+  LIMITED_ENGAGEMENT    // S5: Ограниченное участие
+  INVESTMENT_EXIT       // S6: Инвестиционный выход
+  LEGAL_COMPLEX         // S7: Юридически сложный
+  LOW_LIQUIDITY         // S8: Низкая ликвидность
+  ALTERNATIVE_EXIT      // S9: Альтернативный выход
+  REJECT_OBJECT         // S10: Отказ от объекта
+  HIGH_TICKET_SALE      // S11: Высокий чек
+  PRICE_DISCOVERY       // S12: Поиск цены
+}
+
+// Уровень ликвидности (авто-расчёт)
+enum LiquidityLevel {
+  HIGH           // 81-100 баллов
+  ABOVE_AVERAGE  // 61-80 баллов
+  AVERAGE        // 41-60 баллов
+  BELOW_AVERAGE  // 21-40 баллов
+  LOW            // 0-20 баллов
+}
+
+// Тип финансирования (авто-расчёт)
+enum FinanceType {
+  MORTGAGE_AVAILABLE  // Доступна ипотека
+  MORTGAGE_LIMITED    // Ограниченная ипотека
+  CASH_ONLY           // Только наличные
+}
+
+// Этапы воронки продавца
+enum SellerFunnelStage {
+  CONTACT           // Контакт
+  INTERVIEW         // Интервью
+  STRATEGY          // Стратегия
+  CONTRACT_SIGNING  // Подписание договора
+  CANCELLED         // Отказ / Отмена
+}
+
+// Этапы воронки объекта
+enum PropertyFunnelStage {
+  CREATED       // Создан (не активен)
+  PREPARATION   // Подготовка
+  LEADS         // Лиды
+  SHOWS         // Показы
+  DEAL          // Сделка
+  SOLD          // Продано (сделка закрыта)
+  POST_SERVICE  // Постобслуживание
+  CANCELLED     // Снято / Отказ
+}
+
+// Причина отказа/отмены
+enum CancellationReason {
+  CLIENT_REFUSED  // Клиент отказался
+  WE_REFUSED      // Мы отказались
+}
+
+// Причина продажи
+enum SaleReason {
+  RELOCATION        // Переезд
+  SIZE_CHANGE       // Улучшение жилищных условий
+  INHERITANCE       // Наследство
+  DIVORCE           // Развод
+  FINANCIAL_NEED    // Финансовая необходимость
+  INVESTMENT        // Инвестиционная продажа
+  OTHER             // Другое
+}
+
+// Дедлайн продажи
+enum SaleDeadline {
+  URGENT_30_DAYS    // До 30 дней
+  NORMAL_90_DAYS    // 1-2 месяца
+  FLEXIBLE_180_DAYS // Более 2 месяцев
+  NO_RUSH           // Без спешки
+}
+
+// Оценка рынка со слов клиента
+enum MarketAssessment {
+  ADEQUATE     // Адекватное
+  OVERPRICED   // Завышенное
+  UNCERTAIN    // Неопределённое
+}
+
+// Готовность следовать рекомендациям
+enum ReadyToFollow {
+  YES
+  PARTIAL
+  NO
+}
+
+// Тип здания
+enum BuildingType {
+  MONOLITH       // Монолит
+  BRICK          // Кирпич
+  PANEL          // Панель
+  MONOLITH_BRICK // Монолит-кирпич
+  BLOCK          // Блочный
+}
+
+// Тип планировки
+enum LayoutType {
+  EURO_FREE      // Евро / свободная
+  ISOLATED       // Изолированные комнаты
+  ADJACENT       // Смежные комнаты
+  WALK_THROUGH   // Проходные комнаты
+  STUDIO         // Студия
+}
+
+// Состояние ремонта
+enum RepairState {
+  NONE           // Без ремонта
+  COSMETIC       // Косметический
+  CAPITAL        // Капитальный
+  EURO           // Евроремонт
+  DESIGNER       // Дизайнерский
+}
+
+// Фактическое состояние
+enum ActualCondition {
+  EXCELLENT         // Отличное
+  GOOD              // Хорошее
+  NEEDS_INVESTMENT  // Требует вложений
+  CRITICAL          // Критическое
+}
+
+// Тип паркинга
+enum ParkingType {
+  UNDERGROUND    // Подземный
+  ABOVE_GROUND   // Закрытый наземный
+  OPEN           // Открытый
+  NONE           // Нет
+}
+
+// Качество локации
+enum LocationQuality {
+  TOP            // Топ-локация
+  GOOD           // Хорошая
+  ABOVE_AVERAGE  // Выше средней
+  NORMAL         // Нормальная
+  WEAK           // Слабая
+  REMOTE         // Удалённая
+}
+
+// Тип вида из окна
+enum ViewType {
+  PANORAMIC          // Панорамный
+  PARK_WATER         // Парк / вода
+  STREET             // Улица
+  COURTYARD          // Двор
+  WELL_COURTYARD     // Двор-колодец
+  ADJACENT_BUILDINGS // Соседние дома
+  INDUSTRIAL         // Промзона / ТЭЦ / стройка
+}
+
+// Тип лобби
+enum LobbyType {
+  PREMIUM        // Премиум (консьерж / ресепшн)
+  MODERN         // Современный
+  STANDARD       // Стандартный
+  SIMPLE         // Простой
+  NEEDS_REPAIR   // Требует ремонта
+}
+
+// Система доступа
+enum AccessSystemType {
+  FACE_ID           // Face ID / Smart-access
+  SMART_ACCESS      // Smart-access
+  ELECTRONIC_CARD   // Электронная карта
+  INTERCOM          // Домофон
+  CODE_LOCK         // Кодовый замок
+  KEY               // Ключ
+}
+
+// Состояние МОП
+enum MopState {
+  EXCELLENT      // Отличное
+  GOOD           // Хорошее
+  SATISFACTORY   // Удовлетворительное
+  NEEDS_REPAIR   // Требует ремонта
+  CRITICAL       // Критическое
+}
+
+// Тип обременения
+enum EncumbranceType {
+  NONE              // Нет
+  SHARES            // Доли
+  ENCUMBRANCE       // Обременения
+  INHERITANCE       // Наследство
+  POWER_OF_ATTORNEY // Доверенность
+}
+
+// Тип остекления
+enum GlazingType {
+  PANORAMIC    // Панорамное
+  ENLARGED     // Увеличенное
+  STANDARD     // Стандартное
+}
+
+// =========================================
+// SELLER MODEL (Продавец)
+// =========================================
+
+model Seller {
+  id        String   @id @default(cuid())
+  
+  // === Основные данные ===
+  firstName  String   @map("first_name")
+  lastName   String   @map("last_name")
+  middleName String?  @map("middle_name")
+  phone      String
+  email      String?
+  iin        String?  @unique
+  city       String?
+  source     String?  // Источник контакта (Instagram, WhatsApp, Referral)
+  
+  // === 1️⃣ Причина продажи и сроки ===
+  reason           SaleReason?
+  reasonOther      String?          @map("reason_other")
+  deadline         SaleDeadline?
+  
+  // === 2️⃣ Ценовые ожидания ===
+  expectedPrice    Decimal?         @map("expected_price") @db.Decimal(15, 2)
+  minPrice         Decimal?         @map("min_price") @db.Decimal(15, 2)
+  marketAssessment MarketAssessment? @map("market_assessment")
+  readyToNegotiate Boolean          @default(true) @map("ready_to_negotiate")
+  
+  // === 3️⃣ Планы после продажи ===
+  plansToPurchase    Boolean        @default(false) @map("plans_to_purchase")
+  plansMortgage      Boolean        @default(false) @map("plans_mortgage")
+  nextPurchaseFormat String?        @map("next_purchase_format")
+  purchaseBudget     Decimal?       @map("purchase_budget") @db.Decimal(15, 2)
+  
+  // === 4️⃣ Финансовые возможности ===
+  incomeSource     String?          @map("income_source")
+  incomeAmount     Decimal?         @map("income_amount") @db.Decimal(15, 2)
+  hasDebts         Boolean          @default(false) @map("has_debts")
+  loanPaymentAmount Decimal?        @map("loan_payment_amount") @db.Decimal(15, 2)
+  
+  // === 5️⃣ Готовность работать с Casa ===
+  readyToFollowRecommendations ReadyToFollow? @map("ready_to_follow")
+  readyForExclusive Boolean        @default(false) @map("ready_for_exclusive")
+  trustLevel        Int            @default(3) @map("trust_level")
+  
+  // === 6️⃣ Комментарии ===
+  managerComment   String?          @map("manager_comment") @db.Text
+  
+  // === 7️⃣ Коммуникация ===
+  communicationChannel String?      @map("communication_channel") // Звонок, WhatsApp, Telegram
+  preferredTime        String?      @map("preferred_time")        // Удобное время для связи
+  
+  // === Воронка продавца ===
+  funnelStage      SellerFunnelStage @default(CONTACT) @map("funnel_stage")
+  strategyConfirmed Boolean         @default(false) @map("strategy_confirmed")
+  cancellationReason CancellationReason? @map("cancellation_reason")
+  cancellationComment String?       @map("cancellation_comment") @db.Text
+  
+  // === Метаданные ===
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  brokerId   String   @map("broker_id")
+  
+  // === Relations ===
+  broker     User          @relation("BrokerSellers", fields: [brokerId], references: [id])
+  properties CrmProperty[]
+  documents  SellerDocument[]
+  customStageId String? @map("custom_stage_id")
+  customStage   CustomStage? @relation(fields: [customStageId], references: [id])
+  projectId      String?       @map("project_id")
+  project        Project?      @relation(fields: [projectId], references: [id])
+  apartmentId    String?       @map("apartment_id")
+  apartment      Apartment?    @relation(fields: [apartmentId], references: [id])
+  customFieldValues CustomFieldValue[]
+  
+  @@index([brokerId])
+  @@index([funnelStage])
+  @@index([phone])
+  @@map("sellers")
+}
+
+model SellerDocument {
+  id         String   @id @default(cuid())
+  name       String
+  type       String
+  fileUrl    String   @map("file_url")
+  fileSize   Int      @map("file_size")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  sellerId   String   @map("seller_id")
+  
+  seller     Seller   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  
+  @@index([sellerId])
+  @@map("seller_documents")
+}
+
+model Buyer {
+  id        String   @id @default(cuid())
+  firstName String   @map("first_name")
+  lastName  String?  @map("last_name")
+  phone     String
+  minBudget Decimal? @map("min_budget") @db.Decimal(15, 2)
+  maxBudget Decimal? @map("max_budget") @db.Decimal(15, 2)
+  status    BuyerStatus @default(NEW)
+  preferences Json?
+  notes     String?  @db.Text
+  
+  createdAt DateTime @default(now()) @map("created_at")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+  brokerId  String   @map("broker_id")
+  
+  // Relations
+  broker User    @relation("BrokerBuyers", fields: [brokerId], references: [id])
+  shows  Show[]
+  offers Offer[] // New
+  
+  @@index([brokerId])
+  @@index([status])
+  @@map("crm_buyers")
+}
+
+model Show {
+  id         String   @id @default(cuid())
+  date       DateTime
+  status     ShowStatus @default(SCHEDULED)
+  feedback   String?  @db.Text
+  feedbackSentiment FeedbackSentiment? @map("feedback_sentiment")
+  rating     Int?     // 1-5 Оценка клиента объекту
+  
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  
+  propertyId String   @map("property_id")
+  buyerId    String   @map("buyer_id")
+  
+  // Relations
+  property CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  buyer    Buyer       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  
+  @@index([propertyId])
+  @@index([buyerId])
+  @@map("crm_shows")
+}
+
+model Offer {
+  id         String   @id @default(cuid())
+  price      Decimal  @db.Decimal(15, 2)
+  status     OfferStatus @default(PENDING)
+  comment    String?  @db.Text
+  
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  
+  propertyId String   @map("property_id")
+  buyerId    String   @map("buyer_id")
+  
+  // Relations
+  property CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  buyer    Buyer       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  
+  @@index([propertyId])
+  @@index([buyerId])
+  @@map("crm_offers")
+}
+
+enum BuyerStatus {
+  NEW         // Новый
+  ACTIVE      // Активный (THINKING replaced)
+  OFFER_MADE  // Сделал предложение
+  ARCHIVED    // Архив
+  REFUSAL     // Отказ (Legacy? Keeping it)
+}
+
+enum ShowStatus {
+   SCHEDULED
+   COMPLETED
+   CANCELLED
+}
+
+enum FeedbackSentiment {
+   POSITIVE
+   NEUTRAL
+   NEGATIVE
+}
+
+enum OfferStatus {
+   PENDING
+   ACCEPTED
+   REJECTED
+}
+
+// =========================================
+// CRM PROPERTY MODEL (Объект недвижимости)
+// =========================================
+
+model CrmProperty {
+  id          String   @id @default(cuid())
+  
+  // === 1️⃣ Идентификация объекта ===
+  propertyType        String   @default("APARTMENT") @map("property_type")
+  rooms               Int
+  residentialComplex  String   @map("residential_complex")
+  district            String
+  address             String?
+  lat                 Float?
+  lng                 Float?
+  customStageId String? @map("custom_stage_id")
+  customStage   CustomStage? @relation(fields: [customStageId], references: [id])
+  
+  // === 2️⃣ Геометрия и базовые параметры ===
+  area               Decimal   @db.Decimal(10, 2)
+  livingArea         Decimal?  @map("living_area") @db.Decimal(10, 2)
+  kitchenArea        Decimal?  @map("kitchen_area") @db.Decimal(10, 2)
+  floor              Int
+  totalFloors        Int       @map("total_floors")
+  yearBuilt          Int       @map("year_built")
+  apartmentsPerFloor Int?      @map("apartments_per_floor")
+  
+  // === 3️⃣ Конструктив и планировка ===
+  buildingType       BuildingType   @default(PANEL) @map("building_type")
+  ceilingHeight      Decimal?       @map("ceiling_height") @db.Decimal(3, 2)
+  layoutType         LayoutType     @default(ISOLATED) @map("layout_type")
+  bathroomType       String?        @map("bathroom_type")
+  balconyType        String?        @map("balcony_type")
+  
+  // === 4️⃣ Локация и окружение ===
+  locationQuality    LocationQuality @default(NORMAL) @map("location_quality")
+  viewType           ViewType?       @map("view_type")
+  
+  // === 5️⃣ Паркинг ===
+  parkingType        ParkingType    @default(NONE) @map("parking_type")
+  parkingSpaces      Int            @default(0) @map("parking_spaces")
+  
+  // === 6️⃣ Состояние квартиры ===
+  repairState        RepairState    @default(COSMETIC) @map("repair_state")
+  actualCondition    ActualCondition @default(GOOD) @map("actual_condition")
+  
+  // === 7️⃣ Дом и МОП ===
+  elevatorCount      Int            @default(0) @map("elevator_count")
+  hasFreightElevator Boolean        @default(false) @map("has_freight_elevator")
+  lobbyType          LobbyType?     @map("lobby_type")
+  accessSystem       AccessSystemType? @map("access_system")
+  mopState           MopState?      @map("mop_state")
+  hasClosedTerritory Boolean        @default(false) @map("has_closed_territory")
+  lastCapitalRepairYear Int?        @map("last_capital_repair_year")
+  
+  // === 8️⃣ Финансовый и юридический статус ===
+  isMortgaged           Boolean     @default(false) @map("is_mortgaged")
+  mortgageBank          String?     @map("mortgage_bank")
+  mortgageRemaining     Decimal?    @map("mortgage_remaining") @db.Decimal(15, 2)
+  mortgageRemovalMethod String?     @map("mortgage_removal_method")
+  encumbranceType       EncumbranceType @default(NONE) @map("encumbrance_type")
+  encumbranceDescription String?    @map("encumbrance_description") @db.Text
+  documentsVerified     Boolean     @default(false) @map("documents_verified")
+  
+  // === 9️⃣ УТП и комплектация ===
+  hasFloorHeating       Boolean     @default(false) @map("has_floor_heating")
+  hasWalkInCloset       Boolean     @default(false) @map("has_walk_in_closet")
+  hasAirConditioning    Boolean     @default(false) @map("has_air_conditioning")
+  hasBuiltInAppliances  Boolean     @default(false) @map("has_built_in_appliances")
+  hasPanoramicWindows   Boolean     @default(false) @map("has_panoramic_windows") // New
+  furnitureLevel        String?     @map("furniture_level")
+  appliancesLevel       String?     @map("appliances_level")
+  
+  // === Бизнес-класс специфичные ===
+  glazingType           GlazingType? @map("glazing_type")
+  facadeMaterial        String?      @map("facade_material")
+  
+  // === Ценообразование ===
+  price                 Decimal      @db.Decimal(15, 2)
+  pricePerSqm           Decimal?     @map("price_per_sqm") @db.Decimal(15, 2)
+  marketPrice           Decimal?     @map("market_price") @db.Decimal(15, 2)
+  
+  // === АВТО-ВЫЧИСЛЯЕМЫЕ ПОЛЯ ===
+  calculatedClass       PropertyClass?  @map("calculated_class")
+  financeType           FinanceType     @default(MORTGAGE_AVAILABLE) @map("finance_type")
+  liquidityScore        Int             @default(50) @map("liquidity_score")
+  liquidityLevel        LiquidityLevel? @map("liquidity_level")
+  isIlliquid            Boolean         @default(false) @map("is_illiquid")
+  illiquidReason        String?         @map("illiquid_reason")
+  activeStrategy        StrategyType?   @map("active_strategy")
+  recommendedStrategy   StrategyType?   @map("recommended_strategy") // Рассчитанная системой
+  isStrategyManual      Boolean         @default(false) @map("is_strategy_manual") // Брокер изменил вручную
+  strategyExplanation   String?         @map("strategy_explanation") @db.Text
+  
+  // === Воронка объекта ===
+  funnelStage           PropertyFunnelStage @default(CREATED) @map("funnel_stage")
+  cancellationReason    CancellationReason? @map("cancellation_reason")
+  cancellationComment   String?             @map("cancellation_comment") @db.Text
+  
+  // === Статистика ===
+  viewsCount            Int         @default(0) @map("views_count")
+  showsCount            Int         @default(0) @map("shows_count")
+  leadsCount            Int         @default(0) @map("leads_count")
+  
+  // === Медиа ===
+  images                String[]    @default([])
+  documents             String[]    @default([]) // New: URLs to PDFs, Docs
+  videoUrl              String?     @map("video_url")
+  virtualTourUrl        String?     @map("virtual_tour_url")
+  layoutImage           String?     @map("layout_image")
+  
+  // === Публикации ===
+  casaUrl               String?     @map("casa_url")
+  krishaUrl             String?     @map("krisha_url")
+  knUrl                 String?     @map("kn_url")
+  olxUrl                String?     @map("olx_url")
+  instagramUrl          String?     @map("instagram_url")
+  tikTokUrl             String?     @map("tiktok_url") // New
+  
+  // === Мета ===
+  notes                 String?     @db.Text
+  status                PropertyStatus @default(ACTIVE)
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+  publishedAt           DateTime?   @map("published_at")
+  
+  // === Связи ===
+  sellerId              String      @map("seller_id")
+  brokerId              String      @map("broker_id")
+  
+  seller                Seller      @relation(fields: [sellerId], references: [id])
+  broker                User        @relation("BrokerCrmProperties", fields: [brokerId], references: [id])
+  calculationLogs       PropertyCalculationLog[]
+  shows                 Show[]
+  offers                Offer[]
+  customFieldValues     CustomFieldValue[]
+  events                Event[]
+  
+  aiRecommendation      String?         @map("ai_recommendation") @db.Text
+
+  @@index([sellerId])
+  @@index([brokerId])
+  @@index([funnelStage])
+  @@index([calculatedClass])
+  @@index([liquidityLevel])
+  @@index([activeStrategy])
+  @@index([district])
+  @@index([status])
+  @@map("crm_properties")
+}
+
+// Лог расчётов (для аудита изменений класса/ликвидности/стратегии)
+model PropertyCalculationLog {
+  id            String   @id @default(cuid())
+  propertyId    String   @map("property_id")
+  
+  previousClass     PropertyClass?   @map("previous_class")
+  newClass          PropertyClass?   @map("new_class")
+  previousLiquidity Int?             @map("previous_liquidity")
+  newLiquidity      Int?             @map("new_liquidity")
+  previousStrategy  StrategyType?    @map("previous_strategy")
+  newStrategy       StrategyType?    @map("new_strategy")
+  
+  calculationReason String           @map("calculation_reason")
+  inputData         Json             @map("input_data")
+  outputData        Json             @map("output_data")
+  
+  createdAt         DateTime         @default(now()) @map("created_at")
+  
+  property          CrmProperty      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  
+  @@index([propertyId])
+  @@index([createdAt])
+  @@map("property_calculation_logs")
+}
+
+model SystemSettings {
+  key         String   @id
+  value       String   @db.Text
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// =========================================
+// CUSTOM CRM (Phase 2)
+// =========================================
+
+model CustomFunnel {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String   @map("user_id")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stages    CustomStage[]
+  customFields CustomField[]
+
+  @@map("custom_funnels")
+}
+
+model CustomStage {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#3B82F6") // Blue default
+  order     Int
+  funnelId  String   @map("funnel_id")
+
+  funnel    CustomFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  sellers        Seller[]
+  crmProperties  CrmProperty[]
+
+  @@index([funnelId])
+  @@map("custom_stages")
+}
+
+model CustomField {
+  id        String   @id @default(cuid())
+  name      String
+  type      CustomFieldType
+  entityType CustomFieldEntity
+  
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  funnelId  String?  @map("funnel_id") // Optional: limit field to specific funnel
+  funnel    CustomFunnel? @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  options   String[] @default([]) // For SELECT/CHECKBOX
+  isActive  Boolean  @default(true) @map("is_active")
+
+  values    CustomFieldValue[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("custom_fields")
+}
+
+model CustomFieldValue {
+  id        String   @id @default(cuid())
+  fieldId   String   @map("field_id")
+  field     CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  sellerId    String? @map("seller_id")
+  seller      Seller? @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  propertyId  String? @map("property_id")
+  property    CrmProperty? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  value       String  @db.Text // Store as string (JSON if needed)
+
+  @@unique([fieldId, sellerId])
+  @@unique([fieldId, propertyId])
+  @@index([sellerId])
+  @@index([propertyId])
+  @@map("custom_field_values")
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  SELECT
+  CHECKBOX
+  TEXTAREA
+}
+
+enum CustomFieldEntity {
+  SELLER
+  PROPERTY
+}

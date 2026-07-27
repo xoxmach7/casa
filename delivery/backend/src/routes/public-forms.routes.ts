@@ -106,7 +106,10 @@ publicFormsRouter.post('/:id/submit', async (req: Request, res: Response): Promi
             normalizedData['ожидаемая цена'] ||
             normalizedData['expected_price'];
 
-        const parsedExpectedPrice = expectedPriceVal ? Number(expectedPriceVal) : undefined;
+        const parsedExpectedPriceCandidate = expectedPriceVal ? Number(expectedPriceVal) : undefined;
+        const parsedExpectedPrice = Number.isFinite(parsedExpectedPriceCandidate)
+            ? parsedExpectedPriceCandidate
+            : undefined;
 
         // Build generic notes from ALL fields for safety
         const fullNoteContent = Object.entries(formData)

@@ -50,6 +50,7 @@ publicPropertyLeadsRouter.post('/', async (req: Request, res: Response): Promise
         phone: data.contactPhone,
         source: 'Форма: Добавить квартиру',
         funnelStage: 'CONTACT',
+        readyToNegotiate: data.negotiable,
       },
     });
 
@@ -70,6 +71,9 @@ publicPropertyLeadsRouter.post('/', async (req: Request, res: Response): Promise
         funnelStage: 'CREATED',
         sellerId: seller.id,
         brokerId,
+        hasBuiltInAppliances: data.hasAppliances,
+        furnitureLevel: data.furnished ? 'FULL' : 'NONE',
+        notes: data.moveInReady ? 'Можно заселиться сразу (со слов владельца)' : undefined,
       },
     });
 

@@ -33,13 +33,14 @@ function serializeCard(property: any) {
   };
 }
 
-// GET /api/public/properties?city=Алматы&district=...
+// GET /api/public/properties?district=...
+// Note: CrmProperty has no `city` column (only `district`) — this project's
+// catalog is Almaty-only for now, so there is nothing to filter city by yet.
 publicPropertiesRouter.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { city = 'Алматы', district } = req.query;
+    const { district } = req.query;
 
     const where: any = {
-      city: city as string,
       funnelStage: 'LEADS',
       publishedAt: { not: null },
     };

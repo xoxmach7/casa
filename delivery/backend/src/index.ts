@@ -24,6 +24,7 @@ import { uploadRouter } from './routes/upload.routes';
 import { paymentsRouter } from './routes/payments.routes';
 import { formsRouter } from './routes/forms.routes';
 import { publicFormsRouter } from './routes/public-forms.routes';
+import { publicValuationRouter } from './routes/public-valuation.routes';
 import { sellersRouter } from './routes/sellers.routes';
 import { crmPropertiesRouter } from './routes/crm-properties.routes';
 import { buyersRouter } from './routes/buyers.routes';
@@ -127,6 +128,7 @@ app.use('/api/upload', uploadRouter);       // MinIO / general file uploads
 app.use('/api/payments', paymentsRouter);
 app.use('/api/forms', formsRouter);
 app.use('/api/public/forms', publicFormsRouter);
+app.use('/api/public/valuation', publicValuationRouter);
 
 // CASA CRM Routes
 app.use('/api/sellers', sellersRouter);

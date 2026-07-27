@@ -15,11 +15,18 @@ publicValuationRouter.post('/', async (req: Request, res: Response): Promise<voi
   try {
     const { district, rooms, area } = valuationRequestSchema.parse(req.body);
 
+    // Only draw comparables from the same set the public catalog already
+    // exposes (published + actively marketed). Anything broader — draft
+    // listings, showings, deals in progress, closed sale prices — is
+    // internal CRM data; including it here would let an anonymous caller
+    // recover a specific non-public record's price by enumerating
+    // district/rooms buckets and differencing against the public catalog.
     const comparables = await prisma.crmProperty.findMany({
       where: {
         district,
         rooms,
-        funnelStage: { in: ['LEADS', 'SHOWS', 'DEAL', 'SOLD'] },
+        funnelStage: 'LEADS',
+        publishedAt: { not: null },
       },
       select: { price: true, area: true },
     });

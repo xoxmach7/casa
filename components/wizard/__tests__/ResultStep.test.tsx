@@ -12,9 +12,10 @@ describe("ResultStep", () => {
       <ResultStep
         valuation={{
           status: "ready",
-          basePricePerM2: 856957,
-          instantPrice: Math.round(856957 * 61 * 0.9),
+          marketValue: Math.round(856957 * 61),
+          urgentPrice: Math.round(856957 * 61 * 0.9),
           marketPrice: Math.round(856957 * 61 * 0.93),
+          comparablesCount: 12,
         }}
         onContinue={onContinue}
       />

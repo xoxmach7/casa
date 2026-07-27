@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import type { RepairCondition, ValuationParams } from "@/lib/mock/types";
+
+export type RepairCondition = "fresh_repair" | "good_livable" | "cosmetic" | "needs_repair";
+
+export interface ValuationParams {
+  rooms: number;
+  areaM2: number;
+  floor: number;
+  totalFloors: number;
+  repairCondition: RepairCondition;
+}
 
 const REPAIR_OPTIONS: { value: RepairCondition; label: string }[] = [
   { value: "fresh_repair", label: "Свежий ремонт" },

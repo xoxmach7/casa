@@ -1,10 +1,10 @@
 "use client";
 
-import type { ValuationResult } from "@/lib/mock/types";
+import type { ValuationResponse } from "@/lib/api/procasa-client";
 import { formatTenge } from "@/lib/format";
 
 interface ResultStepProps {
-  valuation: ValuationResult;
+  valuation: ValuationResponse;
   onContinue: () => void;
 }
 
@@ -19,7 +19,7 @@ export function ResultStep({ valuation, onContinue }: ResultStepProps) {
           Пока не можем точно оценить эту квартиру
         </h2>
         <p className="mt-2 text-ink/70">
-          В этом доме ещё мало сравнимых объявлений. Наш эксперт свяжется с
+          В этом районе ещё мало сравнимых объявлений. Наш эксперт свяжется с
           вами, чтобы сделать оценку вручную.
         </p>
         <button
@@ -39,7 +39,7 @@ export function ResultStep({ valuation, onContinue }: ResultStepProps) {
         <span className="inline-block rounded-full bg-ink/5 px-3 py-1 text-sm text-ink/60">
           Срочная продажа
         </span>
-        <p className="mt-4 text-3xl font-semibold">{formatTenge(valuation.instantPrice)}</p>
+        <p className="mt-4 text-3xl font-semibold">{formatTenge(valuation.urgentPrice)}</p>
         <p className="mt-2 text-sm text-ink/60">Выкуп в течение нескольких дней</p>
       </div>
 
@@ -52,8 +52,7 @@ export function ResultStep({ valuation, onContinue }: ResultStepProps) {
       </div>
 
       <p className="sm:col-span-2 text-xs text-ink/50">
-        Точный расчёт также учитывает этаж и состояние ремонта — эксперт
-        уточнит его при следующем шаге.
+        Оценка основана на {valuation.comparablesCount} сравнимых объектах в этом районе.
       </p>
 
       <button

@@ -2,14 +2,9 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { matchAddress } from "@/lib/mock/addresses";
-import { calculateValuation } from "@/lib/mock/valuation";
-import type {
-  AddressMatchResult,
-  ValuationParams,
-  ValuationResult,
-} from "@/lib/mock/types";
-import { AddressConfirmStep } from "./AddressConfirmStep";
+import { getValuation, submitLeadForm, type ValuationResponse } from "@/lib/api/procasa-client";
+import type { ValuationParams } from "./ParamsStep";
+import { DistrictStep, type DistrictStepValue } from "./DistrictStep";
 import { ParamsStep } from "./ParamsStep";
 import { ResultStep } from "./ResultStep";
 import { ContactStep, type ContactInfo } from "./ContactStep";
@@ -17,13 +12,16 @@ import { WizardProgress } from "./WizardProgress";
 
 type WizardStep = 1 | 2 | 3 | 4;
 
+const OTSENKA_FORM_ID = process.env.NEXT_PUBLIC_OTSENKA_FORM_ID ?? "";
+
 export function OtsenkaWizard() {
   const searchParams = useSearchParams();
-  const address = searchParams.get("address") ?? "";
+  const initialComplex = searchParams.get("address") ?? "";
 
   const [step, setStep] = useState<WizardStep>(1);
-  const [match, setMatch] = useState<AddressMatchResult>(() => matchAddress(address));
-  const [valuation, setValuation] = useState<ValuationResult | null>(null);
+  const [location, setLocation] = useState<DistrictStepValue | null>(null);
+  const [params, setParams] = useState<ValuationParams | null>(null);
+  const [valuation, setValuation] = useState<ValuationResponse | null>(null);
   const [submitted, setSubmitted] = useState<ContactInfo | null>(null);
 
   return (
@@ -31,11 +29,10 @@ export function OtsenkaWizard() {
       <WizardProgress current={step} />
 
       {step === 1 && (
-        <AddressConfirmStep
-          address={address}
-          match={match}
-          onConfirm={(confirmed) => {
-            setMatch(confirmed);
+        <DistrictStep
+          initialComplex={initialComplex}
+          onConfirm={(value) => {
+            setLocation(value);
             setStep(2);
           }}
         />
@@ -43,10 +40,14 @@ export function OtsenkaWizard() {
 
       {step === 2 && (
         <ParamsStep
-          onSubmit={(params: ValuationParams) => {
-            const complexName =
-              match.status === "matched" ? match.residentialComplex : "";
-            setValuation(calculateValuation(complexName, params));
+          onSubmit={async (submittedParams: ValuationParams) => {
+            setParams(submittedParams);
+            const result = await getValuation({
+              district: location!.district,
+              rooms: submittedParams.rooms,
+              area: submittedParams.areaM2,
+            });
+            setValuation(result);
             setStep(3);
           }}
         />
@@ -57,7 +58,23 @@ export function OtsenkaWizard() {
       )}
 
       {step === 4 && !submitted && (
-        <ContactStep onSubmit={(contact) => setSubmitted(contact)} />
+        <ContactStep
+          onSubmit={async (contact) => {
+            setSubmitted(contact);
+            if (OTSENKA_FORM_ID) {
+              await submitLeadForm(OTSENKA_FORM_ID, {
+                name: contact.name,
+                phone: contact.phone,
+                district: location?.district ?? "",
+                residentialComplex: location?.residentialComplex ?? "",
+                rooms: String(params?.rooms ?? ""),
+                area: String(params?.areaM2 ?? ""),
+                expectedPrice:
+                  valuation?.status === "ready" ? String(valuation.marketPrice) : "",
+              });
+            }
+          }}
+        />
       )}
 
       {step === 4 && submitted && (

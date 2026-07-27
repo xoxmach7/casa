@@ -33,6 +33,27 @@ export function ResultStep({ valuation, onContinue }: ResultStepProps) {
     );
   }
 
+  if (valuation.status === "error") {
+    return (
+      <div className="rounded-card bg-white p-8 shadow-sm">
+        <span className="inline-block rounded-full bg-red-50 px-3 py-1 text-sm text-red-700">
+          Не удалось выполнить расчёт
+        </span>
+        <h2 className="mt-4 text-2xl font-semibold">Что-то пошло не так</h2>
+        <p className="mt-2 text-ink/70">
+          Не получилось связаться с сервером оценки. Попробуйте ещё раз или оставьте контакты — мы посчитаем цену вручную.
+        </p>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="mt-6 rounded-full bg-accent px-6 py-3 text-white transition hover:bg-accent-dark"
+        >
+          Оставить контакты
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-6 sm:grid-cols-2">
       <div className="rounded-card bg-white p-8 shadow-sm">

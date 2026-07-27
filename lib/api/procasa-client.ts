@@ -14,21 +14,30 @@ export type ValuationResponse =
       marketPrice: number;
       comparablesCount: number;
     }
-  | { status: "insufficient_data" };
+  | { status: "insufficient_data" }
+  | { status: "error" };
 
 export async function getValuation(request: ValuationRequest): Promise<ValuationResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/public/valuation`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/public/valuation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
 
-  if (!res.ok) {
-    return { status: "insufficient_data" };
+    if (res.status === 422) {
+      return { status: "insufficient_data" };
+    }
+
+    if (!res.ok) {
+      return { status: "error" };
+    }
+
+    const data = await res.json();
+    return { status: "ready", ...data };
+  } catch {
+    return { status: "error" };
   }
-
-  const data = await res.json();
-  return { status: "ready", ...data };
 }
 
 export interface PropertyCard {

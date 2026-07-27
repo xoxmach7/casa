@@ -15,11 +15,14 @@ export function PropertyLeadWizard() {
   const [price, setPrice] = useState<PriceStepValue | null>(null);
   const [details, setDetails] = useState<DetailsStepValue | null>(null);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState(false);
 
   async function handlePhotosSubmit(photos: PhotosStepValue) {
     if (!location || !price || !details) return;
 
-    await submitPropertyLead({
+    setError(false);
+
+    const result = await submitPropertyLead({
       district: location.district,
       residentialComplex: location.residentialComplex,
       address: location.address,
@@ -35,6 +38,11 @@ export function PropertyLeadWizard() {
       contactPhone: photos.contactPhone,
       photoUrls: photos.photoUrls,
     });
+
+    if (!result.success) {
+      setError(true);
+      return;
+    }
 
     setDone(true);
   }
@@ -76,7 +84,16 @@ export function PropertyLeadWizard() {
           }}
         />
       )}
-      {step === 4 && <PhotosStep onSubmit={handlePhotosSubmit} />}
+      {step === 4 && (
+        <>
+          {error && (
+            <p className="rounded-card bg-red-50 p-4 text-sm text-red-700">
+              Не удалось отправить заявку. Проверьте соединение и попробуйте ещё раз.
+            </p>
+          )}
+          <PhotosStep onSubmit={handlePhotosSubmit} />
+        </>
+      )}
     </div>
   );
 }

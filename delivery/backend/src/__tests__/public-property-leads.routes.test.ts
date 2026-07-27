@@ -8,8 +8,16 @@ vi.mock('../lib/prisma', () => ({
     seller: { create: vi.fn() },
     crmProperty: { create: vi.fn() },
     notification: { create: vi.fn() },
+    $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(mockPrisma)),
   },
 }));
+
+// Re-declared here (rather than imported) because vi.mock's factory is hoisted
+// above imports and cannot reference the `prisma` import it produces.
+const mockPrisma = {
+  seller: { create: vi.fn() },
+  crmProperty: { create: vi.fn() },
+};
 
 import { prisma } from '../lib/prisma';
 import { publicPropertyLeadsRouter } from '../routes/public-property-leads.routes';
@@ -46,10 +54,10 @@ describe('POST /api/public/property-leads', () => {
     expect(res.status).toBe(400);
   });
 
-  it('creates a Seller and a draft CrmProperty, assigns to an available admin, and returns sellerId', async () => {
+  it('creates a Seller and a draft CrmProperty inside one transaction, assigns to an available admin, and returns sellerId', async () => {
     (prisma.user.findFirst as any).mockResolvedValue({ id: 'admin_001' });
-    (prisma.seller.create as any).mockResolvedValue({ id: 'seller_1' });
-    (prisma.crmProperty.create as any).mockResolvedValue({ id: 'crmprop_1' });
+    (mockPrisma.seller.create as any).mockResolvedValue({ id: 'seller_1' });
+    (mockPrisma.crmProperty.create as any).mockResolvedValue({ id: 'crmprop_1' });
     (prisma.notification.create as any).mockResolvedValue({});
 
     const app = buildApp();
@@ -58,7 +66,9 @@ describe('POST /api/public/property-leads', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, sellerId: 'seller_1' });
 
-    expect(prisma.seller.create).toHaveBeenCalledWith(
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+
+    expect(mockPrisma.seller.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           brokerId: 'admin_001',
@@ -70,7 +80,7 @@ describe('POST /api/public/property-leads', () => {
       })
     );
 
-    expect(prisma.crmProperty.create).toHaveBeenCalledWith(
+    expect(mockPrisma.crmProperty.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           district: 'Бостандыкский',
@@ -83,5 +93,22 @@ describe('POST /api/public/property-leads', () => {
         }),
       })
     );
+  });
+
+  it('rolls back the Seller if creating the CrmProperty inside the transaction fails', async () => {
+    (prisma.user.findFirst as any).mockResolvedValue({ id: 'admin_001' });
+    (mockPrisma.seller.create as any).mockResolvedValue({ id: 'seller_1' });
+    (mockPrisma.crmProperty.create as any).mockRejectedValue(new Error('db error'));
+
+    const app = buildApp();
+    const res = await request(app).post('/api/public/property-leads').send(VALID_BODY);
+
+    // The route's $transaction mock here just forwards to the real functions
+    // without real rollback semantics (that's Postgres's job) — this test
+    // verifies the route treats a mid-transaction failure as a hard error
+    // rather than reporting success, which is what the transactional
+    // wrapping is for.
+    expect(res.status).toBe(500);
+    expect(prisma.notification.create).not.toHaveBeenCalled();
   });
 });

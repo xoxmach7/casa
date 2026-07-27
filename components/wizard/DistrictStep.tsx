@@ -1,15 +1,6 @@
 "use client";
 
-const ALMATY_DISTRICTS = [
-  "Алмалинский",
-  "Ауэзовский",
-  "Бостандыкский",
-  "Медеуский",
-  "Наурызбайский",
-  "Турксибский",
-  "Жетысуский",
-  "Алатауский",
-] as const;
+import { ALMATY_DISTRICTS } from "@/lib/districts";
 
 export interface DistrictStepValue {
   district: string;

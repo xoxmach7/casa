@@ -61,18 +61,22 @@ export function OtsenkaWizard() {
         <ContactStep
           onSubmit={async (contact) => {
             setSubmitted(contact);
-            if (OTSENKA_FORM_ID) {
-              await submitLeadForm(OTSENKA_FORM_ID, {
-                name: contact.name,
-                phone: contact.phone,
-                district: location?.district ?? "",
-                residentialComplex: location?.residentialComplex ?? "",
-                rooms: String(params?.rooms ?? ""),
-                area: String(params?.areaM2 ?? ""),
-                expectedPrice:
-                  valuation?.status === "ready" ? String(valuation.marketPrice) : "",
-              });
+            if (!OTSENKA_FORM_ID) {
+              console.error(
+                "NEXT_PUBLIC_OTSENKA_FORM_ID is not set — otsenka lead was not submitted to pro-casa."
+              );
+              return;
             }
+            await submitLeadForm(OTSENKA_FORM_ID, {
+              name: contact.name,
+              phone: contact.phone,
+              district: location?.district ?? "",
+              residentialComplex: location?.residentialComplex ?? "",
+              rooms: String(params?.rooms ?? ""),
+              area: String(params?.areaM2 ?? ""),
+              expectedPrice:
+                valuation?.status === "ready" ? String(valuation.marketPrice) : "",
+            });
           }}
         />
       )}

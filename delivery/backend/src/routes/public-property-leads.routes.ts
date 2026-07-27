@@ -42,39 +42,45 @@ publicPropertyLeadsRouter.post('/', async (req: Request, res: Response): Promise
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ');
 
-    const seller = await prisma.seller.create({
-      data: {
-        brokerId,
-        firstName,
-        lastName,
-        phone: data.contactPhone,
-        source: 'Форма: Добавить квартиру',
-        funnelStage: 'CONTACT',
-        readyToNegotiate: data.negotiable,
-      },
-    });
-
     const fullAddress = `${data.address}, д. ${data.houseNumber}`;
 
-    const property = await prisma.crmProperty.create({
-      data: {
-        district: data.district,
-        residentialComplex: data.residentialComplex,
-        address: fullAddress,
-        rooms: data.rooms,
-        area: data.area,
-        floor: 0,
-        totalFloors: 0,
-        yearBuilt: new Date().getFullYear(),
-        price: data.price,
-        images: data.photoUrls ?? [],
-        funnelStage: 'CREATED',
-        sellerId: seller.id,
-        brokerId,
-        hasBuiltInAppliances: data.hasAppliances,
-        furnitureLevel: data.furnished ? 'FULL' : 'NONE',
-        notes: data.moveInReady ? 'Можно заселиться сразу (со слов владельца)' : undefined,
-      },
+    // Seller and draft CrmProperty must be created together — a Seller with
+    // no listing behind it is an orphaned record a broker can't act on.
+    const { seller } = await prisma.$transaction(async (tx) => {
+      const seller = await tx.seller.create({
+        data: {
+          brokerId,
+          firstName,
+          lastName,
+          phone: data.contactPhone,
+          source: 'Форма: Добавить квартиру',
+          funnelStage: 'CONTACT',
+          readyToNegotiate: data.negotiable,
+        },
+      });
+
+      const property = await tx.crmProperty.create({
+        data: {
+          district: data.district,
+          residentialComplex: data.residentialComplex,
+          address: fullAddress,
+          rooms: data.rooms,
+          area: data.area,
+          floor: 0,
+          totalFloors: 0,
+          yearBuilt: new Date().getFullYear(),
+          price: data.price,
+          images: data.photoUrls ?? [],
+          funnelStage: 'CREATED',
+          sellerId: seller.id,
+          brokerId,
+          hasBuiltInAppliances: data.hasAppliances,
+          furnitureLevel: data.furnished ? 'FULL' : 'NONE',
+          notes: data.moveInReady ? 'Можно заселиться сразу (со слов владельца)' : undefined,
+        },
+      });
+
+      return { seller, property };
     });
 
     await prisma.notification.create({

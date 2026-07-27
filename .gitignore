@@ -4,3 +4,4 @@ node_modules
 .env*.local
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+tsconfig.tsbuildinfo

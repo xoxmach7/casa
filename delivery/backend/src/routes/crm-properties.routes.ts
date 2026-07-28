@@ -23,6 +23,19 @@ import {
     type LiquidityInput,
     type StrategyInput,
 } from '../lib/property-calculator.service';
+import { publishProperty, unpublishProperty } from '../services/publishing.service';
+
+const FUNNEL_STAGE_LABELS: Record<string, string> = {
+    CREATED: 'Создан',
+    PREPARATION: 'Подготовка',
+    LEADS: 'Лиды',
+    SHOWS: 'Показы',
+    DEAL: 'Сделка',
+    SOLD: 'Продан',
+    POST_SERVICE: 'Постобслуживание',
+    ARCHIVED: 'Архив',
+    CANCELLED: 'Отменён',
+};
 
 export const crmPropertiesRouter = Router();
 
@@ -906,15 +919,74 @@ crmPropertiesRouter.put(
                 updateData.cancellationComment = null;
             }
 
-            const property = await prisma.crmProperty.update({
-                where: { id },
-                data: updateData,
+            const property = await prisma.$transaction(async (tx) => {
+                const updated = await tx.crmProperty.update({
+                    where: { id },
+                    data: updateData,
+                });
+
+                // Auto-publish to the public catalog once an object reaches
+                // the LEADS stage (active marketing), so it doesn't require
+                // a separate manual publish step.
+                if (funnelStage === 'LEADS' && !existing.publishedAt) {
+                    await publishProperty(tx, id);
+                }
+
+                if (funnelStage && funnelStage !== existing.funnelStage) {
+                    const label = FUNNEL_STAGE_LABELS[funnelStage] ?? funnelStage;
+                    await tx.notification.create({
+                        data: {
+                            userId: existing.brokerId,
+                            type: 'SYSTEM',
+                            title: 'Этап объекта изменён',
+                            message: `Объект "${existing.residentialComplex}" (${existing.district}) переведён на этап "${label}".`,
+                            isRead: false,
+                        },
+                    });
+                }
+
+                return updated;
             });
 
             res.json(property);
         } catch (error) {
             console.error('Update CRM property stage error:', error);
             res.status(500).json({ error: 'Ошибка изменения этапа' });
+        }
+    }
+);
+
+// =========================================
+// PATCH /api/crm-properties/:id/publish - Ручная публикация/снятие с публикации
+// =========================================
+crmPropertiesRouter.patch(
+    '/:id/publish',
+    requireRole('BROKER', 'ADMIN', 'REALTOR', 'AGENCY', 'DEVELOPER'),
+    async (req: Request, res: Response): Promise<void> => {
+        try {
+            const { id } = req.params;
+            const publish = req.body?.publish !== false;
+
+            const existing = await prisma.crmProperty.findUnique({ where: { id } });
+            if (!existing) {
+                res.status(404).json({ error: 'Объект не найден' });
+                return;
+            }
+
+            const restrictedRoles = ['BROKER', 'REALTOR', 'AGENCY', 'DEVELOPER'];
+            if (restrictedRoles.includes(req.user?.role || '') && existing.brokerId !== req.user!.userId) {
+                res.status(403).json({ error: 'Доступ запрещен' });
+                return;
+            }
+
+            const property = await prisma.$transaction(async (tx) => {
+                return publish ? publishProperty(tx, id) : unpublishProperty(tx, id);
+            });
+
+            res.json(property);
+        } catch (error) {
+            console.error('Publish CRM property error:', error);
+            res.status(500).json({ error: 'Ошибка публикации объекта' });
         }
     }
 );

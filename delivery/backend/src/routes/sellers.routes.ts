@@ -15,6 +15,7 @@ import {
     SellerUpdateSchema,
 } from '../lib/validation.schemas';
 import { normalizePhone } from '../lib/phone.utils';
+import { publishProperty } from '../services/publishing.service';
 
 export const sellersRouter = Router();
 
@@ -552,9 +553,9 @@ sellersRouter.put(
             }
 
             // Если этап меняется на "CONTRACT_SIGNING / Договор", активируем связанные объекты
+            // и автоматически публикуем их в публичном каталоге (funnelStage: LEADS + publishedAt).
             let activatedPropertiesCount = 0;
             if (funnelStage === 'CONTRACT_SIGNING') {
-                // Find properties in preliminary stages
                 const propertiesToActivate = await prisma.crmProperty.findMany({
                     where: {
                         sellerId: id,
@@ -563,15 +564,14 @@ sellersRouter.put(
                 });
 
                 if (propertiesToActivate.length > 0) {
-                    // Update to LEADS (Marketing / Shows started)
-                    await prisma.crmProperty.updateMany({
-                        where: {
-                            id: { in: propertiesToActivate.map(p => p.id) },
-                        },
-                        data: {
-                            funnelStage: 'LEADS', // Active marketing
-                            status: 'ACTIVE',
-                        },
+                    await prisma.$transaction(async (tx) => {
+                        for (const property of propertiesToActivate) {
+                            await tx.crmProperty.update({
+                                where: { id: property.id },
+                                data: { funnelStage: 'LEADS', status: 'ACTIVE' },
+                            });
+                            await publishProperty(tx, property.id);
+                        }
                     });
                     activatedPropertiesCount = propertiesToActivate.length;
 
@@ -581,7 +581,7 @@ sellersRouter.put(
                             userId: existing.brokerId,
                             type: 'SYSTEM',
                             title: 'Продажа запущена! 🚀',
-                            message: `Договор с ${existing.firstName} подписан. ${activatedPropertiesCount} объект(ов) переведены в статус "Лиды" и доступны для показов.`,
+                            message: `Договор с ${existing.firstName} подписан. ${activatedPropertiesCount} объект(ов) переведены в статус "Лиды", опубликованы в каталоге и доступны для показов.`,
                             isRead: false,
                         },
                     });

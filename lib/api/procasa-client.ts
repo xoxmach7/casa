@@ -143,6 +143,32 @@ export async function uploadPhotos(files: File[]): Promise<string[]> {
   return data.urls;
 }
 
+export interface BuyerLeadInput {
+  name: string;
+  phone: string;
+  district?: string;
+  rooms?: number[];
+  minBudget?: number;
+  maxBudget?: number;
+  notes?: string;
+}
+
+export type BuyerLeadResult = { success: true; buyerId: string } | { success: false };
+
+export async function submitBuyerLead(input: BuyerLeadInput): Promise<BuyerLeadResult> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/public/buyer-leads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { success: false };
+    return res.json();
+  } catch {
+    return { success: false };
+  }
+}
+
 export async function submitLeadForm(formId: string, formData: Record<string, string>): Promise<boolean> {
   const res = await fetch(`${API_BASE_URL}/api/public/forms/${formId}/submit`, {
     method: "POST",

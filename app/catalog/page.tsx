@@ -1,6 +1,7 @@
 import { getProperties } from "@/lib/api/procasa-client";
 import { PropertyCard } from "@/components/catalog/PropertyCard";
 import { CatalogMap } from "@/components/catalog/CatalogMap";
+import { BuyerPreferencesForm } from "@/components/buyer-preferences/BuyerPreferencesForm";
 
 export default async function CatalogPage() {
   const properties = await getProperties();
@@ -22,6 +23,10 @@ export default async function CatalogPage() {
       {properties.length === 0 && (
         <p className="mt-6 text-ink/60">Пока нет опубликованных объявлений.</p>
       )}
+
+      <div className="mt-12 max-w-xl">
+        <BuyerPreferencesForm />
+      </div>
     </main>
   );
 }

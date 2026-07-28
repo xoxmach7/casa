@@ -28,6 +28,7 @@ import { publicValuationRouter } from './routes/public-valuation.routes';
 import { publicPropertiesRouter } from './routes/public-properties.routes';
 import { publicViewingRequestsRouter } from './routes/public-viewing-requests.routes';
 import { publicPropertyLeadsRouter } from './routes/public-property-leads.routes';
+import { publicBuyerLeadsRouter } from './routes/public-buyer-leads.routes';
 import { publicUploadsRouter } from './routes/public-uploads.routes';
 import { sellersRouter } from './routes/sellers.routes';
 import { crmPropertiesRouter } from './routes/crm-properties.routes';
@@ -141,6 +142,7 @@ app.use('/api/public/valuation', publicValuationRouter);
 app.use('/api/public/properties', publicPropertiesRouter);
 app.use('/api/public/viewing-requests', publicViewingRequestsRouter);
 app.use('/api/public/property-leads', publicPropertyLeadsRouter);
+app.use('/api/public/buyer-leads', publicBuyerLeadsRouter);
 app.use('/api/public/uploads', publicUploadsRouter);
 
 // CASA CRM Routes

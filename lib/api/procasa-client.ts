@@ -124,6 +124,25 @@ export async function submitPropertyLead(input: PropertyLeadInput): Promise<Prop
   return res.json();
 }
 
+export async function uploadPhotos(files: File[]): Promise<string[]> {
+  if (files.length === 0) return [];
+
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const res = await fetch(`${API_BASE_URL}/api/public/uploads`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  return data.urls;
+}
+
 export async function submitLeadForm(formId: string, formData: Record<string, string>): Promise<boolean> {
   const res = await fetch(`${API_BASE_URL}/api/public/forms/${formId}/submit`, {
     method: "POST",

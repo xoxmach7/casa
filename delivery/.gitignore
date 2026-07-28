@@ -35,3 +35,6 @@ minio_data/
 deployment/.env.production
 deployment/certbot/
 deployment/nginx.init.conf
+
+# Local file-storage fallback (MinIO disabled in dev)
+backend/uploads/

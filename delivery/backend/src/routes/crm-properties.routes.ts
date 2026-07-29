@@ -850,7 +850,7 @@ crmPropertiesRouter.put(
 // PUT /api/crm-properties/:id/stage - Изменение этапа воронки
 // =========================================
 const updatePropertyStageSchema = z.object({
-    funnelStage: z.enum(['CREATED', 'PREPARATION', 'LEADS', 'SHOWS', 'DEAL', 'SOLD', 'POST_SERVICE', 'ARCHIVED', 'CANCELLED']).optional(),
+    funnelStage: z.enum(['CREATED', 'PREPARATION', 'LEADS', 'SHOWS', 'DEAL', 'SOLD', 'POST_SERVICE', 'CANCELLED']).optional(),
     customStageId: z.string().optional(),
     cancellationReason: z.enum(['CLIENT_REFUSED', 'WE_REFUSED']).optional(),
     cancellationComment: z.string().optional(),
@@ -889,11 +889,16 @@ crmPropertiesRouter.put(
 
                 // Classic validation logic (only for standard stages)
                 if (!customStageId) { // Only validate if not setting a custom stage
-                    const stages = ['CREATED', 'PREPARATION', 'LEADS', 'SHOWS', 'DEAL', 'SOLD', 'POST_SERVICE', 'ARCHIVED', 'CANCELLED'];
+                    // Mirrors PropertyFunnelStage in schema.prisma exactly — it has no
+                    // ARCHIVED member (archiving a property uses `status`, not
+                    // funnelStage, see the DELETE /:id route), so it must not appear
+                    // here or a request for it would pass this guard and then 500 on
+                    // the Prisma update below.
+                    const stages = ['CREATED', 'PREPARATION', 'LEADS', 'SHOWS', 'DEAL', 'SOLD', 'POST_SERVICE', 'CANCELLED'];
                     const currentIndex = stages.indexOf(existing.funnelStage);
                     const newIndex = stages.indexOf(funnelStage);
 
-                    const isSpecialStage = funnelStage === 'SOLD' || funnelStage === 'ARCHIVED' || funnelStage === 'CANCELLED';
+                    const isSpecialStage = funnelStage === 'SOLD' || funnelStage === 'CANCELLED';
                     if (existing.customStageId === null && !isSpecialStage && Math.abs(newIndex - currentIndex) > 1) {
                         res.status(400).json({
                             error: 'Нельзя перескакивать этапы воронки',
@@ -1234,11 +1239,14 @@ crmPropertiesRouter.delete(
                 return;
             }
 
-            // Soft delete - just archive (для BROKER и ADMIN по умолчанию)
+            // Soft delete - just archive (для BROKER и ADMIN по умолчанию).
+            // Also clears publishedAt — otherwise an archived object stays
+            // visible in the public catalog indefinitely (funnelStage/publishedAt
+            // are untouched by `status` alone).
             if (req.query.hard !== 'true') {
                 await prisma.crmProperty.update({
                     where: { id },
-                    data: { status: 'ARCHIVED' },
+                    data: { status: 'ARCHIVED', publishedAt: null },
                 });
                 res.json({ success: true, message: 'Объект архивирован' });
                 return;

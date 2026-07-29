@@ -466,7 +466,7 @@ sellersRouter.put(
 // PUT /api/sellers/:id/stage - Изменение этапа воронки
 // =========================================
 const updateStageSchema = z.object({
-    funnelStage: z.string().optional(),
+    funnelStage: z.enum(['CONTACT', 'INTERVIEW', 'STRATEGY', 'CONTRACT_SIGNING', 'CANCELLED']).optional(),
     customStageId: z.string().optional(),
     cancellationReason: z.enum(['CLIENT_REFUSED', 'WE_REFUSED']).optional(),
     cancellationComment: z.string().optional(),
@@ -530,10 +530,14 @@ sellersRouter.put(
 
                 // Classic validation logic (only when moving between standard stages)
                 if (!customStageId) {
-                    const stages = ['CONTACT', 'INTERVIEW', 'STRATEGY', 'CONTRACT_SIGNING', 'SOLD', 'ARCHIVED', 'CANCELLED'];
+                    // Mirrors SellerFunnelStage in schema.prisma exactly — it has no
+                    // SOLD/ARCHIVED members (a seller is archived via `isActive`,
+                    // not funnelStage), so those must not appear here or a request
+                    // for them would pass this guard and then 500 on the Prisma update.
+                    const stages = ['CONTACT', 'INTERVIEW', 'STRATEGY', 'CONTRACT_SIGNING', 'CANCELLED'];
                     const currentIndex = stages.indexOf(existing.funnelStage);
                     const newIndex = stages.indexOf(funnelStage);
-                    const isSpecialStage = funnelStage === 'SOLD' || funnelStage === 'ARCHIVED' || funnelStage === 'CANCELLED';
+                    const isSpecialStage = funnelStage === 'CANCELLED';
 
                     if (existing.customStageId === null && !isSpecialStage && Math.abs(newIndex - currentIndex) > 1) {
                         res.status(400).json({
@@ -724,10 +728,12 @@ sellersRouter.delete(
 
             // Архивируем продавца и все его объекты
             await prisma.$transaction(async (tx) => {
-                // Архивируем все объекты продавца
+                // Архивируем все объекты продавца и снимаем их с публикации —
+                // funnelStage/publishedAt иначе остаются как есть, и объект
+                // продолжает быть виден в публичном каталоге бессрочно.
                 await tx.crmProperty.updateMany({
                     where: { sellerId: id },
-                    data: { status: 'ARCHIVED' }
+                    data: { status: 'ARCHIVED', publishedAt: null }
                 });
 
                 // Архивируем продавца

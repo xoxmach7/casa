@@ -27,6 +27,7 @@ publicValuationRouter.post('/', async (req: Request, res: Response): Promise<voi
         rooms,
         funnelStage: 'LEADS',
         publishedAt: { not: null },
+        status: 'ACTIVE',
       },
       select: { price: true, area: true },
     });

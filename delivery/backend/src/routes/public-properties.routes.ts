@@ -43,6 +43,7 @@ publicPropertiesRouter.get('/', async (req: Request, res: Response): Promise<voi
     const where: any = {
       funnelStage: 'LEADS',
       publishedAt: { not: null },
+      status: 'ACTIVE',
     };
     if (district) {
       where.district = district as string;
@@ -67,7 +68,7 @@ publicPropertiesRouter.get('/:id', async (req: Request, res: Response): Promise<
     const { id } = req.params;
 
     const property = await prisma.crmProperty.findFirst({
-      where: { id, funnelStage: 'LEADS', publishedAt: { not: null } },
+      where: { id, funnelStage: 'LEADS', publishedAt: { not: null }, status: 'ACTIVE' },
       select: DETAIL_SELECT,
     });
 

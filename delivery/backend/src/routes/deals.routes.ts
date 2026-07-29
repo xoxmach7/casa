@@ -103,17 +103,32 @@ dealsRouter.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const data = createDealSchema.parse(req.body);
 
-    const deal = await prisma.deal.create({
-      data: { ...data, brokerId: req.user!.userId, status: 'IN_PROGRESS' },
-      include: {
-        broker: { select: { id: true, firstName: true, lastName: true } },
-        client: { select: { id: true, firstName: true, lastName: true, phone: true } },
-      },
-    });
+    const deal = await prisma.$transaction(async (tx) => {
+      const created = await tx.deal.create({
+        data: { ...data, brokerId: req.user!.userId, status: 'IN_PROGRESS' },
+        include: {
+          broker: { select: { id: true, firstName: true, lastName: true } },
+          client: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        },
+      });
 
-    if (data.objectType === 'PROPERTY' && data.objectId) {
-      await prisma.property.update({ where: { id: data.objectId }, data: { status: 'SOLD' } });
-    }
+      // "PROPERTY" here can mean either the legacy secondary-market `Property`
+      // model or the newer CRM `CrmProperty` model — the two aren't merged.
+      // Try CrmProperty first since that's what the current seller/CRM flow
+      // uses; only the legacy model otherwise. Doing this inside the same
+      // transaction means a bad objectId rolls back the Deal too, instead of
+      // leaving an orphaned Deal row with no matching property update.
+      if (data.objectType === 'PROPERTY' && data.objectId) {
+        const crmProperty = await tx.crmProperty.findUnique({ where: { id: data.objectId } });
+        if (crmProperty) {
+          await tx.crmProperty.update({ where: { id: data.objectId }, data: { status: 'SOLD' } });
+        } else {
+          await tx.property.update({ where: { id: data.objectId }, data: { status: 'SOLD' } });
+        }
+      }
+
+      return created;
+    });
 
     res.status(201).json(deal);
   } catch (error) {

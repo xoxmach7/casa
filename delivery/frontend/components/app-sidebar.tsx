@@ -7,7 +7,6 @@ import {
   Users,
   Building2,
   Calculator,
-  User,
   Calendar,
   BarChart3,
   LogOut,
@@ -23,9 +22,9 @@ import {
   Scale,
   Settings,
   LayoutList,
-  Archive,
   Upload,
   CreditCard,
+  Pencil,
 } from "lucide-react"
 import {
   Sidebar,
@@ -80,42 +79,22 @@ interface MenuSection {
 }
 
 const menuItems: MenuSection[] = [
-  // 1. Главная - Dashboard
+  // 0. Главная - Dashboard
   {
     title: "Главная",
     icon: Home,
     url: "/dashboard",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
   },
-  // 2. Сделки (CRM) - единая страница с вкладками
+  // 1. Сделки (CRM) - единая страница с вкладками; Воронки/Поля (бывшие
+  // "Настройки") теперь иконки внутри самой этой страницы, не свой пункт меню.
   {
     title: "Сделки (CRM)",
     icon: Briefcase,
     url: "/dashboard/crm",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
   },
-  // 2.2 Команда (Agency only)
-  {
-    title: "Команда",
-    icon: Users,
-    url: "/dashboard/agency/team",
-    roles: ["AGENCY"],
-  },
-  // 2.3 Подборки для клиентов (квартиры из новостроек)
-  {
-    title: "Мои подборки",
-    icon: LayoutList,
-    url: "/dashboard/selections",
-    roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
-  },
-  // 2.4 Клиенты (Sellers List)
-  {
-    title: "Клиенты",
-    icon: Users,
-    url: "/dashboard/sellers",
-    roles: ["AGENCY", "REALTOR", "DEVELOPER"],
-  },
-  // 3. Новостройки - единая ссылка на каталог (фильтры уже внутри),
+  // 2. Новостройки - единая ссылка на каталог (фильтры уже внутри),
   // шахматка открывается из карточки конкретного ЖК.
   {
     title: "Новостройки",
@@ -123,45 +102,43 @@ const menuItems: MenuSection[] = [
     url: "/dashboard/projects",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
   },
-  // 4. Ипотека - единая ссылка, калькулятор/заявки/программы — вкладки внутри страницы
+  // 3. Ипотека - единая ссылка, калькулятор/заявки/программы — вкладки внутри страницы
   {
     title: "Ипотека",
     icon: Calculator,
     url: "/dashboard/mortgage",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
   },
-  // 5. Профиль - одна кнопка без подразделов (табы внутри страницы)
+  // 4. Подборки для клиентов (квартиры из новостроек)
   {
-    title: "Профиль",
-    icon: User,
-    url: "/dashboard/profile",
-    roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
+    title: "Мои подборки",
+    icon: LayoutList,
+    url: "/dashboard/selections",
+    roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
   },
-  // 6. Формы (Admin)
+  // 5. Клиенты (Sellers List)
+  {
+    title: "Клиенты",
+    icon: Users,
+    url: "/dashboard/sellers",
+    roles: ["AGENCY", "REALTOR", "DEVELOPER"],
+  },
+  // Команда (Agency only)
+  {
+    title: "Команда",
+    icon: Users,
+    url: "/dashboard/agency/team",
+    roles: ["AGENCY"],
+  },
+  // Формы (Admin)
   {
     title: "Формы",
     icon: FileText,
     url: "/dashboard/forms",
     roles: ["ADMIN", "BROKER", "AGENCY"], // Maybe Realtors too? restricted for now
   },
-  // 7. Настройки (CRM)
-  {
-    title: "Настройки",
-    icon: Settings,
-    url: "/dashboard/settings",
-    roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
-    subItems: [
-      { title: "Воронки", url: "/dashboard/settings/funnels", icon: Settings },
-      { title: "Поля", url: "/dashboard/settings/fields", icon: LayoutList } // NEW
-    ]
-  },
-  // 8. Архив
-  {
-    title: "Архив",
-    icon: Archive,
-    url: "/dashboard/archives",
-    roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
-  },
+  // Профиль и Архив убраны из меню: профиль открывается иконкой-карандашом
+  // у карточки пользователя внизу сайдбара; архив пока скрыт.
 ]
 
 // Admin-only menu item
@@ -379,6 +356,15 @@ export function AppSidebar() {
               {user.role === "AGENCY" && "Агентство"}
             </p>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-sidebar-foreground/50 hover:text-sidebar-foreground"
+            onClick={() => router.push("/dashboard/profile")}
+            title="Редактировать профиль"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
         </div>
         <Button
           variant="ghost"

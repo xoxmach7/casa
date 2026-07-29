@@ -8,7 +8,7 @@ import { CreateSellerForm } from "./forms/CreateSellerForm";
 import { CreatePropertyForm } from "./forms/CreatePropertyForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Plus, Filter, Settings, LayoutGrid, List, Target } from "lucide-react";
+import { Plus, Filter, Settings, LayoutGrid, List, Target, LayoutList } from "lucide-react";
 import {
     SellerFunnelStage,
     PropertyFunnelStage,
@@ -433,6 +433,16 @@ export function KanbanBoard() {
                         <FormLinksButton userId={userId} />
                     )}
                     <DateFilter dateRange={dateRange} setDateRange={setDateRange} />
+                    <Link href="/dashboard/settings/funnels" title="Воронки">
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Settings className="h-3.5 w-3.5" />
+                        </Button>
+                    </Link>
+                    <Link href="/dashboard/settings/fields" title="Поля">
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <LayoutList className="h-3.5 w-3.5" />
+                        </Button>
+                    </Link>
                     {(activeTab === "sellers" || isCustom) && (
                         <Button size="sm" className="h-7 text-xs" onClick={() => setIsSellerFormOpen(true)}>
                             <Plus className="mr-1 h-3.5 w-3.5" />

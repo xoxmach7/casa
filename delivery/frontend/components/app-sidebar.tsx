@@ -9,7 +9,6 @@ import {
   Calculator,
   User,
   Calendar,
-  Grid3x3,
   BarChart3,
   LogOut,
   Shield,
@@ -23,7 +22,6 @@ import {
   FileText,
   Scale,
   Settings,
-  Target,
   LayoutList,
   Archive,
   Upload,
@@ -96,13 +94,6 @@ const menuItems: MenuSection[] = [
     url: "/dashboard/crm",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
   },
-  // 2.1 Стратегии - справочник
-  {
-    title: "Стратегии (CASA)",
-    icon: Target,
-    url: "/dashboard/strategies",
-    roles: ["ADMIN", "BROKER", "DEVELOPER"],
-  },
   // 2.2 Команда (Agency only)
   {
     title: "Команда",
@@ -110,11 +101,11 @@ const menuItems: MenuSection[] = [
     url: "/dashboard/agency/team",
     roles: ["AGENCY"],
   },
-  // 2.3 Список объектов (List View)
+  // 2.3 Подборки для клиентов (квартиры из новостроек)
   {
-    title: "Мои объекты",
+    title: "Мои подборки",
     icon: LayoutList,
-    url: "/dashboard/properties",
+    url: "/dashboard/selections",
     roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
   },
   // 2.4 Клиенты (Sellers List)
@@ -124,26 +115,20 @@ const menuItems: MenuSection[] = [
     url: "/dashboard/sellers",
     roles: ["AGENCY", "REALTOR", "DEVELOPER"],
   },
-  // 3. Новостройки - collapsible
+  // 3. Новостройки - единая ссылка на каталог (фильтры уже внутри),
+  // шахматка открывается из карточки конкретного ЖК.
   {
     title: "Новостройки",
     icon: Building2,
+    url: "/dashboard/projects",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
-    subItems: [
-      { title: "Каталог ЖК", url: "/dashboard/projects", icon: Building2 },
-      { title: "Шахматка", url: "/dashboard/chess", icon: Grid3x3 },
-    ],
   },
-  // 4. Ипотека - collapsible с подразделами
+  // 4. Ипотека - единая ссылка, калькулятор/заявки/программы — вкладки внутри страницы
   {
     title: "Ипотека",
     icon: Calculator,
+    url: "/dashboard/mortgage",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
-    subItems: [
-      { title: "Калькулятор", url: "/dashboard/mortgage", icon: Calculator },
-      { title: "Программы", url: "/dashboard/mortgage-programs", icon: CreditCard, roles: ["ADMIN"] },
-      { title: "Заявки в банки", url: "/dashboard/mortgage-applications", icon: FileText },
-    ],
   },
   // 5. Профиль - одна кнопка без подразделов (табы внутри страницы)
   {

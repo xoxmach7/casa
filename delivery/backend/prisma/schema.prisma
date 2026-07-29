@@ -44,6 +44,7 @@ model User {
   forms          LeadForm[]       @relation("FormBrokers")
   // CASA CRM Relations
   sellers        Seller[]         @relation("BrokerSellers")
+  selections     Selection[]
   crmProperties  CrmProperty[]    @relation("BrokerCrmProperties")
   buyers         Buyer[]          @relation("BrokerBuyers")
   customFunnels  CustomFunnel[]
@@ -85,6 +86,7 @@ model Client {
   deals                Deal[]
   events               Event[]
   mortgageApplications MortgageApplication[]
+  selections           Selection[]
 
   @@index([brokerId])
   @@index([status])
@@ -258,6 +260,7 @@ model Apartment {
   project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   bookings             Booking[]
   mortgageCalculations MortgageCalculation[]
+  selectionApartments  SelectionApartment[]
 
   @@unique([projectId, number])
   @@index([projectId])
@@ -323,6 +326,40 @@ model ClientDocument {
 
   @@index([clientId])
   @@map("client_documents")
+}
+
+// Подборка — набор квартир из новостроек, которую брокер собирает под
+// запросы конкретного клиента (не для вторичного рынка).
+model Selection {
+  id        String   @id @default(cuid())
+  name      String?
+  brokerId  String   @map("broker_id")
+  clientId  String   @map("client_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  broker     User                 @relation(fields: [brokerId], references: [id])
+  client     Client               @relation(fields: [clientId], references: [id])
+  apartments SelectionApartment[]
+
+  @@index([brokerId])
+  @@index([clientId])
+  @@map("selections")
+}
+
+model SelectionApartment {
+  id          String   @id @default(cuid())
+  selectionId String   @map("selection_id")
+  apartmentId String   @map("apartment_id")
+  addedAt     DateTime @default(now()) @map("added_at")
+
+  selection Selection @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  @@unique([selectionId, apartmentId])
+  @@index([selectionId])
+  @@index([apartmentId])
+  @@map("selection_apartments")
 }
 
 enum UserRole {

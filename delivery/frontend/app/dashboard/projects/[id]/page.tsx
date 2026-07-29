@@ -1,6 +1,9 @@
 "use client"
 
 import { useEffect, useState, lazy, Suspense } from "react"
+import { ApartmentCard } from "@/components/apartments/ApartmentCard"
+import { AddToSelectionDialog } from "@/components/apartments/AddToSelectionDialog"
+import { MortgageQuickCalcDialog } from "@/components/apartments/MortgageQuickCalcDialog"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import {
   MapPin,
@@ -39,14 +42,6 @@ import {
 } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { API_URL } from "@/lib/config"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -102,6 +97,8 @@ export default function ProjectDetailsPage() {
   const [activeImage, setActiveImage] = useState(0)
   const [apartmentSearch, setApartmentSearch] = useState("")
   const [selectedLayout, setSelectedLayout] = useState<Apartment | null>(null)
+  const [selectionApartment, setSelectionApartment] = useState<Apartment | null>(null)
+  const [mortgageApartment, setMortgageApartment] = useState<Apartment | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   
@@ -139,19 +136,6 @@ export default function ProjectDetailsPage() {
       currency: "KZT",
       maximumFractionDigits: 0,
     }).format(price)
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "AVAILABLE":
-        return <Badge className="bg-green-500">Свободна</Badge>
-      case "RESERVED":
-        return <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">Бронь</Badge>
-      case "SOLD":
-        return <Badge variant="secondary" className="bg-red-500/20 text-red-600">Продана</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
   }
 
   const filteredApartments = project?.apartments.filter(apt =>
@@ -726,71 +710,26 @@ export default function ProjectDetailsPage() {
                 </div>
               </div>
 
-              <Card>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Планировка</TableHead>
-                      <TableHead>№</TableHead>
-                      <TableHead>Этаж</TableHead>
-                      <TableHead>Комнат</TableHead>
-                      <TableHead>Площадь</TableHead>
-                      <TableHead>Цена</TableHead>
-                      <TableHead>Статус</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredApartments.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                          Квартиры не найдены
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredApartments.map((apt) => (
-                        <TableRow key={apt.id}>
-                          <TableCell>
-                            {apt.layoutImage ? (
-                              <button
-                                onClick={() => setSelectedLayout(apt)}
-                                className="h-12 w-12 rounded border overflow-hidden hover:border-primary transition-colors"
-                              >
-                                <img
-                                  src={apt.layoutImage}
-                                  alt={`Планировка ${apt.number}`}
-                                  className="w-full h-full object-cover"
-                                />
-                              </button>
-                            ) : (
-                              <div className="h-12 w-12 rounded border bg-muted flex items-center justify-center">
-                                <ImageIcon className="h-4 w-4 text-muted-foreground/30" />
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="font-medium">{apt.number}</TableCell>
-                          <TableCell>{apt.floor}</TableCell>
-                          <TableCell>{apt.rooms}-комн.</TableCell>
-                          <TableCell>{apt.area} м²</TableCell>
-                          <TableCell>{formatPrice(apt.price)}</TableCell>
-                          <TableCell>{getStatusBadge(apt.status)}</TableCell>
-                          <TableCell>
-                            {apt.status === "AVAILABLE" && (
-                              <Button
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700"
-                                onClick={() => router.push(`/dashboard/bookings/new?apartmentId=${apt.id}&projectId=${project.id}`)}
-                              >
-                                Забронировать
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </Card>
+              {filteredApartments.length === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-muted-foreground">
+                    Квартиры не найдены
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {filteredApartments.map((apt) => (
+                    <ApartmentCard
+                      key={apt.id}
+                      apartment={apt}
+                      onViewLayout={(a) => setSelectedLayout(a as Apartment)}
+                      onBook={(a) => router.push(`/dashboard/bookings/new?apartmentId=${a.id}&projectId=${project.id}`)}
+                      onAddToSelection={(a) => setSelectionApartment(a as Apartment)}
+                      onCalculateMortgage={(a) => setMortgageApartment(a as Apartment)}
+                    />
+                  ))}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>
@@ -947,6 +886,9 @@ export default function ProjectDetailsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AddToSelectionDialog apartment={selectionApartment} onClose={() => setSelectionApartment(null)} />
+      <MortgageQuickCalcDialog apartment={mortgageApartment} onClose={() => setMortgageApartment(null)} />
     </div>
   )
 }

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MortgageApplicationsPanel } from "@/components/mortgage/MortgageApplicationsPanel"
+import { ScoringPanel } from "@/components/mortgage/ScoringPanel"
 import { Slider } from "@/components/ui/slider"
 import {
   Table,
@@ -323,9 +324,10 @@ export default function MortgagePage() {
       </div>
 
       <Tabs defaultValue="catalog" className="space-y-6">
-        <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-4 gap-1">
+        <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-5 gap-1">
           <TabsTrigger value="catalog">Каталог программ</TabsTrigger>
           <TabsTrigger value="calculator">Калькулятор</TabsTrigger>
+          <TabsTrigger value="scoring">Скоринг</TabsTrigger>
           <TabsTrigger value="applications">Заявки в банки</TabsTrigger>
           <TabsTrigger value="compare" disabled={compareList.length < 2}>
             Сравнение {compareList.length > 0 && `(${compareList.length})`}
@@ -719,6 +721,11 @@ export default function MortgagePage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </TabsContent>
+
+        {/* Scoring Tab */}
+        <TabsContent value="scoring" className="space-y-6">
+          <ScoringPanel />
         </TabsContent>
 
         {/* Applications Tab */}

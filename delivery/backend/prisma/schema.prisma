@@ -87,6 +87,7 @@ model Client {
   events               Event[]
   mortgageApplications MortgageApplication[]
   selections           Selection[]
+  scorings             ClientScoring[]
 
   @@index([brokerId])
   @@index([status])
@@ -312,6 +313,39 @@ model MortgageCalculation {
   @@index([clientId])
   @@index([apartmentId])
   @@map("mortgage_calculations")
+}
+
+// Скоринг клиента для ипотеки — на основе вручную введённых КИ (кредитная
+// история) и ПО (пенсионные отчисления), пока без интеграции с ЕНПФ/бюро.
+model ClientScoring {
+  id                  String              @id @default(cuid())
+  clientId            String              @map("client_id")
+  creditHistoryStatus CreditHistoryStatus @map("credit_history_status")
+  avgMonthlyPension   Decimal             @map("avg_monthly_pension") @db.Decimal(15, 2)
+  existingMonthlyDebt Decimal             @default(0) @map("existing_monthly_debt") @db.Decimal(15, 2)
+  scoreValue          Int                 @map("score_value")
+  approvalLikelihood  ApprovalLikelihood  @map("approval_likelihood")
+  maxLoanAmount       Decimal             @map("max_loan_amount") @db.Decimal(15, 2)
+  maxMonthlyPayment   Decimal             @map("max_monthly_payment") @db.Decimal(15, 2)
+  advice              String[]
+  createdAt           DateTime            @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_scorings")
+}
+
+enum CreditHistoryStatus {
+  GOOD        // Хорошая, без просрочек
+  HAS_DELAYS  // Были просрочки в прошлом
+  BAD         // Плохая / активная просрочка
+}
+
+enum ApprovalLikelihood {
+  HIGH
+  MEDIUM
+  LOW
 }
 
 model ClientDocument {

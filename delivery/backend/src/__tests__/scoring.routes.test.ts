@@ -17,7 +17,15 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
+vi.mock('../lib/scoring-document.service', () => ({
+  extractTextFromPdf: vi.fn().mockResolvedValue('mock pdf text'),
+  extractCreditHistoryStatus: vi.fn().mockReturnValue({ status: 'GOOD', matchedPhrase: null }),
+  extractAvgMonthlyPension: vi.fn().mockReturnValue({ averageAmount: 50_000, totalAmount: 150_000, matchesFound: 3 }),
+  extractExistingMonthlyDebt: vi.fn().mockReturnValue({ averageAmount: 0, totalAmount: 0, matchesFound: 0 }),
+}));
+
 import { prisma } from '../lib/prisma';
+import * as docService from '../lib/scoring-document.service';
 import { scoringRouter } from '../routes/scoring.routes';
 
 function buildApp() {
@@ -27,13 +35,6 @@ function buildApp() {
   return app;
 }
 
-const VALID_BODY = {
-  clientId: 'client_1',
-  creditHistoryStatus: 'GOOD',
-  avgMonthlyPension: 50_000,
-  existingMonthlyDebt: 0,
-};
-
 describe('POST /api/scoring', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -41,13 +42,16 @@ describe('POST /api/scoring', () => {
     (prisma.client.findUnique as any).mockResolvedValue({ id: 'client_1', brokerId: 'broker_2', monthlyIncome: 500000 });
 
     const app = buildApp();
-    const res = await request(app).post('/api/scoring').send(VALID_BODY);
+    const res = await request(app)
+      .post('/api/scoring')
+      .field('clientId', 'client_1')
+      .attach('pensionFile', Buffer.from('%PDF-1.4 fake'), 'pension.pdf');
 
     expect(res.status).toBe(403);
     expect(prisma.clientScoring.create).not.toHaveBeenCalled();
   });
 
-  it('computes, saves the scoring, and returns matched programs', async () => {
+  it('reads uploaded documents, computes, saves the scoring, and returns matched programs', async () => {
     (prisma.client.findUnique as any).mockResolvedValue({ id: 'client_1', brokerId: 'broker_1', monthlyIncome: 500000 });
     (prisma.clientScoring.create as any).mockResolvedValue({ id: 'scoring_1', scoreValue: 100 });
     (prisma.mortgageProgram.findMany as any).mockResolvedValue([
@@ -55,14 +59,20 @@ describe('POST /api/scoring', () => {
     ]);
 
     const app = buildApp();
-    const res = await request(app).post('/api/scoring').send(VALID_BODY);
+    const res = await request(app)
+      .post('/api/scoring')
+      .field('clientId', 'client_1')
+      .attach('creditHistoryFile', Buffer.from('%PDF-1.4 fake'), 'ki.pdf')
+      .attach('pensionFile', Buffer.from('%PDF-1.4 fake'), 'pension.pdf');
 
     expect(res.status).toBe(201);
+    expect(docService.extractTextFromPdf).toHaveBeenCalledTimes(2);
     expect(prisma.clientScoring.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           clientId: 'client_1',
           creditHistoryStatus: 'GOOD',
+          avgMonthlyPension: 50_000,
           scoreValue: 100,
           approvalLikelihood: 'HIGH',
         }),
@@ -70,13 +80,24 @@ describe('POST /api/scoring', () => {
     );
     expect(res.body.matchedPrograms).toBeDefined();
     expect(Array.isArray(res.body.matchedPrograms)).toBe(true);
+    expect(res.body.extraction).toEqual(
+      expect.objectContaining({ creditHistoryDetected: true, pensionDetected: true })
+    );
   });
 
-  it('400s on an invalid creditHistoryStatus', async () => {
+  it('400s when no clientId is provided', async () => {
     const app = buildApp();
     const res = await request(app)
       .post('/api/scoring')
-      .send({ ...VALID_BODY, creditHistoryStatus: 'UNKNOWN' });
+      .attach('pensionFile', Buffer.from('%PDF-1.4 fake'), 'pension.pdf');
+
+    expect(res.status).toBe(400);
+    expect(prisma.clientScoring.create).not.toHaveBeenCalled();
+  });
+
+  it('400s when neither document is uploaded', async () => {
+    const app = buildApp();
+    const res = await request(app).post('/api/scoring').field('clientId', 'client_1');
 
     expect(res.status).toBe(400);
     expect(prisma.clientScoring.create).not.toHaveBeenCalled();
@@ -86,9 +107,26 @@ describe('POST /api/scoring', () => {
     (prisma.client.findUnique as any).mockResolvedValue(null);
 
     const app = buildApp();
-    const res = await request(app).post('/api/scoring').send(VALID_BODY);
+    const res = await request(app)
+      .post('/api/scoring')
+      .field('clientId', 'client_1')
+      .attach('pensionFile', Buffer.from('%PDF-1.4 fake'), 'pension.pdf');
 
     expect(res.status).toBe(404);
+  });
+
+  it('422s when an uploaded PDF cannot be parsed', async () => {
+    (prisma.client.findUnique as any).mockResolvedValue({ id: 'client_1', brokerId: 'broker_1', monthlyIncome: 500000 });
+    (docService.extractTextFromPdf as any).mockRejectedValueOnce(new Error('bad pdf'));
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/scoring')
+      .field('clientId', 'client_1')
+      .attach('creditHistoryFile', Buffer.from('not a pdf'), 'ki.pdf');
+
+    expect(res.status).toBe(422);
+    expect(prisma.clientScoring.create).not.toHaveBeenCalled();
   });
 });
 

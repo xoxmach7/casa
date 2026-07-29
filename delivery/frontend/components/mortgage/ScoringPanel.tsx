@@ -4,8 +4,8 @@ import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { FileText, Upload, X } from "lucide-react"
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
 
 interface ClientSummary {
@@ -25,13 +25,24 @@ interface MatchedProgram {
   estimatedMonthlyPayment: number
 }
 
+interface ExtractionSummary {
+  creditHistoryDetected: boolean
+  creditHistoryMatchedPhrase: string | null
+  pensionDetected: boolean
+  pensionEntriesFound: number
+  debtEntriesFound: number
+}
+
 interface ScoringResponse {
   scoreValue: number
   approvalLikelihood: "HIGH" | "MEDIUM" | "LOW"
+  avgMonthlyPension: number
+  existingMonthlyDebt: number
   maxLoanAmount: number
   maxMonthlyPayment: number
   advice: string[]
   matchedPrograms: MatchedProgram[]
+  extraction: ExtractionSummary
 }
 
 function formatPrice(price: number) {
@@ -53,14 +64,59 @@ function approvalLabel(level: ScoringResponse["approvalLikelihood"]) {
   }
 }
 
+function FileSlot({
+  label,
+  hint,
+  file,
+  onChange,
+  onClear,
+}: {
+  label: string
+  hint: string
+  file: File | null
+  onChange: (file: File) => void
+  onClear: () => void
+}) {
+  return (
+    <div>
+      <label className="text-sm text-muted-foreground">{label}</label>
+      <p className="text-xs text-muted-foreground mb-1">{hint}</p>
+      {file ? (
+        <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+          <span className="flex items-center gap-2 truncate">
+            <FileText className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{file.name}</span>
+          </span>
+          <Button size="icon" variant="ghost" className="h-6 w-6 flex-shrink-0" onClick={onClear}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      ) : (
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+          <Upload className="h-4 w-4" />
+          Загрузить PDF
+          <input
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onChange(f)
+            }}
+          />
+        </label>
+      )}
+    </div>
+  )
+}
+
 export function ScoringPanel() {
   const [clientSearch, setClientSearch] = useState("")
   const [clientResults, setClientResults] = useState<ClientSummary[]>([])
   const [selectedClient, setSelectedClient] = useState<ClientSummary | null>(null)
 
-  const [creditHistoryStatus, setCreditHistoryStatus] = useState<"GOOD" | "HAS_DELAYS" | "BAD">("GOOD")
-  const [avgMonthlyPension, setAvgMonthlyPension] = useState("")
-  const [existingMonthlyDebt, setExistingMonthlyDebt] = useState("")
+  const [creditHistoryFile, setCreditHistoryFile] = useState<File | null>(null)
+  const [pensionFile, setPensionFile] = useState<File | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -82,25 +138,28 @@ export function ScoringPanel() {
   }, [clientSearch])
 
   async function handleCalculate() {
-    if (!selectedClient) return
+    if (!selectedClient || (!creditHistoryFile && !pensionFile)) return
     setSubmitting(true)
     setError(null)
     setResult(null)
     try {
+      const formData = new FormData()
+      formData.append("clientId", selectedClient.id)
+      if (creditHistoryFile) formData.append("creditHistoryFile", creditHistoryFile)
+      if (pensionFile) formData.append("pensionFile", pensionFile)
+
       const res = await fetch(getApiUrl("scoring"), {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({
-          clientId: selectedClient.id,
-          creditHistoryStatus,
-          avgMonthlyPension: Number(avgMonthlyPension) || 0,
-          existingMonthlyDebt: Number(existingMonthlyDebt) || 0,
-        }),
+        headers: getAuthHeaders(),
+        body: formData,
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || "Не удалось рассчитать скоринг")
+      }
       setResult(await res.json())
-    } catch {
-      setError("Не удалось рассчитать скоринг")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось рассчитать скоринг")
     } finally {
       setSubmitting(false)
     }
@@ -110,9 +169,10 @@ export function ScoringPanel() {
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <CardContent className="space-y-3 p-4">
-          <h3 className="font-semibold">Данные клиента для скоринга</h3>
+          <h3 className="font-semibold">Документы клиента для скоринга</h3>
           <p className="text-sm text-muted-foreground">
-            КИ и ПО вводятся вручную, пока нет интеграции с ЕНПФ/кредитным бюро.
+            Загрузите PDF-документы клиента — систем сама прочитает статус кредитной истории, текущие
+            кредитные обязательства и пенсионные отчисления.
           </p>
 
           <Input
@@ -150,45 +210,30 @@ export function ScoringPanel() {
             )
           )}
 
-          <div>
-            <label className="text-sm text-muted-foreground">Кредитная история (КИ)</label>
-            <Select value={creditHistoryStatus} onValueChange={(v) => setCreditHistoryStatus(v as typeof creditHistoryStatus)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="GOOD">Хорошая, без просрочек</SelectItem>
-                <SelectItem value="HAS_DELAYS">Были просрочки в прошлом</SelectItem>
-                <SelectItem value="BAD">Плохая / активная просрочка</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <FileSlot
+            label="Справка о кредитной истории (КИ)"
+            hint="Из кредитного бюро — используется для статуса КИ и текущих кредитных обязательств"
+            file={creditHistoryFile}
+            onChange={setCreditHistoryFile}
+            onClear={() => setCreditHistoryFile(null)}
+          />
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm text-muted-foreground">Средние ПО в месяц</label>
-              <Input
-                type="number"
-                min={0}
-                value={avgMonthlyPension}
-                onChange={(e) => setAvgMonthlyPension(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-sm text-muted-foreground">Текущие платежи по долгам</label>
-              <Input
-                type="number"
-                min={0}
-                value={existingMonthlyDebt}
-                onChange={(e) => setExistingMonthlyDebt(e.target.value)}
-              />
-            </div>
-          </div>
+          <FileSlot
+            label="Выписка ЕНПФ (ПО)"
+            hint="Используется для расчёта среднемесячных пенсионных отчислений"
+            file={pensionFile}
+            onChange={setPensionFile}
+            onClear={() => setPensionFile(null)}
+          />
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          <Button disabled={!selectedClient || submitting} onClick={handleCalculate} className="w-full">
-            {submitting ? "Расчёт..." : "Рассчитать скоринг"}
+          <Button
+            disabled={!selectedClient || (!creditHistoryFile && !pensionFile) || submitting}
+            onClick={handleCalculate}
+            className="w-full"
+          >
+            {submitting ? "Читаем документы и считаем..." : "Рассчитать скоринг"}
           </Button>
         </CardContent>
       </Card>
@@ -197,7 +242,7 @@ export function ScoringPanel() {
         <CardContent className="space-y-4 p-4">
           <h3 className="font-semibold">Результат</h3>
           {!result ? (
-            <p className="text-sm text-muted-foreground">Заполните данные слева и нажмите «Рассчитать скоринг».</p>
+            <p className="text-sm text-muted-foreground">Загрузите документы слева и нажмите «Рассчитать скоринг».</p>
           ) : (
             <>
               <div className="flex items-center gap-3">
@@ -216,6 +261,29 @@ export function ScoringPanel() {
                   <p className="text-muted-foreground">Макс. ежемесячный платёж</p>
                   <p className="text-lg font-semibold">{formatPrice(result.maxMonthlyPayment)}</p>
                 </div>
+              </div>
+
+              <div className="rounded-lg border p-3 text-sm space-y-1">
+                <p className="font-medium">Что удалось прочитать из документов</p>
+                {result.extraction.creditHistoryDetected ? (
+                  <p className="text-muted-foreground">
+                    КИ: {result.extraction.creditHistoryMatchedPhrase
+                      ? `найдена фраза «${result.extraction.creditHistoryMatchedPhrase}»`
+                      : "явных признаков просрочки не найдено"}
+                    , обязательства по кредитам: {formatPrice(result.existingMonthlyDebt)}/мес
+                    ({result.extraction.debtEntriesFound} найдено)
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">Справка КИ не загружена</p>
+                )}
+                {result.extraction.pensionDetected ? (
+                  <p className="text-muted-foreground">
+                    ПО: среднемесячные отчисления {formatPrice(result.avgMonthlyPension)}
+                    ({result.extraction.pensionEntriesFound} записей найдено)
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">Выписка ЕНПФ не загружена</p>
+                )}
               </div>
 
               <div>

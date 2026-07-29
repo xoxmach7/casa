@@ -8,12 +8,7 @@ import {
   Clock,
   BadgeDollarSign,
   Search,
-  Star,
-  Check,
-  Plus,
-  X,
   Wallet,
-  UserPlus,
   Save
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -36,17 +31,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { MortgageApplicationsPanel } from "@/components/mortgage/MortgageApplicationsPanel"
 import { ScoringPanel } from "@/components/mortgage/ScoringPanel"
 import { Slider } from "@/components/ui/slider"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import {
   Dialog,
   DialogContent,
@@ -131,11 +117,9 @@ export default function MortgagePage() {
   const [term, setTerm] = useState(20)
   const [selectedRate, setSelectedRate] = useState(7)
   
-  // Compare states
   const [mortgagePrograms, setMortgagePrograms] = useState<MortgageProgram[]>([])
   const [programsLoading, setProgramsLoading] = useState(true)
-  const [compareList, setCompareList] = useState<string[]>([])
-  
+
   // Save to client states
   const [clients, setClients] = useState<Client[]>([])
   const [apartments, setApartments] = useState<Apartment[]>([])
@@ -296,16 +280,6 @@ export default function MortgagePage() {
     return new Intl.NumberFormat("ru-RU").format(price)
   }
 
-  const toggleCompare = (id: string) => {
-    if (compareList.includes(id)) {
-      setCompareList(compareList.filter(i => i !== id))
-    } else if (compareList.length < 3) {
-      setCompareList([...compareList, id])
-    }
-  }
-
-  const comparedPrograms = mortgagePrograms.filter(p => compareList.includes(p.id))
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -316,22 +290,13 @@ export default function MortgagePage() {
             Каталог ипотечных программ и калькулятор
           </p>
         </div>
-        {compareList.length > 0 && (
-          <Badge variant="outline" className="text-lg px-4 py-2">
-            Сравнение: {compareList.length}/3
-          </Badge>
-        )}
       </div>
 
       <Tabs defaultValue="catalog" className="space-y-6">
-        <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-5 gap-1">
+        <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-3 gap-1">
           <TabsTrigger value="catalog">Каталог программ</TabsTrigger>
           <TabsTrigger value="calculator">Калькулятор</TabsTrigger>
           <TabsTrigger value="scoring">Скоринг</TabsTrigger>
-          <TabsTrigger value="applications">Заявки в банки</TabsTrigger>
-          <TabsTrigger value="compare" disabled={compareList.length < 2}>
-            Сравнение {compareList.length > 0 && `(${compareList.length})`}
-          </TabsTrigger>
         </TabsList>
 
         {/* Catalog Tab */}
@@ -391,7 +356,7 @@ export default function MortgagePage() {
           {/* Programs Grid */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredPrograms.map(program => (
-              <Card key={program.id} className={`relative ${compareList.includes(program.id) ? 'ring-2 ring-primary' : ''}`}>
+              <Card key={program.id} className="relative">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div>
@@ -441,18 +406,6 @@ export default function MortgagePage() {
                   >
                     <Calculator className="mr-2 h-3 w-3" />
                     Расчёт
-                  </Button>
-                  <Button 
-                    variant={compareList.includes(program.id) ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => toggleCompare(program.id)}
-                    disabled={compareList.length >= 3 && !compareList.includes(program.id)}
-                  >
-                    {compareList.includes(program.id) ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
                   </Button>
                 </CardFooter>
               </Card>
@@ -728,251 +681,6 @@ export default function MortgagePage() {
           <ScoringPanel />
         </TabsContent>
 
-        {/* Applications Tab */}
-        <TabsContent value="applications" className="space-y-6">
-          <MortgageApplicationsPanel />
-        </TabsContent>
-
-        {/* Compare Tab */}
-        <TabsContent value="compare" className="space-y-6">
-          {compareList.length >= 2 ? (
-            <>
-              {/* Visual Comparison Cards */}
-              <div className="grid gap-4 md:grid-cols-3">
-                {comparedPrograms.map((p, idx) => {
-                  const payment = propertyPrice * (1 - downPayment/100) * 
-                    (p.rate/100/12 * Math.pow(1 + p.rate/100/12, term*12)) / 
-                    (Math.pow(1 + p.rate/100/12, term*12) - 1)
-                  const principal = propertyPrice * (1 - downPayment/100)
-                  const totalPayment = payment * term * 12
-                  const overpayment = totalPayment - principal
-                  
-                  // Определяем лучшие значения
-                  const lowestRate = Math.min(...comparedPrograms.map(prog => prog.rate))
-                  const lowestOverpayment = Math.min(...comparedPrograms.map(prog => {
-                    const pay = propertyPrice * (1 - downPayment/100) * 
-                      (prog.rate/100/12 * Math.pow(1 + prog.rate/100/12, term*12)) / 
-                      (Math.pow(1 + prog.rate/100/12, term*12) - 1)
-                    return pay * term * 12 - propertyPrice * (1 - downPayment/100)
-                  }))
-                  
-                  const isLowestRate = p.rate === lowestRate
-                  const isLowestOverpayment = Math.abs(overpayment - lowestOverpayment) < 1000
-                  
-                  return (
-                    <Card 
-                      key={p.id} 
-                      className={`relative overflow-hidden ${isLowestRate ? 'ring-2 ring-[#2E7D5E] bg-[#2E7D5E]/5' : ''}`}
-                    >
-                      {isLowestRate && (
-                        <div className="absolute top-0 right-0 px-3 py-1 bg-[#2E7D5E] text-white text-xs font-medium rounded-bl-lg">
-                          🏆 Лучшая ставка
-                        </div>
-                      )}
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-lg">{p.name}</CardTitle>
-                            <CardDescription>{p.bank}</CardDescription>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => toggleCompare(p.id)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* Rate */}
-                        <div className="text-center p-4 bg-muted rounded-lg">
-                          <div className={`text-4xl font-bold ${isLowestRate ? 'text-[#2E7D5E]' : ''}`}>
-                            {p.rate}%
-                          </div>
-                          <div className="text-sm text-muted-foreground">годовая ставка</div>
-                        </div>
-                        
-                        {/* Monthly Payment */}
-                        <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Ежемесячный платёж</span>
-                          <span className="font-bold text-lg">{formatPrice(Math.round(payment))} ₸</span>
-                        </div>
-                        
-                        {/* Overpayment */}
-                        <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Переплата</span>
-                          <span className={`font-bold ${isLowestOverpayment ? 'text-[#2E7D5E]' : 'text-[#D4A843]'}`}>
-                            {formatPrice(Math.round(overpayment))} ₸
-                          </span>
-                        </div>
-                        
-                        {/* Total */}
-                        <div className="flex justify-between items-center pt-2 border-t">
-                          <span className="text-muted-foreground">Всего выплат</span>
-                          <span className="font-bold">{formatPrice(Math.round(totalPayment))} ₸</span>
-                        </div>
-                        
-                        {/* Overpayment Bar */}
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>Переплата</span>
-                            <span>{Math.round(overpayment / totalPayment * 100)}%</span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full transition-all ${isLowestOverpayment ? 'bg-[#2E7D5E]' : 'bg-[#D4A843]'}`}
-                              style={{ width: `${Math.min(overpayment / totalPayment * 100, 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-
-              {/* Detailed Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Детальное сравнение</CardTitle>
-                  <CardDescription>
-                    При стоимости {formatPrice(propertyPrice)} ₸, взносе {downPayment}%, сроке {term} лет
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[200px]">Параметр</TableHead>
-                        {comparedPrograms.map(p => (
-                          <TableHead key={p.id}>
-                            <div className="flex items-center gap-2">
-                              {p.rate === Math.min(...comparedPrograms.map(pr => pr.rate)) && (
-                                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                              )}
-                              <span>{p.name}</span>
-                            </div>
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow>
-                        <TableCell className="font-medium">Банк</TableCell>
-                        {comparedPrograms.map(p => (
-                          <TableCell key={p.id}>{p.bank}</TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Ставка</TableCell>
-                        {comparedPrograms.map(p => {
-                          const isLowest = p.rate === Math.min(...comparedPrograms.map(pr => pr.rate))
-                          return (
-                            <TableCell key={p.id}>
-                              <Badge className={isLowest ? "bg-[#2E7D5E]" : "bg-[#D4A843]"}>
-                                {p.rate}%
-                              </Badge>
-                            </TableCell>
-                          )
-                        })}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Первоначальный взнос</TableCell>
-                        {comparedPrograms.map(p => (
-                          <TableCell key={p.id}>от {p.minDownPayment}%</TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Максимальный срок</TableCell>
-                        {comparedPrograms.map(p => (
-                          <TableCell key={p.id}>до {p.maxTerm} лет</TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Тип программы</TableCell>
-                        {comparedPrograms.map(p => (
-                          <TableCell key={p.id}>
-                            <Badge variant={p.type === "Государственная" ? "default" : "secondary"}>
-                              {p.type}
-                            </Badge>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Тип жилья</TableCell>
-                        {comparedPrograms.map(p => (
-                          <TableCell key={p.id}>{p.housingTypes.join(", ")}</TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium">Требования</TableCell>
-                        {comparedPrograms.map(p => (
-                          <TableCell key={p.id}>
-                            <ul className="text-xs space-y-1">
-                              {p.requirements.map((req, i) => (
-                                <li key={i} className="flex items-start gap-1">
-                                  <Check className="h-3 w-3 text-[#2E7D5E] mt-0.5 flex-shrink-0" />
-                                  {req}
-                                </li>
-                              ))}
-                            </ul>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="bg-muted/50">
-                        <TableCell className="font-medium">Ежемесячный платёж</TableCell>
-                        {comparedPrograms.map(p => {
-                          const payment = propertyPrice * (1 - downPayment/100) * 
-                            (p.rate/100/12 * Math.pow(1 + p.rate/100/12, term*12)) / 
-                            (Math.pow(1 + p.rate/100/12, term*12) - 1)
-                          const allPayments = comparedPrograms.map(prog => {
-                            return propertyPrice * (1 - downPayment/100) * 
-                              (prog.rate/100/12 * Math.pow(1 + prog.rate/100/12, term*12)) / 
-                              (Math.pow(1 + prog.rate/100/12, term*12) - 1)
-                          })
-                          const isLowest = Math.abs(payment - Math.min(...allPayments)) < 100
-                          return (
-                            <TableCell key={p.id} className={`font-bold ${isLowest ? 'text-[#2E7D5E]' : ''}`}>
-                              {formatPrice(Math.round(payment))} ₸
-                            </TableCell>
-                          )
-                        })}
-                      </TableRow>
-                      <TableRow className="bg-muted/50">
-                        <TableCell className="font-medium">Переплата</TableCell>
-                        {comparedPrograms.map(p => {
-                          const payment = propertyPrice * (1 - downPayment/100) * 
-                            (p.rate/100/12 * Math.pow(1 + p.rate/100/12, term*12)) / 
-                            (Math.pow(1 + p.rate/100/12, term*12) - 1)
-                          const principal = propertyPrice * (1 - downPayment/100)
-                          const overpayment = payment * term * 12 - principal
-                          const allOverpayments = comparedPrograms.map(prog => {
-                            const pay = propertyPrice * (1 - downPayment/100) * 
-                              (prog.rate/100/12 * Math.pow(1 + prog.rate/100/12, term*12)) / 
-                              (Math.pow(1 + prog.rate/100/12, term*12) - 1)
-                            return pay * term * 12 - propertyPrice * (1 - downPayment/100)
-                          })
-                          const isLowest = Math.abs(overpayment - Math.min(...allOverpayments)) < 1000
-                          return (
-                            <TableCell key={p.id} className={`font-bold ${isLowest ? 'text-[#2E7D5E]' : 'text-[#D4A843]'}`}>
-                              {formatPrice(Math.round(overpayment))} ₸
-                            </TableCell>
-                          )
-                        })}
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              Выберите минимум 2 программы для сравнения
-            </div>
-          )}
-        </TabsContent>
       </Tabs>
     </div>
   )

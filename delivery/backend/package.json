@@ -39,6 +39,7 @@
     "jsonwebtoken": "^9.0.2",
     "minio": "^8.0.6",
     "multer": "^1.4.5-lts.2",
+    "pdf-parse": "^1.1.1",
     "uuid": "^11.1.0",
     "xlsx": "^0.18.5",
     "zod": "^3.24.1"
@@ -52,6 +53,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/multer": "^1.4.13",
     "@types/node": "^22.10.2",
+    "@types/pdf-parse": "^1.1.5",
     "@types/supertest": "^7.2.0",
     "@types/uuid": "^10.0.0",
     "prisma": "^6.2.0",

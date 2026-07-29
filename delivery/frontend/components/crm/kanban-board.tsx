@@ -2,13 +2,11 @@
 
 import { CloseDealDialog } from "./forms/CloseDealDialog";
 import { KanbanBoard as DndBoard } from "./KanbanBoard";
-import { SellersListView } from "./SellersListView";
-import { PropertiesListView } from "./PropertiesListView";
 import { CreateSellerForm } from "./forms/CreateSellerForm";
 import { CreatePropertyForm } from "./forms/CreatePropertyForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Plus, Filter, Settings, LayoutGrid, List, Target, LayoutList } from "lucide-react";
+import { Plus, Filter, Settings, Target, LayoutList } from "lucide-react";
 import {
     SellerFunnelStage,
     PropertyFunnelStage,
@@ -68,7 +66,6 @@ function CrmSkeleton() {
 
 export function KanbanBoard() {
     const [activeTab, setActiveTab] = useState<"sellers" | "properties">("sellers");
-    const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
     const [isSellerFormOpen, setIsSellerFormOpen] = useState(false);
     const [monthFilter, setMonthFilter] = useState<Date | undefined>(undefined);
     const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
@@ -379,36 +376,6 @@ export function KanbanBoard() {
 
                     <div className="w-px h-5 bg-border mx-1" />
 
-                    {/* View mode toggle */}
-                    {!isCustom && (
-                        <div className="flex bg-muted rounded-lg p-0.5">
-                            <button
-                                onClick={() => setViewMode("kanban")}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                    viewMode === "kanban"
-                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                        : "text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                <LayoutGrid className="h-3.5 w-3.5" />
-                                Канбан
-                            </button>
-                            <button
-                                onClick={() => setViewMode("list")}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                    viewMode === "list"
-                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                        : "text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                <List className="h-3.5 w-3.5" />
-                                Список
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="w-px h-5 bg-border mx-1" />
-
                     {/* Strategies button */}
                     <Button
                         variant="outline"
@@ -433,11 +400,6 @@ export function KanbanBoard() {
                         <FormLinksButton userId={userId} />
                     )}
                     <DateFilter dateRange={dateRange} setDateRange={setDateRange} />
-                    <Link href="/dashboard/settings/funnels" title="Воронки">
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <Settings className="h-3.5 w-3.5" />
-                        </Button>
-                    </Link>
                     <Link href="/dashboard/settings/fields" title="Поля">
                         <Button variant="ghost" size="icon" className="h-7 w-7">
                             <LayoutList className="h-3.5 w-3.5" />
@@ -465,11 +427,6 @@ export function KanbanBoard() {
                         {(activeTab === "sellers" || isCustom) ? (
                             isLoadingSellers ? (
                                 <CrmSkeleton />
-                            ) : viewMode === "list" ? (
-                                <SellersListView
-                                    onEdit={handleEditSeller}
-                                    activeFunnelId={activeFunnelId}
-                                />
                             ) : (
                                 <DndBoard
                                     type="sellers"
@@ -488,14 +445,6 @@ export function KanbanBoard() {
                         ) : (
                             isLoadingProperties ? (
                                 <CrmSkeleton />
-                            ) : viewMode === "list" ? (
-                                <PropertiesListView
-                                    onEdit={(prop) => {
-                                        setSelectedProperty(prop);
-                                        setIsPropertyFormOpen(true);
-                                    }}
-                                    activeFunnelId={activeFunnelId}
-                                />
                             ) : (
                                 <DndBoard
                                     type="properties"

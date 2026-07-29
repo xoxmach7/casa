@@ -64,6 +64,7 @@ interface MenuItem {
     title: string
     url: string
     icon?: any
+    roles?: string[]
   }[]
 }
 
@@ -76,6 +77,7 @@ interface MenuSection {
     title: string
     url: string
     icon?: any
+    roles?: string[]
   }[]
 }
 

@@ -162,6 +162,9 @@ dealsRouter.put('/:id', async (req: Request, res: Response): Promise<void> => {
     if (data.status === 'COMPLETED' && !existing.completedAt) {
       updateData.completedAt = new Date();
     }
+    if (data.stage && data.stage !== existing.stage) {
+      updateData.stageChangedAt = new Date();
+    }
 
     // Check if broker changed and notify
     if (updateData.brokerId && updateData.brokerId !== existing.brokerId) {

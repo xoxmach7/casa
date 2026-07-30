@@ -556,6 +556,10 @@ model Deal {
   tradeInProjectId  String? @map("trade_in_project_id")  // ЖК застройщика для обмена
   tradeInCommission Decimal? @map("trade_in_commission") @db.Decimal(5, 2) // % комиссии TradeIn
   completedAt DateTime?  @map("completed_at")
+  // Отдельно от updatedAt: обновляется ТОЛЬКО при смене stage, чтобы ИИ-агент
+  // мог надёжно посчитать "сколько сделка висит на текущем этапе" — updatedAt
+  // меняется при любой правке сделки, не только при смене этапа.
+  stageChangedAt DateTime @default(now()) @map("stage_changed_at")
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
   brokerId    String     @map("broker_id")
@@ -563,6 +567,7 @@ model Deal {
   // Relations
   broker User    @relation(fields: [brokerId], references: [id])
   client Client? @relation(fields: [clientId], references: [id])
+  agentActions DealAgentAction[]
 
   @@index([brokerId])
   @@index([clientId])
@@ -570,6 +575,30 @@ model Deal {
   @@index([stage])
   @@index([completedAt])
   @@map("deals")
+}
+
+// Журнал действий ИИ-агента по ведению сделок — что предложено/сделано и
+// почему, чтобы каждое движение по CRM было прозрачным и проверяемым.
+enum DealAgentActionType {
+  STALLED_ALERT   // сделка зависла на этапе дольше нормы
+  STAGE_SUGGESTED // предложен переход на следующий этап
+  STAGE_APPLIED   // этап действительно передвинут агентом
+}
+
+model DealAgentAction {
+  id         String              @id @default(cuid())
+  dealId     String              @map("deal_id")
+  actionType DealAgentActionType @map("action_type")
+  fromStage  DealStage           @map("from_stage")
+  toStage    DealStage?          @map("to_stage")
+  reason     String              @db.Text
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([createdAt])
+  @@map("deal_agent_actions")
 }
 
 model LeadForm {

@@ -17,6 +17,8 @@ import { coursesRouter } from './routes/courses.routes';
 import { notificationsRouter } from './routes/notifications.routes';
 import { mortgageProgramsRouter } from './routes/mortgage-programs.routes';
 import { dealsRouter } from './routes/deals.routes';
+import { dealAgentRouter } from './routes/deal-agent.routes';
+import { runDealAgent } from './lib/deal-agent-runner';
 import { tasksRouter } from './routes/tasks.routes';
 import { propertiesRouter } from './routes/properties.routes';
 import { dashboardRouter } from './routes/dashboard.routes';
@@ -132,6 +134,10 @@ app.use('/api/mortgage', mortgageRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/mortgage-programs', mortgageProgramsRouter);
+// Mounted before dealsRouter so /api/deals/agent/* is matched unambiguously,
+// rather than relying on dealsRouter's own routes (e.g. GET '/:id') failing
+// to match first.
+app.use('/api/deals/agent', dealAgentRouter);
 app.use('/api/deals', dealsRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/properties', propertiesRouter);
@@ -185,4 +191,14 @@ app.listen(PORT, async () => {
       console.error(`[Health] DB connection failed — ${new Date().toISOString()}`, e);
     }
   }, 15 * 60 * 1000);
+
+  // ИИ-риелтор: раз в час проверяет активные сделки на застой (см. deal-agent-runner.ts)
+  setInterval(async () => {
+    try {
+      const stats = await runDealAgent();
+      console.log(`[DealAgent] checked=${stats.checkedDeals} stalled=${stats.stalledCount} suggested=${stats.suggestedCount} — ${new Date().toISOString()}`);
+    } catch (e) {
+      console.error(`[DealAgent] run failed — ${new Date().toISOString()}`, e);
+    }
+  }, 60 * 60 * 1000);
 });

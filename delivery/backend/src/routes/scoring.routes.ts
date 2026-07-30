@@ -49,6 +49,7 @@ scoringRouter.post(
     async (req: Request, res: Response): Promise<void> => {
         try {
             const { clientId } = req.body;
+            const downPayment = Number(req.body.downPayment) || 0;
             if (!clientId) {
                 res.status(400).json({ error: 'clientId обязателен' });
                 return;
@@ -109,6 +110,7 @@ scoringRouter.post(
                 creditHistoryStatus,
                 avgMonthlyPension,
                 existingMonthlyDebt,
+                downPayment,
             });
 
             const scoring = await prisma.clientScoring.create({
@@ -117,10 +119,12 @@ scoringRouter.post(
                     creditHistoryStatus,
                     avgMonthlyPension,
                     existingMonthlyDebt,
+                    downPayment,
                     scoreValue: result.scoreValue,
                     approvalLikelihood: result.approvalLikelihood,
                     maxLoanAmount: result.maxLoanAmount,
                     maxMonthlyPayment: result.maxMonthlyPayment,
+                    maxPropertyPrice: result.maxPropertyPrice,
                     advice: result.advice,
                 },
             });
@@ -138,9 +142,30 @@ scoringRouter.post(
                 result.maxMonthlyPayment
             );
 
+            // Подбор конкретных квартир под расчётный бюджет (ТЗ 9.5 — не
+            // только банковские программы, но и сами квартиры).
+            const suitableApartments =
+                result.maxPropertyPrice > 0
+                    ? await prisma.apartment.findMany({
+                          where: { status: 'AVAILABLE', price: { lte: result.maxPropertyPrice } },
+                          orderBy: { price: 'desc' }, // ближе всего к потолку бюджета — сверху
+                          take: 10,
+                          select: {
+                              id: true,
+                              number: true,
+                              floor: true,
+                              rooms: true,
+                              area: true,
+                              price: true,
+                              project: { select: { id: true, name: true, address: true } },
+                          },
+                      })
+                    : [];
+
             res.status(201).json({
                 ...scoring,
                 matchedPrograms,
+                suitableApartments,
                 extraction: {
                     creditHistoryDetected: Boolean(creditHistoryFile),
                     creditHistoryMatchedPhrase: creditHistory.matchedPhrase,

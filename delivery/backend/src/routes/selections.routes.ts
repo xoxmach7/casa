@@ -31,6 +31,11 @@ const addApartmentSchema = z.object({
     apartmentId: z.string().min(1),
 });
 
+const updateSelectionSchema = z.object({
+    name: z.string().optional(),
+    status: z.enum(['DRAFT', 'SHARED', 'VIEWED', 'CLIENT_SELECTED', 'CLOSED']).optional(),
+});
+
 // GET /api/selections
 selectionsRouter.get('/', async (req: Request, res: Response): Promise<void> => {
     try {
@@ -103,6 +108,60 @@ selectionsRouter.post('/', validate(createSelectionSchema), async (req: Request,
     } catch (error) {
         console.error('Create selection error:', error);
         res.status(500).json({ error: 'Ошибка создания подборки' });
+    }
+});
+
+// PATCH /api/selections/:id - переименовать / вручную сменить статус подборки
+selectionsRouter.patch('/:id', validate(updateSelectionSchema), async (req: Request, res: Response): Promise<void> => {
+    try {
+        const existing = await prisma.selection.findUnique({ where: { id: req.params.id } });
+        if (!existing) {
+            res.status(404).json({ error: 'Подборка не найдена' });
+            return;
+        }
+
+        if (RESTRICTED_ROLES.includes(req.user?.role || '') && existing.brokerId !== req.user!.userId) {
+            res.status(403).json({ error: 'Доступ запрещен' });
+            return;
+        }
+
+        const updated = await prisma.selection.update({
+            where: { id: req.params.id },
+            data: req.body,
+        });
+
+        res.json(updated);
+    } catch (error) {
+        console.error('Update selection error:', error);
+        res.status(500).json({ error: 'Ошибка обновления подборки' });
+    }
+});
+
+// POST /api/selections/:id/share - зафиксировать переход в SHARED и вернуть публичную ссылку
+selectionsRouter.post('/:id/share', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const existing = await prisma.selection.findUnique({ where: { id: req.params.id } });
+        if (!existing) {
+            res.status(404).json({ error: 'Подборка не найдена' });
+            return;
+        }
+
+        if (RESTRICTED_ROLES.includes(req.user?.role || '') && existing.brokerId !== req.user!.userId) {
+            res.status(403).json({ error: 'Доступ запрещен' });
+            return;
+        }
+
+        const updated = await prisma.selection.update({
+            where: { id: req.params.id },
+            // Only DRAFT actually transitions here — re-sharing an already
+            // shared/viewed selection just returns the same stable token.
+            data: existing.status === 'DRAFT' ? { status: 'SHARED' } : {},
+        });
+
+        res.json({ shareToken: updated.shareToken, status: updated.status });
+    } catch (error) {
+        console.error('Share selection error:', error);
+        res.status(500).json({ error: 'Ошибка публикации подборки' });
     }
 });
 

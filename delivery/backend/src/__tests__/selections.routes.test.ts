@@ -15,6 +15,7 @@ vi.mock('../lib/prisma', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
       delete: vi.fn(),
     },
     selectionApartment: {
@@ -120,6 +121,77 @@ describe('DELETE /api/selections/:id/apartments/:apartmentId', () => {
     expect(res.status).toBe(200);
     expect(prisma.selectionApartment.deleteMany).toHaveBeenCalledWith({
       where: { selectionId: 'sel_1', apartmentId: 'apt_1' },
+    });
+  });
+});
+
+describe('PATCH /api/selections/:id', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('updates name/status when the selection belongs to the requesting broker', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', brokerId: 'broker_1' });
+    (prisma.selection.update as any).mockResolvedValue({ id: 'sel_1', status: 'CLOSED' });
+
+    const app = buildApp();
+    const res = await request(app).patch('/api/selections/sel_1').send({ status: 'CLOSED' });
+
+    expect(res.status).toBe(200);
+    expect(prisma.selection.update).toHaveBeenCalledWith({
+      where: { id: 'sel_1' },
+      data: { status: 'CLOSED' },
+    });
+  });
+
+  it('403s when the selection belongs to a different broker', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', brokerId: 'broker_2' });
+
+    const app = buildApp();
+    const res = await request(app).patch('/api/selections/sel_1').send({ status: 'CLOSED' });
+
+    expect(res.status).toBe(403);
+    expect(prisma.selection.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/selections/:id/share', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('transitions a DRAFT selection to SHARED and returns the token', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({
+      id: 'sel_1',
+      brokerId: 'broker_1',
+      status: 'DRAFT',
+      shareToken: 'tok_abc',
+    });
+    (prisma.selection.update as any).mockResolvedValue({ shareToken: 'tok_abc', status: 'SHARED' });
+
+    const app = buildApp();
+    const res = await request(app).post('/api/selections/sel_1/share');
+
+    expect(res.status).toBe(200);
+    expect(prisma.selection.update).toHaveBeenCalledWith({
+      where: { id: 'sel_1' },
+      data: { status: 'SHARED' },
+    });
+    expect(res.body).toEqual({ shareToken: 'tok_abc', status: 'SHARED' });
+  });
+
+  it('does not regress an already-shared selection, just returns its token', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({
+      id: 'sel_1',
+      brokerId: 'broker_1',
+      status: 'VIEWED',
+      shareToken: 'tok_abc',
+    });
+    (prisma.selection.update as any).mockResolvedValue({ shareToken: 'tok_abc', status: 'VIEWED' });
+
+    const app = buildApp();
+    const res = await request(app).post('/api/selections/sel_1/share');
+
+    expect(res.status).toBe(200);
+    expect(prisma.selection.update).toHaveBeenCalledWith({
+      where: { id: 'sel_1' },
+      data: {},
     });
   });
 });

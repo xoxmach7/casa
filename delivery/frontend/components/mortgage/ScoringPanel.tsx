@@ -16,6 +16,8 @@ interface ClientSummary {
   monthlyIncome: number | null
 }
 
+type ProgramSuitability = "SUITABLE" | "CONDITIONALLY_SUITABLE" | "UNSUITABLE"
+
 interface MatchedProgram {
   id: string
   bankName: string
@@ -23,6 +25,18 @@ interface MatchedProgram {
   interestRate: number
   maxTerm: number
   estimatedMonthlyPayment: number
+  suitability: ProgramSuitability
+  reason: string
+}
+
+interface SuitableApartment {
+  id: string
+  number: string
+  floor: number
+  rooms: number
+  area: number
+  price: number
+  project: { id: string; name: string; address: string }
 }
 
 interface ExtractionSummary {
@@ -35,14 +49,23 @@ interface ExtractionSummary {
 
 interface ScoringResponse {
   scoreValue: number
-  approvalLikelihood: "HIGH" | "MEDIUM" | "LOW"
+  approvalLikelihood: "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT_DATA"
   avgMonthlyPension: number
   existingMonthlyDebt: number
+  downPayment: number
   maxLoanAmount: number
   maxMonthlyPayment: number
+  maxPropertyPrice: number
   advice: string[]
   matchedPrograms: MatchedProgram[]
+  suitableApartments: SuitableApartment[]
   extraction: ExtractionSummary
+}
+
+const SUITABILITY_LABELS: Record<ProgramSuitability, { text: string; className: string }> = {
+  SUITABLE: { text: "Подходит", className: "bg-green-500" },
+  CONDITIONALLY_SUITABLE: { text: "Условно подходит", className: "bg-yellow-500 text-black" },
+  UNSUITABLE: { text: "Не подходит", className: "bg-red-500" },
 }
 
 function formatPrice(price: number) {
@@ -61,6 +84,8 @@ function approvalLabel(level: ScoringResponse["approvalLikelihood"]) {
       return { text: "Средняя вероятность одобрения", className: "bg-yellow-500 text-black" }
     case "LOW":
       return { text: "Низкая вероятность одобрения", className: "bg-red-500" }
+    case "INSUFFICIENT_DATA":
+      return { text: "Недостаточно данных", className: "bg-gray-400" }
   }
 }
 
@@ -117,6 +142,7 @@ export function ScoringPanel() {
 
   const [creditHistoryFile, setCreditHistoryFile] = useState<File | null>(null)
   const [pensionFile, setPensionFile] = useState<File | null>(null)
+  const [downPayment, setDownPayment] = useState("")
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -145,6 +171,7 @@ export function ScoringPanel() {
     try {
       const formData = new FormData()
       formData.append("clientId", selectedClient.id)
+      formData.append("downPayment", String(Number(downPayment) || 0))
       if (creditHistoryFile) formData.append("creditHistoryFile", creditHistoryFile)
       if (pensionFile) formData.append("pensionFile", pensionFile)
 
@@ -226,6 +253,17 @@ export function ScoringPanel() {
             onClear={() => setPensionFile(null)}
           />
 
+          <div>
+            <label className="text-sm text-muted-foreground">Первоначальный взнос клиента (₸)</label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="0"
+              value={downPayment}
+              onChange={(e) => setDownPayment(e.target.value)}
+            />
+          </div>
+
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <Button
@@ -260,6 +298,10 @@ export function ScoringPanel() {
                 <div className="rounded-lg border p-3">
                   <p className="text-muted-foreground">Макс. ежемесячный платёж</p>
                   <p className="text-lg font-semibold">{formatPrice(result.maxMonthlyPayment)}</p>
+                </div>
+                <div className="rounded-lg border p-3 col-span-2">
+                  <p className="text-muted-foreground">Макс. стоимость квартиры (с учётом взноса)</p>
+                  <p className="text-lg font-semibold">{formatPrice(result.maxPropertyPrice)}</p>
                 </div>
               </div>
 
@@ -296,17 +338,41 @@ export function ScoringPanel() {
               </div>
 
               <div>
-                <p className="mb-1 text-sm font-medium">Подходящие программы</p>
+                <p className="mb-1 text-sm font-medium">Ипотечные программы</p>
                 {result.matchedPrograms.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Ни одна программа из каталога не подходит под этот расчёт.
-                  </p>
+                  <p className="text-sm text-muted-foreground">В каталоге нет активных программ.</p>
                 ) : (
                   <div className="space-y-2">
                     {result.matchedPrograms.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
-                        <span>{p.bankName} — {p.programName} ({p.interestRate}%)</span>
-                        <span className="font-medium">{formatPrice(p.estimatedMonthlyPayment)}/мес</span>
+                      <div key={p.id} className="rounded-lg border px-3 py-2 text-sm space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span>{p.bankName} — {p.programName} ({p.interestRate}%)</span>
+                          <Badge className={SUITABILITY_LABELS[p.suitability].className}>
+                            {SUITABILITY_LABELS[p.suitability].text}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>{p.reason}</span>
+                          <span className="font-medium text-foreground">{formatPrice(p.estimatedMonthlyPayment)}/мес</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p className="mb-1 text-sm font-medium">Подходящие квартиры</p>
+                {result.suitableApartments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Нет доступных квартир в рамках расчётного бюджета.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {result.suitableApartments.map((a) => (
+                      <div key={a.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                        <span>{a.project.name} — № {a.number}, {a.rooms}-комн., {a.area} м²</span>
+                        <span className="font-medium">{formatPrice(a.price)}</span>
                       </div>
                     ))}
                   </div>

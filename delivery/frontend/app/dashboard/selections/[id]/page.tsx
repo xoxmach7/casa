@@ -2,15 +2,26 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Phone, Trash2 } from "lucide-react"
+import { ArrowLeft, Phone, Trash2, Share2, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
+
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Черновик",
+  SHARED: "Отправлена клиенту",
+  VIEWED: "Клиент открыл",
+  CLIENT_SELECTED: "Клиент выбрал вариант",
+  CLOSED: "Закрыта",
+}
 
 interface SelectionDetail {
   id: string
   name: string | null
+  status: string
+  shareToken: string
   client: { id: string; firstName: string; lastName: string; phone: string }
   apartments: {
     id: string
@@ -40,6 +51,7 @@ export default function SelectionDetailPage() {
   const router = useRouter()
   const [selection, setSelection] = useState<SelectionDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     fetchSelection()
@@ -58,6 +70,20 @@ export default function SelectionDetailPage() {
       method: "DELETE",
       headers: getAuthHeaders(),
     })
+    fetchSelection()
+  }
+
+  async function shareSelection() {
+    const res = await fetch(getApiUrl(`selections/${id}/share`), {
+      method: "POST",
+      headers: getAuthHeaders(),
+    })
+    if (!res.ok) return
+    const { shareToken } = await res.json()
+    const url = `${window.location.origin}/s/${shareToken}`
+    await navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
     fetchSelection()
   }
 
@@ -81,14 +107,32 @@ export default function SelectionDetailPage() {
         К подборкам
       </Button>
 
-      <div>
-        <h1 className="text-2xl font-bold">
-          {selection.name || `Подборка для ${selection.client.firstName} ${selection.client.lastName}`}
-        </h1>
-        <p className="flex items-center gap-1.5 text-muted-foreground">
-          <Phone className="h-3.5 w-3.5" />
-          {selection.client.firstName} {selection.client.lastName} · {selection.client.phone}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">
+              {selection.name || `Подборка для ${selection.client.firstName} ${selection.client.lastName}`}
+            </h1>
+            <Badge variant="outline">{STATUS_LABELS[selection.status] || selection.status}</Badge>
+          </div>
+          <p className="flex items-center gap-1.5 text-muted-foreground">
+            <Phone className="h-3.5 w-3.5" />
+            {selection.client.firstName} {selection.client.lastName} · {selection.client.phone}
+          </p>
+        </div>
+        <Button onClick={shareSelection}>
+          {copied ? (
+            <>
+              <Check className="mr-1.5 h-4 w-4" />
+              Ссылка скопирована
+            </>
+          ) : (
+            <>
+              <Share2 className="mr-1.5 h-4 w-4" />
+              Поделиться с клиентом
+            </>
+          )}
+        </Button>
       </div>
 
       {selection.apartments.length === 0 ? (

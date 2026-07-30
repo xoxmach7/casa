@@ -71,6 +71,11 @@ publicPropertyLeadsRouter.post('/', async (req: Request, res: Response): Promise
           yearBuilt: new Date().getFullYear(),
           price: data.price,
           images: data.photoUrls ?? [],
+          // Owner-submitted listings are never live immediately — CASA
+          // reviews the object before it can enter the public catalog
+          // (ТЗ раздел 5: moderation queue). Broker still sees it in their
+          // own pipeline (default list filter is "status != ARCHIVED").
+          status: 'MODERATION',
           funnelStage: 'CREATED',
           sellerId: seller.id,
           brokerId,

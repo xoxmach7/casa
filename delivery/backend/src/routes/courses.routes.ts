@@ -1,8 +1,25 @@
 import { Router } from 'express';
 import { auth } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
+import { isEligibleForCertification, gradeTest } from '../lib/certification.service';
 
 const router = Router();
+
+async function maybeCertifyUser(userId: string): Promise<void> {
+    const [activeCourses, completedProgress] = await Promise.all([
+        prisma.course.findMany({ where: { isActive: true }, select: { id: true } }),
+        prisma.courseProgress.findMany({ where: { userId, isCompleted: true }, select: { courseId: true } }),
+    ]);
+
+    const eligible = isEligibleForCertification(
+        activeCourses.map((c) => c.id),
+        completedProgress.map((p) => p.courseId)
+    );
+
+    if (eligible) {
+        await prisma.user.update({ where: { id: userId }, data: { certificationStatus: 'CERTIFIED' } });
+    }
+}
 
 // Get all courses (admin)
 router.get('/', auth, async (req, res) => {
@@ -99,9 +116,66 @@ router.put('/:courseId/complete', auth, async (req, res) => {
             },
         });
 
+        if (completed) await maybeCertifyUser(req.user!.userId);
+
         return res.json(progress);
     } catch (error) {
         console.error('Error updating course completion:', error);
+        return res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// GET /api/courses/:id/test - вопросы теста без правильных ответов
+router.get('/:id/test', auth, async (req, res) => {
+    try {
+        const test = await prisma.courseTest.findUnique({ where: { courseId: req.params.id } });
+        if (!test) {
+            return res.status(404).json({ error: 'Тест для этого курса не найден' });
+        }
+
+        const questions = (test.questions as any[]).map(({ correctIndex, ...q }) => q);
+        return res.json({ id: test.id, courseId: test.courseId, passScore: test.passScore, questions });
+    } catch (error) {
+        console.error('Error fetching course test:', error);
+        return res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// POST /api/courses/:id/test/submit - сдать тест; при прохождении закрывает
+// курс и, если это был последний активный курс, сертифицирует пользователя.
+router.post('/:id/test/submit', auth, async (req, res) => {
+    try {
+        const { answers } = req.body as { answers: number[] };
+        const test = await prisma.courseTest.findUnique({ where: { courseId: req.params.id } });
+        if (!test) {
+            return res.status(404).json({ error: 'Тест для этого курса не найден' });
+        }
+
+        const questions = test.questions as { correctIndex: number }[];
+        const { score, passed } = gradeTest(questions, answers || [], test.passScore);
+
+        await prisma.testAttempt.create({
+            data: { testId: test.id, userId: req.user!.userId, score, passed, answers: answers || [] },
+        });
+
+        if (passed) {
+            await prisma.courseProgress.upsert({
+                where: { userId_courseId: { userId: req.user!.userId, courseId: req.params.id } },
+                update: { isCompleted: true, completedAt: new Date(), progressPercent: 100 },
+                create: {
+                    userId: req.user!.userId,
+                    courseId: req.params.id,
+                    isCompleted: true,
+                    completedAt: new Date(),
+                    progressPercent: 100,
+                },
+            });
+            await maybeCertifyUser(req.user!.userId);
+        }
+
+        return res.json({ score, passed });
+    } catch (error) {
+        console.error('Error submitting course test:', error);
         return res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -156,6 +230,8 @@ router.put('/progress/:courseId', auth, async (req, res) => {
                 completedAt: isCompleted ? new Date() : null,
             },
         });
+
+        if (isCompleted) await maybeCertifyUser(req.user!.userId);
 
         return res.json(progress);
     } catch (error) {

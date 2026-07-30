@@ -52,6 +52,8 @@ model User {
   events         Event[]
   subscriptions  Subscription[]
   mortgageApplications MortgageApplication[] @relation("BrokerApplications")
+  fixations            Fixation[]
+  testAttempts         TestAttempt[]
 
   @@map("users")
 }
@@ -88,6 +90,7 @@ model Client {
   mortgageApplications MortgageApplication[]
   selections           Selection[]
   scorings             ClientScoring[]
+  fixations            Fixation[]
 
   @@index([brokerId])
   @@index([status])
@@ -234,6 +237,7 @@ model Project {
   apartments Apartment[]
   sellers   Seller[]
   developer  User        @relation("DeveloperProjects", fields: [developerId], references: [id])
+  fixations  Fixation[]
 
   @@index([developerId])
   @@index([city])
@@ -262,6 +266,7 @@ model Apartment {
   bookings             Booking[]
   mortgageCalculations MortgageCalculation[]
   selectionApartments  SelectionApartment[]
+  fixations            Fixation[]
 
   @@unique([projectId, number])
   @@index([projectId])
@@ -323,10 +328,12 @@ model ClientScoring {
   creditHistoryStatus CreditHistoryStatus @map("credit_history_status")
   avgMonthlyPension   Decimal             @map("avg_monthly_pension") @db.Decimal(15, 2)
   existingMonthlyDebt Decimal             @default(0) @map("existing_monthly_debt") @db.Decimal(15, 2)
+  downPayment         Decimal             @default(0) @map("down_payment") @db.Decimal(15, 2)
   scoreValue          Int                 @map("score_value")
   approvalLikelihood  ApprovalLikelihood  @map("approval_likelihood")
   maxLoanAmount       Decimal             @map("max_loan_amount") @db.Decimal(15, 2)
   maxMonthlyPayment   Decimal             @map("max_monthly_payment") @db.Decimal(15, 2)
+  maxPropertyPrice    Decimal             @default(0) @map("max_property_price") @db.Decimal(15, 2)
   advice              String[]
   createdAt           DateTime            @default(now()) @map("created_at")
 
@@ -334,6 +341,64 @@ model ClientScoring {
 
   @@index([clientId])
   @@map("client_scorings")
+}
+
+// "Фиксация" — заявка брокера застройщику на закрепление клиента за собой
+// для конкретного ЖК/квартиры, чтобы защитить происхождение клиента и
+// избежать двойных комиссий (ТЗ раздел 8).
+enum FixationStatus {
+  DRAFT               // Черновик, ещё не отправлена
+  SENT                // Отправлена застройщику
+  DUPLICATE_CHECK      // Застройщик/CASA проверяет на дубль клиента
+  CONFIRMED           // Клиент закреплён за брокером
+  REJECTED_DUPLICATE  // Отказ: клиент уже существует у застройщика
+  REJECTED_OTHER      // Отказ по другой причине
+  EXPIRED             // Истёк срок действия закрепления
+  BOOKING_REQUESTED   // Запрошена бронь квартиры
+  BOOKED              // Бронь подтверждена
+  DEAL                // Сделка подтверждена
+  CANCELLED           // Отменена уполномоченной ролью
+}
+
+model Fixation {
+  id              String         @id @default(cuid())
+  clientId        String         @map("client_id")
+  projectId       String         @map("project_id")
+  apartmentId     String?        @map("apartment_id")
+  brokerId        String         @map("broker_id")
+  status          FixationStatus @default(DRAFT)
+  rejectionReason String?        @map("rejection_reason") @db.Text
+  sentAt          DateTime?      @map("sent_at")
+  expiresAt       DateTime?      @map("expires_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  client        Client               @relation(fields: [clientId], references: [id])
+  project       Project              @relation(fields: [projectId], references: [id])
+  apartment     Apartment?           @relation(fields: [apartmentId], references: [id])
+  broker        User                 @relation(fields: [brokerId], references: [id])
+  statusHistory FixationStatusLog[]
+
+  @@index([clientId])
+  @@index([projectId])
+  @@index([brokerId])
+  @@index([status])
+  @@map("fixations")
+}
+
+model FixationStatusLog {
+  id         String          @id @default(cuid())
+  fixationId String          @map("fixation_id")
+  fromStatus FixationStatus? @map("from_status")
+  toStatus   FixationStatus  @map("to_status")
+  changedBy  String?         @map("changed_by")
+  note       String?         @db.Text
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  fixation Fixation @relation(fields: [fixationId], references: [id], onDelete: Cascade)
+
+  @@index([fixationId])
+  @@map("fixation_status_logs")
 }
 
 enum CreditHistoryStatus {
@@ -346,6 +411,7 @@ enum ApprovalLikelihood {
   HIGH
   MEDIUM
   LOW
+  INSUFFICIENT_DATA // Не хватает данных (нет ни дохода, ни ПО) для реальной оценки
 }
 
 model ClientDocument {
@@ -364,13 +430,26 @@ model ClientDocument {
 
 // Подборка — набор квартир из новостроек, которую брокер собирает под
 // запросы конкретного клиента (не для вторичного рынка).
+enum SelectionStatus {
+  DRAFT           // Собирается брокером, ссылка ещё не отправлена
+  SHARED          // Ссылка отправлена клиенту
+  VIEWED          // Клиент открыл ссылку хотя бы раз
+  CLIENT_SELECTED // Клиент отметил понравившийся вариант
+  CLOSED          // Подборка закрыта (сделка/отказ)
+}
+
 model Selection {
-  id        String   @id @default(cuid())
-  name      String?
-  brokerId  String   @map("broker_id")
-  clientId  String   @map("client_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String          @id @default(cuid())
+  name       String?
+  status     SelectionStatus @default(DRAFT)
+  // Непредсказуемый токен для публичной ссылки клиенту — доступ без логина,
+  // отдаёт только client-safe проекцию (без цены/финансов/внутренних заметок).
+  shareToken String          @unique @default(cuid())
+  viewedAt   DateTime?       @map("viewed_at")
+  brokerId   String          @map("broker_id")
+  clientId   String          @map("client_id")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
 
   broker     User                 @relation(fields: [brokerId], references: [id])
   client     Client               @relation(fields: [clientId], references: [id])
@@ -476,8 +555,43 @@ model Course {
 
   // Relations
   progress CourseProgress[]
+  test     CourseTest?
 
   @@map("courses")
+}
+
+// Итоговый тест курса — прохождение (score >= passScore) закрывает курс и,
+// если закрыты ВСЕ активные курсы, переводит User.certificationStatus в
+// CERTIFIED (см. certification.service.ts).
+model CourseTest {
+  id        String   @id @default(cuid())
+  courseId  String   @unique @map("course_id")
+  questions Json     // [{ question, options: string[], correctIndex }]
+  passScore Int      @default(70) @map("pass_score") // процент правильных ответов
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  course   Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  attempts TestAttempt[]
+
+  @@map("course_tests")
+}
+
+model TestAttempt {
+  id        String   @id @default(cuid())
+  testId    String   @map("test_id")
+  userId    String   @map("user_id")
+  score     Int // процент
+  passed    Boolean
+  answers   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  test CourseTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@index([userId])
+  @@map("test_attempts")
 }
 
 model CourseProgress {
@@ -570,6 +684,7 @@ model Deal {
   broker User    @relation(fields: [brokerId], references: [id])
   client Client? @relation(fields: [clientId], references: [id])
   agentActions DealAgentAction[]
+  commissionRecord Commission?
 
   @@index([brokerId])
   @@index([clientId])
@@ -577,6 +692,52 @@ model Deal {
   @@index([stage])
   @@index([completedAt])
   @@map("deals")
+}
+
+// Комиссия по сделке — отдельная сущность со своим статусом и историей
+// переходов, вместо просто числового поля на Deal (см. ТЗ раздел 10).
+enum CommissionStatus {
+  ESTIMATED           // Предварительная оценка при создании сделки
+  EXPECTED            // Ожидается после подтверждения условий
+  CONFIRMED           // Подтверждена событием сделки
+  INVOICED            // Выставлен счёт
+  RECEIVED            // Деньги получены CASA
+  PAYABLE_TO_PARTNER  // Причитается партнёру/брокеру к выплате
+  PAID                // Выплачена
+  DISPUTED            // Спорная
+  CANCELLED           // Отменена
+}
+
+model Commission {
+  id           String           @id @default(cuid())
+  dealId       String           @unique @map("deal_id")
+  amount       Decimal          @db.Decimal(15, 2)
+  casaShare    Decimal?         @map("casa_share") @db.Decimal(15, 2)
+  partnerShare Decimal?         @map("partner_share") @db.Decimal(15, 2)
+  status       CommissionStatus @default(ESTIMATED)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  deal          Deal                   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  statusHistory CommissionStatusLog[]
+
+  @@index([status])
+  @@map("commissions")
+}
+
+model CommissionStatusLog {
+  id           String            @id @default(cuid())
+  commissionId String            @map("commission_id")
+  fromStatus   CommissionStatus? @map("from_status")
+  toStatus     CommissionStatus  @map("to_status")
+  changedBy    String?           @map("changed_by")
+  note         String?           @db.Text
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  commission Commission @relation(fields: [commissionId], references: [id], onDelete: Cascade)
+
+  @@index([commissionId])
+  @@map("commission_status_logs")
 }
 
 // Журнал действий ИИ-агента по ведению сделок — что предложено/сделано и
@@ -687,10 +848,14 @@ enum PropertyType {
 }
 
 enum PropertyStatus {
-  ACTIVE // Активен
-  SOLD // Продан
-  RESERVED // Зарезервирован
-  ARCHIVED // Снят с публикации
+  MODERATION        // Ожидает проверки CASA перед публикацией
+  NEEDS_INFORMATION // Модератор запросил уточнения у брокера
+  ACTIVE            // Активен
+  PAUSED            // Временно снят с публикации (не архив)
+  OFFER_IN_PROGRESS // Идут переговоры по офферу
+  RESERVED          // Зарезервирован
+  SOLD              // Продан
+  ARCHIVED          // Снят с публикации / отклонён
 }
 
 // Payment History (История операций баланса)

@@ -127,6 +127,19 @@ dealsRouter.post('/', async (req: Request, res: Response): Promise<void> => {
         }
       }
 
+      // Every deal gets a tracked Commission record from the start — a plain
+      // number on Deal can't represent the estimated->...->paid lifecycle.
+      await tx.commission.create({
+        data: {
+          dealId: created.id,
+          amount: created.commission,
+          status: 'ESTIMATED',
+          statusHistory: {
+            create: { toStatus: 'ESTIMATED', changedBy: req.user!.userId, note: 'Создана вместе со сделкой' },
+          },
+        },
+      });
+
       return created;
     });
 
@@ -258,6 +271,17 @@ dealsRouter.post('/tradein', async (req: Request, res: Response): Promise<void> 
         notes: notes || `TradeIn сделка`,
         brokerId: req.user!.userId,
         source: 'MANUAL',
+      },
+    });
+
+    await prisma.commission.create({
+      data: {
+        dealId: deal.id,
+        amount: commission,
+        status: 'ESTIMATED',
+        statusHistory: {
+          create: { toStatus: 'ESTIMATED', changedBy: req.user!.userId, note: 'Создана вместе со сделкой (TradeIn)' },
+        },
       },
     });
 

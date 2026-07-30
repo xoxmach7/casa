@@ -25,6 +25,8 @@ import {
   Upload,
   CreditCard,
   Pencil,
+  ClipboardCheck,
+  Search,
 } from "lucide-react"
 import {
   Sidebar,
@@ -148,6 +150,8 @@ const adminMenuItem: MenuSection = {
   roles: ["ADMIN"],
   subItems: [
     { title: "Пользователи", url: "/dashboard/users", icon: Users },
+    { title: "Глобальный поиск", url: "/dashboard/admin/search", icon: Search },
+    { title: "Модерация каталога", url: "/dashboard/admin/moderation", icon: ClipboardCheck },
     { title: "Курсы", url: "/dashboard/courses", icon: GraduationCap },
     { title: "Все проекты", url: "/dashboard/admin/projects", icon: Building2 },
     { title: "Настройки AI", url: "/dashboard/admin/settings", icon: Settings },

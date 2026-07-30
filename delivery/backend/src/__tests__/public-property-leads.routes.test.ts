@@ -88,6 +88,7 @@ describe('POST /api/public/property-leads', () => {
           rooms: 2,
           price: 36_000_000,
           funnelStage: 'CREATED',
+          status: 'MODERATION',
           sellerId: 'seller_1',
           brokerId: 'admin_001',
         }),

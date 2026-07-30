@@ -19,6 +19,7 @@ const mockTx = {
   deal: { create: vi.fn() },
   crmProperty: { findUnique: vi.fn(), update: vi.fn() },
   property: { update: vi.fn() },
+  commission: { create: vi.fn() },
 };
 
 import { dealsRouter } from '../routes/deals.routes';
@@ -42,7 +43,7 @@ describe('POST /api/deals — objectType PROPERTY resolution', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('updates the CRM CrmProperty (not the legacy Property model) when the objectId is a CrmProperty', async () => {
-    (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1' });
+    (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1', commission: 500000 });
     (mockTx.crmProperty.findUnique as any).mockResolvedValue({ id: 'prop_1' });
 
     const app = buildApp();
@@ -57,7 +58,7 @@ describe('POST /api/deals — objectType PROPERTY resolution', () => {
   });
 
   it('falls back to the legacy Property model when the objectId is not a CrmProperty', async () => {
-    (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1' });
+    (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1', commission: 500000 });
     (mockTx.crmProperty.findUnique as any).mockResolvedValue(null);
     (mockTx.property.update as any).mockResolvedValue({});
 
@@ -72,7 +73,7 @@ describe('POST /api/deals — objectType PROPERTY resolution', () => {
   });
 
   it('rolls back the Deal (transaction throws) when the objectId matches neither model', async () => {
-    (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1' });
+    (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1', commission: 500000 });
     (mockTx.crmProperty.findUnique as any).mockResolvedValue(null);
     (mockTx.property.update as any).mockRejectedValue(new Error('Record not found'));
 

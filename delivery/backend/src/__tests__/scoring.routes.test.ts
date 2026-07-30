@@ -14,6 +14,7 @@ vi.mock('../lib/prisma', () => ({
     client: { findUnique: vi.fn() },
     clientScoring: { create: vi.fn(), findMany: vi.fn() },
     mortgageProgram: { findMany: vi.fn() },
+    apartment: { findMany: vi.fn() },
   },
 }));
 
@@ -57,11 +58,15 @@ describe('POST /api/scoring', () => {
     (prisma.mortgageProgram.findMany as any).mockResolvedValue([
       { id: 'p1', bankName: 'Bank A', programName: 'Standard', interestRate: 12, maxTerm: 240 },
     ]);
+    (prisma.apartment.findMany as any).mockResolvedValue([
+      { id: 'apt_1', number: '5', floor: 2, rooms: 2, area: 55, price: 20000000, project: { id: 'proj_1', name: 'Prime Garden' } },
+    ]);
 
     const app = buildApp();
     const res = await request(app)
       .post('/api/scoring')
       .field('clientId', 'client_1')
+      .field('downPayment', '5000000')
       .attach('creditHistoryFile', Buffer.from('%PDF-1.4 fake'), 'ki.pdf')
       .attach('pensionFile', Buffer.from('%PDF-1.4 fake'), 'pension.pdf');
 
@@ -73,6 +78,7 @@ describe('POST /api/scoring', () => {
           clientId: 'client_1',
           creditHistoryStatus: 'GOOD',
           avgMonthlyPension: 50_000,
+          downPayment: 5_000_000,
           scoreValue: 100,
           approvalLikelihood: 'HIGH',
         }),
@@ -80,6 +86,8 @@ describe('POST /api/scoring', () => {
     );
     expect(res.body.matchedPrograms).toBeDefined();
     expect(Array.isArray(res.body.matchedPrograms)).toBe(true);
+    expect(res.body.matchedPrograms[0].suitability).toBeDefined();
+    expect(res.body.suitableApartments).toHaveLength(1);
     expect(res.body.extraction).toEqual(
       expect.objectContaining({ creditHistoryDetected: true, pensionDetected: true })
     );

@@ -3,13 +3,17 @@
 // integration yet. See docs/superpowers/specs for the design rationale.
 
 export type CreditHistoryStatus = 'GOOD' | 'HAS_DELAYS' | 'BAD';
-export type ApprovalLikelihood = 'HIGH' | 'MEDIUM' | 'LOW';
+export type ApprovalLikelihood = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT_DATA';
 
 export interface ScoringInput {
   monthlyIncome: number;
   creditHistoryStatus: CreditHistoryStatus;
   avgMonthlyPension: number;
   existingMonthlyDebt: number;
+  // Собственный первоначальный взнос клиента — прибавляется к максимальной
+  // сумме кредита, чтобы получить максимальную стоимость квартиры (ТЗ 9.4:
+  // max_property_price = max_loan + available_down_payment).
+  downPayment: number;
 }
 
 export interface ScoringResult {
@@ -17,6 +21,7 @@ export interface ScoringResult {
   approvalLikelihood: ApprovalLikelihood;
   maxMonthlyPayment: number;
   maxLoanAmount: number;
+  maxPropertyPrice: number;
   advice: string[];
 }
 
@@ -71,6 +76,23 @@ export function annuityMonthlyPayment(principal: number, annualRate: number, ter
 }
 
 export function computeScoring(input: ScoringInput): ScoringResult {
+  // No usable income signal at all — nothing below is trustworthy enough to
+  // give a real verdict (ТЗ 9.6: "High/Medium/Low/Insufficient Data").
+  const hasIncomeSignal = input.monthlyIncome > 0 || input.avgMonthlyPension > 0;
+
+  if (!hasIncomeSignal) {
+    return {
+      scoreValue: 0,
+      approvalLikelihood: 'INSUFFICIENT_DATA',
+      maxMonthlyPayment: 0,
+      maxLoanAmount: 0,
+      maxPropertyPrice: Math.round(Math.max(0, input.downPayment)),
+      advice: [
+        'Недостаточно данных: не удалось определить ни доход, ни пенсионные отчисления клиента. Загрузите документы или уточните доход вручную.',
+      ],
+    };
+  }
+
   const scoreValue = Math.round(
     creditHistoryPoints(input.creditHistoryStatus) +
       pensionPoints(input.avgMonthlyPension, input.monthlyIncome) +
@@ -85,6 +107,7 @@ export function computeScoring(input: ScoringInput): ScoringResult {
     input.monthlyIncome * MAX_DEBT_SERVICE_RATIO - input.existingMonthlyDebt
   );
   const maxLoanAmount = annuityPrincipal(maxMonthlyPayment, DEFAULT_ANNUAL_RATE, DEFAULT_TERM_MONTHS);
+  const maxPropertyPrice = maxLoanAmount + Math.max(0, input.downPayment);
 
   const advice: string[] = [];
 
@@ -123,6 +146,7 @@ export function computeScoring(input: ScoringInput): ScoringResult {
     approvalLikelihood,
     maxMonthlyPayment: Math.round(maxMonthlyPayment),
     maxLoanAmount: Math.round(maxLoanAmount),
+    maxPropertyPrice: Math.round(maxPropertyPrice),
     advice,
   };
 }
@@ -135,29 +159,64 @@ export interface MortgageProgramLike {
   maxTerm: number;
 }
 
+export type ProgramSuitability = 'SUITABLE' | 'CONDITIONALLY_SUITABLE' | 'UNSUITABLE';
+
 export interface MatchedProgram extends MortgageProgramLike {
   estimatedMonthlyPayment: number;
+  suitability: ProgramSuitability;
+  reason: string;
 }
 
+// A payment up to 15% over the computed ceiling is "conditionally suitable"
+// (worth discussing with the bank — e.g. a slightly longer term might close
+// the gap); further over is not realistically actionable for this client.
+const CONDITIONAL_OVERAGE_RATIO = 1.15;
+
 /**
- * Programs whose annuity payment on the client's max loan amount, at that
- * program's own term, still fits within their max affordable monthly
- * payment — sorted by rate (cheapest first).
+ * Classifies every program as suitable / conditionally suitable / unsuitable
+ * against the client's max loan amount and affordable monthly payment (ТЗ
+ * 9.5-9.6: "подходящие, условно подходящие и неподходящие программы с
+ * причинами"), sorted best-first.
  */
 export function matchPrograms(
   programs: MortgageProgramLike[],
   maxLoanAmount: number,
   maxMonthlyPayment: number
 ): MatchedProgram[] {
-  if (maxLoanAmount <= 0 || maxMonthlyPayment <= 0) return [];
+  if (maxLoanAmount <= 0 || maxMonthlyPayment <= 0) {
+    return programs.map((program) => ({
+      ...program,
+      estimatedMonthlyPayment: 0,
+      suitability: 'UNSUITABLE',
+      reason: 'Недостаточно данных о доходе клиента, чтобы оценить доступный кредит.',
+    }));
+  }
 
   return programs
-    .map((program) => ({
-      ...program,
-      estimatedMonthlyPayment: Math.round(
+    .map((program) => {
+      const estimatedMonthlyPayment = Math.round(
         annuityMonthlyPayment(maxLoanAmount, program.interestRate, program.maxTerm)
-      ),
-    }))
-    .filter((program) => program.estimatedMonthlyPayment <= maxMonthlyPayment)
-    .sort((a, b) => a.interestRate - b.interestRate);
+      );
+      const ratio = estimatedMonthlyPayment / maxMonthlyPayment;
+
+      let suitability: ProgramSuitability;
+      let reason: string;
+      if (ratio <= 1) {
+        suitability = 'SUITABLE';
+        reason = 'Расчётный платёж укладывается в доступный клиенту бюджет.';
+      } else if (ratio <= CONDITIONAL_OVERAGE_RATIO) {
+        suitability = 'CONDITIONALLY_SUITABLE';
+        reason = `Платёж превышает расчётный максимум примерно на ${Math.round((ratio - 1) * 100)}% — обсудите с банком больший срок или частичное досрочное погашение.`;
+      } else {
+        suitability = 'UNSUITABLE';
+        reason = 'Расчётный платёж значительно превышает доступный клиенту бюджет.';
+      }
+
+      return { ...program, estimatedMonthlyPayment, suitability, reason };
+    })
+    .sort((a, b) => {
+      const rank: Record<ProgramSuitability, number> = { SUITABLE: 0, CONDITIONALLY_SUITABLE: 1, UNSUITABLE: 2 };
+      if (rank[a.suitability] !== rank[b.suitability]) return rank[a.suitability] - rank[b.suitability];
+      return a.interestRate - b.interestRate;
+    });
 }

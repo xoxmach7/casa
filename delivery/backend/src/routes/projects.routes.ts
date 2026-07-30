@@ -113,58 +113,63 @@ projectsRouter.get('/', async (req: Request, res: Response): Promise<void> => {
       prisma.project.count({ where }),
     ]);
 
-    // Получаем статистику по квартирам для каждого проекта
-    const projectsWithStats = await Promise.all(
-      projects.map(async (project) => {
-        // Условия фильтрации квартир
-        const apartmentWhere: any = { projectId: project.id };
+    // Статистика по квартирам для всей страницы проектов одним набором
+    // group-by запросов вместо 1 + 2 запроса ПОД КАЖДЫЙ проект.
+    const projectIds = projects.map((p) => p.id);
 
-        // Фильтр по цене квартир
-        if (minPrice || maxPrice) {
-          apartmentWhere.price = {};
-          if (minPrice) apartmentWhere.price.gte = parseFloat(minPrice as string);
-          if (maxPrice) apartmentWhere.price.lte = parseFloat(maxPrice as string);
-        }
+    const apartmentWhere: any = { projectId: { in: projectIds } };
+    if (minPrice || maxPrice) {
+      apartmentWhere.price = {};
+      if (minPrice) apartmentWhere.price.gte = parseFloat(minPrice as string);
+      if (maxPrice) apartmentWhere.price.lte = parseFloat(maxPrice as string);
+    }
+    if (minArea || maxArea) {
+      apartmentWhere.area = {};
+      if (minArea) apartmentWhere.area.gte = parseFloat(minArea as string);
+      if (maxArea) apartmentWhere.area.lte = parseFloat(maxArea as string);
+    }
+    if (rooms) {
+      apartmentWhere.rooms = parseInt(rooms as string);
+    }
 
-        // Фильтр по площади
-        if (minArea || maxArea) {
-          apartmentWhere.area = {};
-          if (minArea) apartmentWhere.area.gte = parseFloat(minArea as string);
-          if (maxArea) apartmentWhere.area.lte = parseFloat(maxArea as string);
-        }
-
-        // Фильтр по комнатам
-        if (rooms) {
-          apartmentWhere.rooms = parseInt(rooms as string);
-        }
-
-        const apartmentStats = await prisma.apartment.groupBy({
-          by: ['status'],
+    const [statusCounts, minPriceByProject] = projectIds.length > 0
+      ? await Promise.all([
+        prisma.apartment.groupBy({
+          by: ['projectId', 'status'],
           where: apartmentWhere,
           _count: true,
-        });
+        }),
+        prisma.apartment.groupBy({
+          by: ['projectId'],
+          where: { projectId: { in: projectIds }, status: 'AVAILABLE' },
+          _min: { price: true },
+        }),
+      ])
+      : [[], []];
 
-        // Получаем минимальную цену среди доступных квартир
-        const minPriceApt = await prisma.apartment.findFirst({
-          where: { projectId: project.id, status: 'AVAILABLE' },
-          orderBy: { price: 'asc' },
-          select: { price: true },
-        });
+    const statusCountsByProject = new Map<string, typeof statusCounts>();
+    for (const row of statusCounts) {
+      const list = statusCountsByProject.get(row.projectId) ?? [];
+      list.push(row);
+      statusCountsByProject.set(row.projectId, list);
+    }
+    const minPriceMap = new Map(minPriceByProject.map((r) => [r.projectId, r._min.price]));
 
-        const stats = {
-          total: project._count.apartments,
-          available: apartmentStats.find((s) => s.status === 'AVAILABLE')?._count || 0,
-          reserved: apartmentStats.find((s) => s.status === 'RESERVED')?._count || 0,
-          sold: apartmentStats.find((s) => s.status === 'SOLD')?._count || 0,
-          minPrice: minPriceApt?.price || null,
-        };
+    const projectsWithStats = projects.map((project) => {
+      const apartmentStats = statusCountsByProject.get(project.id) ?? [];
+      const stats = {
+        total: project._count.apartments,
+        available: apartmentStats.find((s) => s.status === 'AVAILABLE')?._count || 0,
+        reserved: apartmentStats.find((s) => s.status === 'RESERVED')?._count || 0,
+        sold: apartmentStats.find((s) => s.status === 'SOLD')?._count || 0,
+        minPrice: minPriceMap.get(project.id) || null,
+      };
 
-        return {
-          ...project,
-          apartmentStats: stats,
-        };
-      })
-    );
+      return {
+        ...project,
+        apartmentStats: stats,
+      };
+    });
 
     res.json({
       projects: projectsWithStats,

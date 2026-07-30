@@ -36,9 +36,16 @@ function serializeCard(property: any) {
 // GET /api/public/properties?district=...
 // Note: CrmProperty has no `city` column (only `district`) — this project's
 // catalog is Almaty-only for now, so there is nothing to filter city by yet.
+const MAX_PAGE_SIZE = 100;
+const DEFAULT_PAGE_SIZE = 100;
+
 publicPropertiesRouter.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { district } = req.query;
+    const { district, page = '1', limit = String(DEFAULT_PAGE_SIZE) } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(limit as string) || DEFAULT_PAGE_SIZE));
+    const skip = (pageNum - 1) * limitNum;
 
     const where: any = {
       funnelStage: 'LEADS',
@@ -53,6 +60,8 @@ publicPropertiesRouter.get('/', async (req: Request, res: Response): Promise<voi
       where,
       select: CARD_SELECT,
       orderBy: { publishedAt: 'desc' },
+      take: limitNum,
+      skip,
     });
 
     res.json({ properties: properties.map(serializeCard) });

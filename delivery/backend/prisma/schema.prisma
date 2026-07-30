@@ -515,6 +515,8 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+  // Матчит точный where(userId, isRead?)+orderBy(createdAt) в notifications.routes.ts
+  @@index([userId, isRead, createdAt])
   @@map("notifications")
 }
 
@@ -1276,6 +1278,9 @@ model CrmProperty {
   @@index([activeStrategy])
   @@index([district])
   @@index([status])
+  // Матчит точный where+orderBy публичного каталога (public-properties.routes.ts) —
+  // без него это unauthenticated-запрос на full scan по мере роста таблицы
+  @@index([status, funnelStage, publishedAt])
   @@map("crm_properties")
 }
 

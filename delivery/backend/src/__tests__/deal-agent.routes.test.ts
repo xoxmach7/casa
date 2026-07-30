@@ -21,8 +21,8 @@ vi.mock('../middleware/auth.middleware', () => ({
 vi.mock('../lib/prisma', () => ({
   prisma: {
     deal: { findMany: vi.fn(), findUnique: vi.fn() },
-    dealAgentAction: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn() },
-    notification: { create: vi.fn() },
+    dealAgentAction: { findMany: vi.fn(), createMany: vi.fn() },
+    notification: { createMany: vi.fn() },
   },
 }));
 
@@ -51,7 +51,7 @@ describe('POST /api/deals/agent/run', () => {
         brokerId: 'broker_1',
       },
     ]);
-    (prisma.dealAgentAction.findFirst as any).mockResolvedValue(null);
+    (prisma.dealAgentAction.findMany as any).mockResolvedValue([]);
 
     const app = buildApp();
     const res = await request(app).post('/api/deals/agent/run');
@@ -59,10 +59,14 @@ describe('POST /api/deals/agent/run', () => {
     expect(res.status).toBe(200);
     expect(res.body.checkedDeals).toBe(1);
     expect(res.body.stalledCount).toBe(1);
-    expect(prisma.dealAgentAction.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ dealId: 'deal_1', actionType: 'STALLED_ALERT' }) })
+    expect(prisma.dealAgentAction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({ dealId: 'deal_1', actionType: 'STALLED_ALERT' }),
+        ]),
+      })
     );
-    expect(prisma.notification.create).toHaveBeenCalled();
+    expect(prisma.notification.createMany).toHaveBeenCalled();
   });
 
   it('does not re-alert a deal already logged since its last stage change', async () => {
@@ -77,14 +81,17 @@ describe('POST /api/deals/agent/run', () => {
         brokerId: 'broker_1',
       },
     ]);
-    (prisma.dealAgentAction.findFirst as any).mockResolvedValue({ id: 'existing_action' });
+    (prisma.dealAgentAction.findMany as any).mockResolvedValue([
+      { dealId: 'deal_1', actionType: 'STALLED_ALERT', createdAt: new Date('2026-07-15T00:00:00.000Z') },
+      { dealId: 'deal_1', actionType: 'STAGE_SUGGESTED', createdAt: new Date('2026-07-15T00:00:00.000Z') },
+    ]);
 
     const app = buildApp();
     const res = await request(app).post('/api/deals/agent/run');
 
     expect(res.status).toBe(200);
-    expect(prisma.dealAgentAction.create).not.toHaveBeenCalled();
-    expect(prisma.notification.create).not.toHaveBeenCalled();
+    expect(prisma.dealAgentAction.createMany).not.toHaveBeenCalled();
+    expect(prisma.notification.createMany).not.toHaveBeenCalled();
   });
 });
 

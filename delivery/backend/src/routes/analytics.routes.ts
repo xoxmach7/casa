@@ -226,24 +226,40 @@ analyticsRouter.get('/dashboard', async (req: Request, res: Response) => {
         });
 
         // 7. ADMIN ONLY: Broker Performance Breakdown
+        // One bulk query across all brokers' properties instead of 5 count/findMany
+        // calls per broker — this route is hit on every ADMIN dashboard load.
         let brokersPerformance: any[] = [];
         if (role === 'ADMIN') {
             const brokers = await prisma.user.findMany({
                 where: { role: 'BROKER' },
                 select: { id: true, firstName: true, lastName: true, email: true }
             });
+            const brokerIds = brokers.map(b => b.id);
 
-            brokersPerformance = await Promise.all(brokers.map(async b => {
-                const pCount = await prisma.crmProperty.count({ where: { brokerId: b.id } });
-                const active = await prisma.crmProperty.count({ where: { brokerId: b.id, status: PropertyStatus.ACTIVE } });
-                const deals = await prisma.crmProperty.count({ where: { brokerId: b.id, OR: [{ funnelStage: PropertyFunnelStage.DEAL }, { funnelStage: PropertyFunnelStage.SOLD }] } });
-                const sold = await prisma.crmProperty.count({ where: { brokerId: b.id, OR: [{ status: PropertyStatus.SOLD }, { funnelStage: PropertyFunnelStage.SOLD }] } });
+            const allProps = brokerIds.length > 0
+                ? await prisma.crmProperty.findMany({
+                    where: { brokerId: { in: brokerIds } },
+                    select: { brokerId: true, status: true, funnelStage: true, price: true }
+                })
+                : [];
 
-                const props = await prisma.crmProperty.findMany({
-                    where: { brokerId: b.id, status: PropertyStatus.ACTIVE },
-                    select: { price: true }
-                });
-                const potentialComm = props.reduce((acc, curr) => acc + (Number(curr.price) * 0.02), 0);
+            const propsByBroker = new Map<string, typeof allProps>();
+            for (const p of allProps) {
+                if (!p.brokerId) continue;
+                const list = propsByBroker.get(p.brokerId) ?? [];
+                list.push(p);
+                propsByBroker.set(p.brokerId, list);
+            }
+
+            brokersPerformance = brokers.map(b => {
+                const props = propsByBroker.get(b.id) ?? [];
+                const pCount = props.length;
+                const active = props.filter(p => p.status === PropertyStatus.ACTIVE).length;
+                const deals = props.filter(p => p.funnelStage === PropertyFunnelStage.DEAL || p.funnelStage === PropertyFunnelStage.SOLD).length;
+                const sold = props.filter(p => p.status === PropertyStatus.SOLD || p.funnelStage === PropertyFunnelStage.SOLD).length;
+                const potentialComm = props
+                    .filter(p => p.status === PropertyStatus.ACTIVE)
+                    .reduce((acc, curr) => acc + (Number(curr.price) * 0.02), 0);
 
                 return {
                     id: b.id,
@@ -255,7 +271,7 @@ analyticsRouter.get('/dashboard', async (req: Request, res: Response) => {
                     commissionForecast: potentialComm,
                     conversionRate: pCount > 0 ? (deals / pCount) * 100 : 0
                 };
-            }));
+            });
 
             brokersPerformance.sort((a, b) => b.commissionForecast - a.commissionForecast);
         }

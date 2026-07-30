@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScoringPanel } from "@/components/mortgage/ScoringPanel"
 import { Slider } from "@/components/ui/slider"
 import {
@@ -112,11 +113,14 @@ export default function MortgagePage() {
   const [searchQuery, setSearchQuery] = useState("")
   
   // Calculator states
+  const [calcMode, setCalcMode] = useState<"PRICE" | "INCOME" | "PAYMENT">("PRICE")
   const [propertyPrice, setPropertyPrice] = useState(35000000)
+  const [monthlyIncome, setMonthlyIncome] = useState(500000)
+  const [desiredMonthlyPayment, setDesiredMonthlyPayment] = useState(300000)
   const [downPayment, setDownPayment] = useState(20)
   const [term, setTerm] = useState(20)
   const [selectedRate, setSelectedRate] = useState(7)
-  
+
   const [mortgagePrograms, setMortgagePrograms] = useState<MortgageProgram[]>([])
   const [programsLoading, setProgramsLoading] = useState(true)
 
@@ -193,8 +197,8 @@ export default function MortgagePage() {
       const calculationData = {
         clientId: selectedClientId,
         apartmentId: hasApartment ? selectedApartmentId : undefined,
-        propertyPrice: apartment ? Number(apartment.price) : propertyPrice,
-        initialPayment: (apartment ? Number(apartment.price) : propertyPrice) * downPayment / 100,
+        propertyPrice: apartment ? Number(apartment.price) : calculation.price,
+        initialPayment: (apartment ? Number(apartment.price) : calculation.price) * downPayment / 100,
         loanAmount: calculation.principal,
         interestRate: selectedRate,
         termMonths: term * 12,
@@ -253,16 +257,47 @@ export default function MortgagePage() {
     })
   }, [bankFilter, typeFilter, housingFilter, searchQuery, mortgagePrograms])
 
-  // Calculator logic
+  // Calculator logic — annuity formula, used in both directions depending on calcMode
+  const MAX_DEBT_SERVICE_RATIO = 0.5 // максимальная доля дохода на платёж по ипотеке
+
+  const monthlyPaymentFromPrincipal = (principal: number, annualRate: number, termMonths: number) => {
+    if (principal <= 0) return 0
+    const monthlyRate = annualRate / 100 / 12
+    if (monthlyRate <= 0) return principal / termMonths
+    const factor = Math.pow(1 + monthlyRate, termMonths)
+    return (principal * monthlyRate * factor) / (factor - 1)
+  }
+
+  const principalFromMonthlyPayment = (monthlyPayment: number, annualRate: number, termMonths: number) => {
+    if (monthlyPayment <= 0) return 0
+    const monthlyRate = annualRate / 100 / 12
+    if (monthlyRate <= 0) return monthlyPayment * termMonths
+    const factor = Math.pow(1 + monthlyRate, termMonths)
+    return (monthlyPayment * (factor - 1)) / (monthlyRate * factor)
+  }
+
   const calculateMortgage = () => {
-    const principal = propertyPrice - (propertyPrice * downPayment / 100)
-    const monthlyRate = selectedRate / 100 / 12
     const totalPayments = term * 12
-    
-    const monthlyPayment = principal * 
-      (monthlyRate * Math.pow(1 + monthlyRate, totalPayments)) / 
-      (Math.pow(1 + monthlyRate, totalPayments) - 1)
-    
+    const downPaymentShare = downPayment / 100
+
+    let principal: number
+    let monthlyPayment: number
+    let price: number
+
+    if (calcMode === "INCOME") {
+      monthlyPayment = monthlyIncome * MAX_DEBT_SERVICE_RATIO
+      principal = principalFromMonthlyPayment(monthlyPayment, selectedRate, totalPayments)
+      price = downPaymentShare < 1 ? principal / (1 - downPaymentShare) : principal
+    } else if (calcMode === "PAYMENT") {
+      monthlyPayment = desiredMonthlyPayment
+      principal = principalFromMonthlyPayment(monthlyPayment, selectedRate, totalPayments)
+      price = downPaymentShare < 1 ? principal / (1 - downPaymentShare) : principal
+    } else {
+      price = propertyPrice
+      principal = propertyPrice * (1 - downPaymentShare)
+      monthlyPayment = monthlyPaymentFromPrincipal(principal, selectedRate, totalPayments)
+    }
+
     const totalAmount = monthlyPayment * totalPayments
     const overpayment = totalAmount - principal
 
@@ -270,7 +305,8 @@ export default function MortgagePage() {
       monthlyPayment: Math.round(monthlyPayment),
       totalAmount: Math.round(totalAmount),
       overpayment: Math.round(overpayment),
-      principal: Math.round(principal)
+      principal: Math.round(principal),
+      price: Math.round(price)
     }
   }
 
@@ -435,27 +471,94 @@ export default function MortgagePage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label>Стоимость недвижимости</Label>
-                    <span className="text-sm font-medium">{formatPrice(propertyPrice)} ₸</span>
-                  </div>
-                  <Slider
-                    value={[propertyPrice]}
-                    onValueChange={([v]) => setPropertyPrice(v)}
-                    min={5000000}
-                    max={300000000}
-                    step={1000000}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>5 млн</span>
-                    <span>300 млн</span>
-                  </div>
+                  <Label>Вид расчёта</Label>
+                  <RadioGroup
+                    value={calcMode}
+                    onValueChange={(v) => setCalcMode(v as typeof calcMode)}
+                    className="space-y-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="PRICE" id="calc-mode-price" />
+                      <Label htmlFor="calc-mode-price" className="font-normal cursor-pointer">По стоимости недвижимости</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="INCOME" id="calc-mode-income" />
+                      <Label htmlFor="calc-mode-income" className="font-normal cursor-pointer">По доходу (заработной плате)</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="PAYMENT" id="calc-mode-payment" />
+                      <Label htmlFor="calc-mode-payment" className="font-normal cursor-pointer">По ежемесячному платежу</Label>
+                    </div>
+                  </RadioGroup>
                 </div>
+
+                {calcMode === "PRICE" && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <Label>Стоимость недвижимости</Label>
+                      <span className="text-sm font-medium">{formatPrice(propertyPrice)} ₸</span>
+                    </div>
+                    <Slider
+                      value={[propertyPrice]}
+                      onValueChange={([v]) => setPropertyPrice(v)}
+                      min={5000000}
+                      max={300000000}
+                      step={1000000}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>5 млн</span>
+                      <span>300 млн</span>
+                    </div>
+                  </div>
+                )}
+
+                {calcMode === "INCOME" && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <Label>Ежемесячный доход (зарплата)</Label>
+                      <span className="text-sm font-medium">{formatPrice(monthlyIncome)} ₸</span>
+                    </div>
+                    <Slider
+                      value={[monthlyIncome]}
+                      onValueChange={([v]) => setMonthlyIncome(v)}
+                      min={100000}
+                      max={5000000}
+                      step={50000}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>100 тыс</span>
+                      <span>5 млн</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Расчёт исходит из того, что на платёж по ипотеке уходит не более {Math.round(MAX_DEBT_SERVICE_RATIO * 100)}% дохода
+                    </p>
+                  </div>
+                )}
+
+                {calcMode === "PAYMENT" && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <Label>Я готов ежемесячно платить</Label>
+                      <span className="text-sm font-medium">{formatPrice(desiredMonthlyPayment)} ₸</span>
+                    </div>
+                    <Slider
+                      value={[desiredMonthlyPayment]}
+                      onValueChange={([v]) => setDesiredMonthlyPayment(v)}
+                      min={50000}
+                      max={3000000}
+                      step={10000}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>50 тыс</span>
+                      <span>3 млн</span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <Label>Первоначальный взнос</Label>
-                    <span className="text-sm font-medium">{downPayment}% ({formatPrice(propertyPrice * downPayment / 100)} ₸)</span>
+                    <span className="text-sm font-medium">{downPayment}% ({formatPrice(calculation.price * downPayment / 100)} ₸)</span>
                   </div>
                   <Slider
                     value={[downPayment]}
@@ -540,6 +643,17 @@ export default function MortgagePage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {calcMode !== "PRICE" && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Доступная стоимость недвижимости</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatPrice(calculation.price)} ₸</div>
+                  </CardContent>
+                </Card>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <Card>

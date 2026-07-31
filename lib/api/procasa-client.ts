@@ -85,12 +85,16 @@ export interface ViewingRequestInput {
 }
 
 export async function submitViewingRequest(input: ViewingRequestInput): Promise<boolean> {
-  const res = await fetch(`${API_BASE_URL}/api/public/viewing-requests`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return res.ok;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/public/viewing-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export interface PropertyLeadInput {

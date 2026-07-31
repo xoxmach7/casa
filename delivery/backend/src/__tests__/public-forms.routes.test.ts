@@ -21,6 +21,39 @@ function buildApp() {
   return app;
 }
 
+describe('GET /api/public/forms/:id', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('404s for an inactive form (fields must not leak while retired)', async () => {
+    (prisma.leadForm.findUnique as any).mockResolvedValue({
+      id: 'form_1',
+      title: 'Старая форма',
+      fields: [{ key: 'phone', label: 'Телефон' }],
+      isActive: false,
+    });
+
+    const app = buildApp();
+    const res = await request(app).get('/api/public/forms/form_1');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns the form when active', async () => {
+    (prisma.leadForm.findUnique as any).mockResolvedValue({
+      id: 'form_1',
+      title: 'Мастер оценки',
+      fields: [{ key: 'phone', label: 'Телефон' }],
+      isActive: true,
+    });
+
+    const app = buildApp();
+    const res = await request(app).get('/api/public/forms/form_1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('form_1');
+  });
+});
+
 describe('POST /api/public/forms/:id/submit — structured fields', () => {
   beforeEach(() => vi.clearAllMocks());
 

@@ -5,10 +5,15 @@ import { prisma } from '../lib/prisma';
 export const notificationsRouter = Router();
 notificationsRouter.use(authenticate);
 
+const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 20;
+const BOOKING_MATCH_WINDOW_MS = 60000;
+
 // Get user's notifications
 notificationsRouter.get('/', async (req: Request, res: Response): Promise<void> => {
     try {
-        const { limit = '20', offset = '0', unreadOnly } = req.query;
+        const { limit = String(DEFAULT_LIMIT), offset = '0', unreadOnly } = req.query;
+        const take = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
         const where: any = { userId: req.user!.userId };
         if (unreadOnly === 'true') {
@@ -18,54 +23,59 @@ notificationsRouter.get('/', async (req: Request, res: Response): Promise<void> 
         const notifications = await prisma.notification.findMany({
             where,
             orderBy: { createdAt: 'desc' },
-            take: Number(limit),
+            take,
             skip: Number(offset),
         });
 
         // Для девелоперов - обогащаем уведомления о бронях контактами брокера
-        let enrichedNotifications = notifications;
-        if (req.user?.role === 'DEVELOPER') {
-            enrichedNotifications = await Promise.all(
-                notifications.map(async (notification) => {
-                    if ((notification.type as string) === 'BOOKING') {
-                        // Ищем последнюю бронь от этого уведомления
-                        const recentBooking = await prisma.booking.findFirst({
-                            where: {
-                                apartment: {
-                                    project: {
-                                        developerId: req.user!.userId,
-                                    },
-                                },
-                                createdAt: {
-                                    gte: new Date(notification.createdAt.getTime() - 60000), // в пределах минуты
-                                    lte: new Date(notification.createdAt.getTime() + 60000),
-                                },
-                            },
-                            include: {
-                                broker: {
-                                    select: {
-                                        firstName: true,
-                                        lastName: true,
-                                        phone: true,
-                                        email: true,
-                                    },
-                                },
-                            },
-                            orderBy: { createdAt: 'desc' },
-                        });
+        let enrichedNotifications: typeof notifications = notifications;
+        const bookingNotifications = notifications.filter((n) => (n.type as string) === 'BOOKING');
+        if (req.user?.role === 'DEVELOPER' && bookingNotifications.length > 0) {
+            const timestamps = bookingNotifications.map((n) => n.createdAt.getTime());
+            const windowStart = new Date(Math.min(...timestamps) - BOOKING_MATCH_WINDOW_MS);
+            const windowEnd = new Date(Math.max(...timestamps) + BOOKING_MATCH_WINDOW_MS);
 
-                        if (recentBooking?.broker) {
-                            return {
-                                ...notification,
-                                brokerName: `${recentBooking.broker.firstName} ${recentBooking.broker.lastName}`,
-                                brokerPhone: recentBooking.broker.phone,
-                                brokerEmail: recentBooking.broker.email,
-                            };
-                        }
-                    }
-                    return notification;
-                })
-            );
+            const candidateBookings = await prisma.booking.findMany({
+                where: {
+                    apartment: {
+                        project: {
+                            developerId: req.user!.userId,
+                        },
+                    },
+                    createdAt: { gte: windowStart, lte: windowEnd },
+                },
+                include: {
+                    broker: {
+                        select: {
+                            firstName: true,
+                            lastName: true,
+                            phone: true,
+                            email: true,
+                        },
+                    },
+                },
+                orderBy: { createdAt: 'desc' },
+            });
+
+            enrichedNotifications = notifications.map((notification) => {
+                if ((notification.type as string) !== 'BOOKING') return notification;
+
+                const recentBooking = candidateBookings.find(
+                    (b) =>
+                        Math.abs(b.createdAt.getTime() - notification.createdAt.getTime()) <=
+                        BOOKING_MATCH_WINDOW_MS
+                );
+
+                if (recentBooking?.broker) {
+                    return {
+                        ...notification,
+                        brokerName: `${recentBooking.broker.firstName} ${recentBooking.broker.lastName}`,
+                        brokerPhone: recentBooking.broker.phone,
+                        brokerEmail: recentBooking.broker.email,
+                    } as typeof notification;
+                }
+                return notification;
+            });
         }
 
         const totalCount = await prisma.notification.count({ where });

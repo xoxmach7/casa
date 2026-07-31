@@ -13,7 +13,7 @@ publicFormsRouter.get('/:id', async (req: Request, res: Response): Promise<void>
             where: { id: req.params.id },
             select: { id: true, title: true, fields: true, isActive: true }
         });
-        if (!form) {
+        if (!form || !form.isActive) {
             res.status(404).json({ error: 'Form not found' });
             return;
         }

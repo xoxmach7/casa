@@ -446,6 +446,7 @@ model Selection {
   // отдаёт только client-safe проекцию (без цены/финансов/внутренних заметок).
   shareToken String          @unique @default(cuid())
   viewedAt   DateTime?       @map("viewed_at")
+  selectedApartmentId String? @map("selected_apartment_id")
   brokerId   String          @map("broker_id")
   clientId   String          @map("client_id")
   createdAt  DateTime        @default(now()) @map("created_at")

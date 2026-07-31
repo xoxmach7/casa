@@ -114,6 +114,18 @@ buyersRouter.put('/:id', validate(UpdateBuyerSchema), async (req: Request, res: 
         const { id } = req.params;
         const data = req.body;
 
+        const existing = await prisma.buyer.findUnique({ where: { id } });
+        if (!existing) {
+            res.status(404).json({ error: 'Покупатель не найден' });
+            return;
+        }
+
+        const restrictedRoles = ['BROKER', 'REALTOR', 'AGENCY'];
+        if (restrictedRoles.includes(req.user?.role || '') && existing.brokerId !== req.user!.userId) {
+            res.status(403).json({ error: 'Доступ запрещен' });
+            return;
+        }
+
         const buyer = await prisma.buyer.update({
             where: { id },
             data
@@ -132,6 +144,19 @@ buyersRouter.put('/:id', validate(UpdateBuyerSchema), async (req: Request, res: 
 buyersRouter.get('/shows/:propertyId', async (req: Request, res: Response) => {
     try {
         const { propertyId } = req.params;
+
+        const property = await prisma.crmProperty.findUnique({ where: { id: propertyId }, select: { brokerId: true } });
+        if (!property) {
+            res.status(404).json({ error: 'Объект не найден' });
+            return;
+        }
+
+        const restrictedRoles = ['BROKER', 'REALTOR', 'AGENCY'];
+        if (restrictedRoles.includes(req.user?.role || '') && property.brokerId !== req.user!.userId) {
+            res.status(403).json({ error: 'Доступ запрещен' });
+            return;
+        }
+
         const shows = await prisma.show.findMany({
             where: { propertyId },
             include: { buyer: true },
@@ -242,6 +267,19 @@ buyersRouter.put('/shows/:id', validate(UpdateShowSchema), async (req: Request, 
 buyersRouter.get('/offers/:propertyId', async (req: Request, res: Response) => {
     try {
         const { propertyId } = req.params;
+
+        const property = await prisma.crmProperty.findUnique({ where: { id: propertyId }, select: { brokerId: true } });
+        if (!property) {
+            res.status(404).json({ error: 'Объект не найден' });
+            return;
+        }
+
+        const restrictedRoles = ['BROKER', 'REALTOR', 'AGENCY'];
+        if (restrictedRoles.includes(req.user?.role || '') && property.brokerId !== req.user!.userId) {
+            res.status(403).json({ error: 'Доступ запрещен' });
+            return;
+        }
+
         const offers = await prisma.offer.findMany({
             where: { propertyId },
             include: { buyer: true },

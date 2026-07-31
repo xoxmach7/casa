@@ -35,6 +35,7 @@ publicSelectionsRouter.get('/:shareToken', async (req: Request, res: Response): 
                 name: true,
                 status: true,
                 createdAt: true,
+                selectedApartmentId: true,
                 apartments: {
                     orderBy: { addedAt: 'desc' },
                     select: {
@@ -64,6 +65,7 @@ publicSelectionsRouter.get('/:shareToken', async (req: Request, res: Response): 
             name: selection.name,
             status: selection.status,
             createdAt: selection.createdAt,
+            selectedApartmentId: selection.selectedApartmentId,
             apartments: selection.apartments.map((a) => a.apartment),
         });
     } catch (error) {
@@ -97,10 +99,10 @@ publicSelectionsRouter.post(
 
             const updated = await prisma.selection.update({
                 where: { shareToken },
-                data: { status: 'CLIENT_SELECTED' },
+                data: { status: 'CLIENT_SELECTED', selectedApartmentId: apartmentId },
             });
 
-            res.json({ status: updated.status });
+            res.json({ status: updated.status, selectedApartmentId: updated.selectedApartmentId });
         } catch (error) {
             console.error('Select apartment in public selection error:', error);
             res.status(500).json({ error: 'Ошибка выбора квартиры' });

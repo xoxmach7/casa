@@ -14,7 +14,9 @@ publicViewingRequestsRouter.post('/', async (req: Request, res: Response): Promi
   try {
     const { propertyId, name, phone } = viewingRequestSchema.parse(req.body);
 
-    const property = await prisma.crmProperty.findUnique({ where: { id: propertyId } });
+    const property = await prisma.crmProperty.findFirst({
+      where: { id: propertyId, funnelStage: 'LEADS', publishedAt: { not: null }, status: 'ACTIVE' },
+    });
     if (!property) {
       res.status(404).json({ error: 'Объявление не найдено' });
       return;

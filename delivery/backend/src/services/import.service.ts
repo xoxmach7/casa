@@ -274,6 +274,10 @@ export async function executeImport(params: ExecuteImportParams): Promise<Import
   // Track phones seen in this file
   const seenPhones = new Set<string>();
 
+  // Accumulated across all rows, flushed in one createMany after the loop
+  // instead of one create() per unmapped column per row.
+  const customFieldValuesToCreate: { fieldId: string; sellerId: string; value: string }[] = [];
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowNumber = i + 1;
@@ -336,13 +340,12 @@ export async function executeImport(params: ExecuteImportParams): Promise<Import
           },
         });
 
-        // Save unmapped columns as custom field values
+        // Collect unmapped columns as custom field values, created in one
+        // batch after the loop instead of per-row/per-column inserts.
         for (const [colName, fieldId] of Object.entries(customFieldMap)) {
           const val = (row[colName] ?? '').trim();
           if (val) {
-            await prisma.customFieldValue.create({
-              data: { fieldId, sellerId: record.id, value: val },
-            });
+            customFieldValuesToCreate.push({ fieldId, sellerId: record.id, value: val });
           }
         }
 
@@ -400,6 +403,10 @@ export async function executeImport(params: ExecuteImportParams): Promise<Import
       });
       errorCount++;
     }
+  }
+
+  if (customFieldValuesToCreate.length > 0) {
+    await prisma.customFieldValue.createMany({ data: customFieldValuesToCreate });
   }
 
   return {

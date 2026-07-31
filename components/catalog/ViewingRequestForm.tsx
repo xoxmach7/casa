@@ -11,11 +11,20 @@ export function ViewingRequestForm({ propertyId }: ViewingRequestFormProps) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setError(null);
+    setSubmitting(true);
     const ok = await submitViewingRequest({ propertyId, name, phone });
-    if (ok) setSent(true);
+    setSubmitting(false);
+    if (ok) {
+      setSent(true);
+    } else {
+      setError("Не удалось отправить заявку. Попробуйте ещё раз.");
+    }
   }
 
   if (sent) {
@@ -55,11 +64,14 @@ export function ViewingRequestForm({ propertyId }: ViewingRequestFormProps) {
         className="mt-2 w-full rounded-full border border-ink/10 px-4 py-3"
       />
 
+      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+
       <button
         type="submit"
-        className="mt-4 w-full rounded-full bg-accent px-6 py-3 text-white transition hover:bg-accent-dark"
+        disabled={submitting}
+        className="mt-4 w-full rounded-full bg-accent px-6 py-3 text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Записаться на просмотр
+        {submitting ? "Отправка..." : "Записаться на просмотр"}
       </button>
     </form>
   );

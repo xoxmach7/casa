@@ -23,6 +23,8 @@ export function OtsenkaWizard() {
   const [params, setParams] = useState<ValuationParams | null>(null);
   const [valuation, setValuation] = useState<ValuationResponse | null>(null);
   const [submitted, setSubmitted] = useState<ContactInfo | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   return (
     <div className="flex flex-col gap-8">
@@ -58,27 +60,57 @@ export function OtsenkaWizard() {
       )}
 
       {step === 4 && !submitted && (
-        <ContactStep
-          onSubmit={async (contact) => {
-            setSubmitted(contact);
-            if (!OTSENKA_FORM_ID) {
-              console.error(
-                "NEXT_PUBLIC_OTSENKA_FORM_ID is not set — otsenka lead was not submitted to pro-casa."
-              );
-              return;
-            }
-            await submitLeadForm(OTSENKA_FORM_ID, {
-              name: contact.name,
-              phone: contact.phone,
-              district: location?.district ?? "",
-              residentialComplex: location?.residentialComplex ?? "",
-              rooms: String(params?.rooms ?? ""),
-              area: String(params?.areaM2 ?? ""),
-              expectedPrice:
-                valuation?.status === "ready" ? String(valuation.marketPrice) : "",
-            });
-          }}
-        />
+        <div className="flex flex-col gap-4">
+          <ContactStep
+            submitting={submitting}
+            onSubmit={async (contact) => {
+              setSubmitError(null);
+              setSubmitting(true);
+              if (!OTSENKA_FORM_ID) {
+                console.error(
+                  "NEXT_PUBLIC_OTSENKA_FORM_ID is not set — otsenka lead was not submitted to pro-casa."
+                );
+                setSubmitError(
+                  "Не удалось отправить заявку. Попробуйте позже или свяжитесь с нами по телефону."
+                );
+                setSubmitting(false);
+                return;
+              }
+              try {
+                const ok = await submitLeadForm(OTSENKA_FORM_ID, {
+                  name: contact.name,
+                  phone: contact.phone,
+                  district: location?.district ?? "",
+                  residentialComplex: location?.residentialComplex ?? "",
+                  rooms: String(params?.rooms ?? ""),
+                  area: String(params?.areaM2 ?? ""),
+                  floor: String(params?.floor ?? ""),
+                  totalFloors: String(params?.totalFloors ?? ""),
+                  repairCondition: params?.repairCondition ?? "",
+                  expectedPrice:
+                    valuation?.status === "ready" ? String(valuation.marketPrice) : "",
+                });
+                if (!ok) {
+                  setSubmitError(
+                    "Не удалось отправить заявку. Попробуйте ещё раз или свяжитесь с нами по телефону."
+                  );
+                  setSubmitting(false);
+                  return;
+                }
+                setSubmitted(contact);
+              } catch {
+                setSubmitError(
+                  "Не удалось отправить заявку. Проверьте соединение и попробуйте ещё раз."
+                );
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          />
+          {submitError && (
+            <p className="rounded-card bg-red-50 px-4 py-3 text-sm text-red-600">{submitError}</p>
+          )}
+        </div>
       )}
 
       {step === 4 && submitted && (

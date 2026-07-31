@@ -9,9 +9,10 @@ export interface ContactInfo {
 
 interface ContactStepProps {
   onSubmit: (contact: ContactInfo) => void;
+  submitting?: boolean;
 }
 
-export function ContactStep({ onSubmit }: ContactStepProps) {
+export function ContactStep({ onSubmit, submitting = false }: ContactStepProps) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [consent, setConsent] = useState(false);
@@ -65,10 +66,10 @@ export function ContactStep({ onSubmit }: ContactStepProps) {
 
       <button
         type="submit"
-        disabled={!consent}
+        disabled={!consent || submitting}
         className="mt-6 rounded-full bg-accent px-6 py-3 text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Отправить
+        {submitting ? "Отправка..." : "Отправить"}
       </button>
     </form>
   );

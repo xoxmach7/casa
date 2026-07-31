@@ -23,6 +23,7 @@ interface PublicSelection {
   name: string | null
   status: string
   createdAt: string
+  selectedApartmentId: string | null
   apartments: PublicApartment[]
 }
 
@@ -40,6 +41,8 @@ export default function PublicSelectionPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectingId, setSelectingId] = useState<string | null>(null)
+  const [selectError, setSelectError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(getApiUrl(`public/selections/${token}`))
@@ -49,20 +52,27 @@ export default function PublicSelectionPage() {
       })
       .then((data) => {
         setSelection(data)
-        if (data.status === "CLIENT_SELECTED") {
-          // We don't know which apartment was picked from this payload alone,
-          // so just show the general "выбор сделан" state.
-        }
+        setSelectedId(data.selectedApartmentId ?? null)
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false))
   }, [token])
 
   async function selectApartment(apartmentId: string) {
-    setSelectedId(apartmentId)
-    await fetch(getApiUrl(`public/selections/${token}/apartments/${apartmentId}/select`), {
-      method: "POST",
-    })
+    setSelectError(null)
+    setSelectingId(apartmentId)
+    try {
+      const res = await fetch(getApiUrl(`public/selections/${token}/apartments/${apartmentId}/select`), {
+        method: "POST",
+      })
+      if (!res.ok) throw new Error()
+      setSelectedId(apartmentId)
+      setSelection((prev) => (prev ? { ...prev, status: "CLIENT_SELECTED", selectedApartmentId: apartmentId } : prev))
+    } catch {
+      setSelectError("Не удалось сохранить выбор. Попробуйте ещё раз.")
+    } finally {
+      setSelectingId(null)
+    }
   }
 
   if (loading) {
@@ -88,6 +98,10 @@ export default function PublicSelectionPage() {
         <p className="text-muted-foreground">Подобрано специально для вас — выберите понравившийся вариант</p>
       </div>
 
+      {selectError && (
+        <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-600">{selectError}</p>
+      )}
+
       {selection.apartments.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
@@ -97,7 +111,8 @@ export default function PublicSelectionPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {selection.apartments.map((apartment) => {
-            const isSelected = selectedId === apartment.id || selection.status === "CLIENT_SELECTED"
+            const isSelected = selectedId === apartment.id
+            const isSelecting = selectingId === apartment.id
             return (
               <Card key={apartment.id} className={isSelected ? "ring-2 ring-primary" : ""}>
                 <CardHeader className="pb-2">
@@ -115,11 +130,16 @@ export default function PublicSelectionPage() {
                   <p className="text-lg font-bold">{formatPrice(apartment.price)}</p>
                   <Button
                     className="w-full"
-                    variant={selectedId === apartment.id ? "secondary" : "default"}
+                    variant={isSelected ? "secondary" : "default"}
                     onClick={() => selectApartment(apartment.id)}
-                    disabled={selectedId === apartment.id}
+                    disabled={isSelected || isSelecting}
                   >
-                    {selectedId === apartment.id ? (
+                    {isSelecting ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        Сохранение...
+                      </>
+                    ) : isSelected ? (
                       <>
                         <Check className="mr-1.5 h-4 w-4" />
                         Выбрано

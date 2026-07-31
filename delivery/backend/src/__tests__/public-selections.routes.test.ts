@@ -93,6 +93,22 @@ describe('GET /api/public/selections/:shareToken', () => {
     expect(res.body.status).toBe('CLIENT_SELECTED');
     expect(prisma.selection.update).not.toHaveBeenCalled();
   });
+
+  it('reports which specific apartment the client selected', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({
+      id: 'sel_1',
+      name: null,
+      status: 'CLIENT_SELECTED',
+      createdAt: new Date(),
+      selectedApartmentId: 'apt_1',
+      apartments: [],
+    });
+
+    const app = buildApp();
+    const res = await request(app).get('/api/public/selections/tok_abc');
+
+    expect(res.body.selectedApartmentId).toBe('apt_1');
+  });
 });
 
 describe('POST /api/public/selections/:shareToken/apartments/:apartmentId/select', () => {
@@ -120,16 +136,16 @@ describe('POST /api/public/selections/:shareToken/apartments/:apartmentId/select
   it('marks the selection CLIENT_SELECTED when the apartment belongs to it', async () => {
     (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', shareToken: 'tok_abc' });
     (prisma.selectionApartment.findUnique as any).mockResolvedValue({ id: 'sa_1' });
-    (prisma.selection.update as any).mockResolvedValue({ status: 'CLIENT_SELECTED' });
+    (prisma.selection.update as any).mockResolvedValue({ status: 'CLIENT_SELECTED', selectedApartmentId: 'apt_1' });
 
     const app = buildApp();
     const res = await request(app).post('/api/public/selections/tok_abc/apartments/apt_1/select');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'CLIENT_SELECTED' });
+    expect(res.body).toEqual({ status: 'CLIENT_SELECTED', selectedApartmentId: 'apt_1' });
     expect(prisma.selection.update).toHaveBeenCalledWith({
       where: { shareToken: 'tok_abc' },
-      data: { status: 'CLIENT_SELECTED' },
+      data: { status: 'CLIENT_SELECTED', selectedApartmentId: 'apt_1' },
     });
   });
 });

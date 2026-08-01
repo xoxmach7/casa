@@ -4,6 +4,7 @@ import multer from 'multer';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { fileStorageService } from '../services/file-storage.service';
 import { prisma } from '../lib/prisma';
+import { detectImageExtension, detectDocumentExtension } from '../lib/image-sniff';
 
 export const uploadsRouter = Router();
 
@@ -33,6 +34,15 @@ uploadsRouter.post(
                 return;
             }
 
+            // The client-supplied mimetype/filename are attacker-controlled —
+            // derive the real extension from the file's actual magic bytes
+            // so a renamed HTML/script payload can't be stored as an image.
+            const ext = detectImageExtension(file.buffer);
+            if (!ext) {
+                res.status(400).json({ error: 'Файл не является изображением поддерживаемого формата (jpeg/png/webp)' });
+                return;
+            }
+
             const property = await prisma.crmProperty.findUnique({
                 where: { id }
             });
@@ -42,10 +52,9 @@ uploadsRouter.post(
                 return;
             }
 
-            // Generate path: properties/{propertyId}/{timestamp}-{filename}
+            // Generate path: properties/{propertyId}/{timestamp}{ext}
             const timestamp = Date.now();
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
-            const path = `properties/${id}/${timestamp}-${safeName}`;
+            const path = `properties/${id}/${timestamp}${ext}`;
 
             const url = await fileStorageService.uploadFile(file, path);
 
@@ -121,16 +130,23 @@ uploadsRouter.post(
                 return;
             }
 
+            // Same rationale as the images endpoint above — trust the file's
+            // actual signature, not the client-supplied mimetype/filename.
+            const ext = detectDocumentExtension(file.buffer);
+            if (!ext) {
+                res.status(400).json({ error: 'Файл не является документом поддерживаемого формата (pdf/doc/docx)' });
+                return;
+            }
+
             const property = await prisma.crmProperty.findUnique({ where: { id } });
             if (!property) {
                 res.status(404).json({ error: 'Property not found' });
                 return;
             }
 
-            // Generate path: properties/{propertyId}/docs/{timestamp}-{filename}
+            // Generate path: properties/{propertyId}/docs/{timestamp}{ext}
             const timestamp = Date.now();
-            const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-]/g, '_');
-            const path = `properties/${id}/docs/${timestamp}-${safeName}`;
+            const path = `properties/${id}/docs/${timestamp}${ext}`;
 
             const url = await fileStorageService.uploadFile(file, path);
 

@@ -202,6 +202,12 @@ bookingsRouter.get('/:id', async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    // Девелоперы видят только брони на свои квартиры
+    if (req.user?.role === 'DEVELOPER' && booking.apartment.project.developerId !== req.user.userId) {
+      res.status(403).json({ error: 'Доступ запрещен' });
+      return;
+    }
+
     // Проверяем истечение
     if (booking.status === 'PENDING' && booking.expiresAt < new Date()) {
       // Автоматически обновляем статус
@@ -506,6 +512,15 @@ bookingsRouter.post('/:id/complete-deal', requireRole('BROKER', 'ADMIN', 'DEVELO
       console.log('Access denied: user mismatch');
       res.status(403).json({ error: 'Доступ запрещен' });
       return;
+    }
+
+    // Девелоперы могут финализировать только сделки на свои квартиры
+    if (req.user?.role === 'DEVELOPER' && booking.apartment.projectId) {
+      const project = await prisma.project.findUnique({ where: { id: booking.apartment.projectId } });
+      if (project?.developerId !== req.user.userId) {
+        res.status(403).json({ error: 'Доступ запрещен' });
+        return;
+      }
     }
 
     // Можно финализировать только подтвержденные брони

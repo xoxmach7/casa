@@ -380,6 +380,18 @@ clientsRouter.delete('/:id/unlink-property', requireRole('BROKER', 'ADMIN'), asy
       return;
     }
 
+    const client = await prisma.client.findUnique({ where: { id } });
+    if (!client) {
+      res.status(404).json({ error: 'Клиент не найден' });
+      return;
+    }
+
+    const restrictedRoles = ['BROKER', 'REALTOR', 'AGENCY'];
+    if (restrictedRoles.includes(req.user?.role || '') && client.brokerId !== req.user!.userId) {
+      res.status(403).json({ error: 'Доступ запрещен' });
+      return;
+    }
+
     const property = await prisma.property.findUnique({ where: { id: propertyId } });
     if (!property) {
       res.status(404).json({ error: 'Объект не найден' });

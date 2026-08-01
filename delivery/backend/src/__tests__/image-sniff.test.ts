@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectImageExtension } from '../lib/image-sniff';
+import { detectImageExtension, detectDocumentExtension } from '../lib/image-sniff';
 
 describe('detectImageExtension', () => {
   it('detects a real JPEG by its magic bytes', () => {
@@ -36,5 +36,34 @@ describe('detectImageExtension', () => {
 
   it('rejects a buffer that merely starts with a JPEG-like byte but is too short', () => {
     expect(detectImageExtension(Buffer.from([0xff, 0xd8]))).toBeNull();
+  });
+});
+
+describe('detectDocumentExtension', () => {
+  it('detects a real PDF by its %PDF signature', () => {
+    const buf = Buffer.concat([Buffer.from('%PDF-1.7'), Buffer.from('rest of file')]);
+    expect(detectDocumentExtension(buf)).toBe('.pdf');
+  });
+
+  it('detects a legacy .doc by its OLE compound file signature', () => {
+    const buf = Buffer.concat([
+      Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+      Buffer.from('rest of file'),
+    ]);
+    expect(detectDocumentExtension(buf)).toBe('.doc');
+  });
+
+  it('detects a .docx by its zip local-file-header signature', () => {
+    const buf = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('rest of file')]);
+    expect(detectDocumentExtension(buf)).toBe('.docx');
+  });
+
+  it('rejects an HTML/script payload renamed to look like a PDF', () => {
+    const buf = Buffer.from('<script>alert(document.cookie)</script>');
+    expect(detectDocumentExtension(buf)).toBeNull();
+  });
+
+  it('rejects an empty buffer', () => {
+    expect(detectDocumentExtension(Buffer.alloc(0))).toBeNull();
   });
 });

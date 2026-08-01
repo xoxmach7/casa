@@ -20,6 +20,30 @@ const createApartmentSchema = z.object({
 
 const updateApartmentSchema = createApartmentSchema.partial().omit({ projectId: true });
 
+// The apartment catalog itself (шахматка) is shared across all brokers by
+// design — but a booking's client/broker contact details belong only to
+// ADMIN, the project's own developer, or the broker on that specific
+// booking. Any other viewer only needs to know a unit is taken, not by whom.
+function canSeeBookingContacts(
+  user: { userId: string; role: string } | undefined,
+  projectDeveloperId: string,
+  bookingBrokerId: string
+): boolean {
+  if (!user) return false;
+  if (user.role === 'ADMIN') return true;
+  if (user.role === 'DEVELOPER' && user.userId === projectDeveloperId) return true;
+  return user.userId === bookingBrokerId;
+}
+
+function redactBooking(
+  booking: { client?: unknown; broker?: unknown; brokerId?: unknown; [key: string]: any },
+  canSeeContacts: boolean
+) {
+  if (canSeeContacts) return booking;
+  const { client, broker, brokerId, ...rest } = booking;
+  return rest;
+}
+
 // GET /api/apartments - список квартир с фильтрацией
 apartmentsRouter.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -79,6 +103,7 @@ apartmentsRouter.get('/', async (req: Request, res: Response): Promise<void> => 
               name: true,
               city: true,
               address: true,
+              developerId: true,
             },
           },
           bookings: {
@@ -89,6 +114,7 @@ apartmentsRouter.get('/', async (req: Request, res: Response): Promise<void> => 
               id: true,
               status: true,
               expiresAt: true,
+              brokerId: true,
               client: {
                 select: {
                   firstName: true,
@@ -107,8 +133,15 @@ apartmentsRouter.get('/', async (req: Request, res: Response): Promise<void> => 
       prisma.apartment.count({ where }),
     ]);
 
+    const redactedApartments = apartments.map((apt) => ({
+      ...apt,
+      bookings: apt.bookings.map((booking) =>
+        redactBooking(booking, canSeeBookingContacts(req.user, apt.project.developerId, booking.brokerId))
+      ),
+    }));
+
     res.json({
-      apartments,
+      apartments: redactedApartments,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -161,7 +194,11 @@ apartmentsRouter.get('/:id', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    res.json(apartment);
+    const redactedBookings = apartment.bookings.map((booking) =>
+      redactBooking(booking, canSeeBookingContacts(req.user, apartment.project.developerId, booking.brokerId))
+    );
+
+    res.json({ ...apartment, bookings: redactedBookings });
   } catch (error) {
     console.error('Get apartment error:', error);
     res.status(500).json({ error: 'Ошибка получения квартиры' });

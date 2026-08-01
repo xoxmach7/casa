@@ -1,8 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
 import { fileStorageService } from '../services/file-storage.service';
+import { detectImageExtension } from '../lib/image-sniff';
 
 export const publicUploadsRouter = Router();
 
@@ -48,9 +48,20 @@ publicUploadsRouter.post('/', handleUpload, async (req: Request, res: Response):
       return;
     }
 
+    // The client-supplied mimetype/filename are fully attacker-controlled —
+    // derive the real extension from the file's actual magic bytes so a
+    // renamed HTML/script payload can't be stored (and later served) as if
+    // it were an image.
+    for (const file of files) {
+      if (!detectImageExtension(file.buffer)) {
+        res.status(400).json({ error: 'Файл не является изображением поддерживаемого формата (jpeg/png/webp)' });
+        return;
+      }
+    }
+
     const urls = await Promise.all(
       files.map((file) => {
-        const ext = path.extname(file.originalname) || '';
+        const ext = detectImageExtension(file.buffer)!;
         const objectPath = `property-leads/${uuidv4()}${ext}`;
         return fileStorageService.uploadFile(file, objectPath);
       })

@@ -17,6 +17,12 @@ function buildApp() {
   return app;
 }
 
+const REAL_JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('fake-jpg-body')]);
+const REAL_PNG_BYTES = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from('fake-png-body'),
+]);
+
 describe('POST /api/public/uploads', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -34,8 +40,8 @@ describe('POST /api/public/uploads', () => {
     const app = buildApp();
     const res = await request(app)
       .post('/api/public/uploads')
-      .attach('files', Buffer.from('fake-jpg-bytes'), { filename: 'a.jpg', contentType: 'image/jpeg' })
-      .attach('files', Buffer.from('fake-png-bytes'), { filename: 'b.png', contentType: 'image/png' });
+      .attach('files', REAL_JPEG_BYTES, { filename: 'a.jpg', contentType: 'image/jpeg' })
+      .attach('files', REAL_PNG_BYTES, { filename: 'b.png', contentType: 'image/png' });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -49,6 +55,19 @@ describe('POST /api/public/uploads', () => {
     const res = await request(app)
       .post('/api/public/uploads')
       .attach('files', Buffer.from('not an image'), { filename: 'evil.exe', contentType: 'application/x-msdownload' });
+
+    expect(res.status).toBe(400);
+    expect(fileStorageService.uploadFile).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-image file spoofed with an image mimetype and extension', async () => {
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/public/uploads')
+      .attach('files', Buffer.from('<script>alert(document.cookie)</script>'), {
+        filename: 'photo.jpg',
+        contentType: 'image/jpeg',
+      });
 
     expect(res.status).toBe(400);
     expect(fileStorageService.uploadFile).not.toHaveBeenCalled();

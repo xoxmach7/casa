@@ -165,7 +165,7 @@ const BuyerHome = () => {
 
       <CategoryTabs active="secondary" />
 
-      <div className="px-4 space-y-3 pb-6">
+      <div className="px-8 space-y-3 pb-6">
         {/* Budget Card */}
         <div className="casa-card p-4 pb-3.5">
           <p className="text-[13px] font-medium text-muted-foreground mb-3">

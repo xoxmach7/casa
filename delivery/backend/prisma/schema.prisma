@@ -60,6 +60,8 @@ model User {
   propertyInterests    ClientPropertyInterest[]
   coordinatingDeals    SecondaryDeal[]
   ownedDealRisks       DealRisk[]
+  authoredMortgageRules  MortgageRuleVersion[] @relation("MortgageRuleAuthor")
+  approvedMortgageRules  MortgageRuleVersion[] @relation("MortgageRuleApprover")
 
   @@map("users")
 }
@@ -96,6 +98,7 @@ model Client {
   scorings             ClientScoring[]
   fixations            Fixation[]
   propertyLinks        ClientPropertyLink[]
+  consents             ClientConsent[]
 
   @@index([brokerId])
   @@index([status])
@@ -2112,4 +2115,137 @@ model DealRisk {
 
   @@index([dealId])
   @@map("deal_risks")
+}
+
+// =========================================
+// CONSENT (CASA Mortgage Pre-Score v1.1 + Vtorichka gap-audits — shared
+// Foundation). Purpose-specific, versioned client consent: a blanket
+// "consent" checkbox is not enough per either handoff package. A revision
+// is immutable once ACTIVE; withdrawal creates a new REVOKED revision
+// rather than mutating the old one.
+// =========================================
+
+enum ConsentRevisionStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  REVOKED
+  SUPERSEDED
+}
+
+model ClientConsent {
+  id        String   @id @default(cuid())
+  clientId  String   @map("client_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  revisions ConsentRevision[]
+
+  @@index([clientId])
+  @@map("client_consents")
+}
+
+model ConsentRevision {
+  id                 String                @id @default(cuid())
+  consentId          String                @map("consent_id")
+  purposeCode        String                @map("purpose_code") // e.g. "mortgage_prescore", "vtorichka_deal_room"
+  purposeDescription String                @map("purpose_description") @db.Text
+  allowedOperations  String[]              @map("allowed_operations")
+  dataCategories     String[]              @map("data_categories")
+  sourceChannel      String?               @map("source_channel")
+  legalTextVersion   String                @map("legal_text_version")
+  legalTextHash      String?               @map("legal_text_hash")
+  evidenceType       String?               @map("evidence_type")
+  evidenceRef        String?               @map("evidence_ref")
+  status             ConsentRevisionStatus @default(DRAFT)
+  grantedAt          DateTime?             @map("granted_at")
+  expiresAt          DateTime?             @map("expires_at")
+  revokedAt          DateTime?             @map("revoked_at")
+  supersedesId       String?               @map("supersedes_id")
+  createdAt          DateTime              @default(now()) @map("created_at")
+
+  consent ClientConsent @relation(fields: [consentId], references: [id], onDelete: Cascade)
+
+  @@index([consentId])
+  @@index([purposeCode, status])
+  @@map("consent_revisions")
+}
+
+// =========================================
+// MORTGAGE RULE VERSIONING (CASA Mortgage Pre-Score v1.1 — Foundation only)
+// Replaces the flat, unversioned MortgageProgram for future use. Critically:
+// regulatory KDN formula, bank program affordability, and CASA's internal
+// safety buffer are three SEPARATE rule types — the audited spec's central
+// finding was that mixing them into one ratio (as the live scoring.service.ts
+// currently does) hides which authority a number actually comes from.
+// Not wired to any route yet — schema only, per user decision.
+// =========================================
+
+enum MortgageRuleType {
+  REGULATORY_METRIC       // e.g. КДН formula per НБК №52 — Legal-owned
+  PROGRAM_AFFORDABILITY   // bank/product-specific eligibility — Bank Partner-owned
+  CASA_SAFETY_POLICY      // internal diagnostic buffer — Product-owned, never a hard bank rule
+}
+
+enum MortgageRuleStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  ACTIVE
+  RETIRED
+  REJECTED
+}
+
+model MortgageRuleVersion {
+  id            String              @id @default(cuid())
+  ruleType      MortgageRuleType    @map("rule_type")
+  bankName      String?             @map("bank_name")
+  programName   String?             @map("program_name")
+  versionNumber Int                 @map("version_number")
+  status        MortgageRuleStatus  @default(DRAFT)
+  // Structured groups from the spec (identity/property/borrower/income/
+  // credit/affordability/pricing/governance/safety) — kept as JSON payload
+  // rather than one column per nested bank field; governance metadata below
+  // is real columns so lifecycle/audit queries don't need to parse JSON.
+  payload       Json
+  sourceUrl     String?             @map("source_url")
+  sourceHash    String?             @map("source_hash")
+  effectiveFrom DateTime?           @map("effective_from")
+  effectiveTo   DateTime?           @map("effective_to")
+  authorId      String?             @map("author_id")
+  approverId    String?             @map("approver_id")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  author   User? @relation("MortgageRuleAuthor", fields: [authorId], references: [id])
+  approver User? @relation("MortgageRuleApprover", fields: [approverId], references: [id])
+
+  // Author != approver is a spec requirement (self-approval forbidden) —
+  // enforced at the service layer, not expressible as a DB constraint.
+  @@unique([bankName, programName, ruleType, versionNumber])
+  @@index([ruleType, status])
+  @@map("mortgage_rule_versions")
+}
+
+enum ReasonCodeSeverity {
+  BLOCKING
+  WARNING
+  INFO
+}
+
+// Immutable registry (11.3 Reason Code Registry) — an unversioned code
+// string in application logic can't be contract-tested; this makes the set
+// of valid codes queryable and auditable.
+model ReasonCode {
+  code        String             @id
+  dimension   String
+  severity    ReasonCodeSeverity
+  messageKey  String             @map("message_key")
+  description String             @db.Text
+  nextStep    String?            @map("next_step") @db.Text
+  isActive    Boolean            @default(true) @map("is_active")
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  @@map("reason_codes")
 }

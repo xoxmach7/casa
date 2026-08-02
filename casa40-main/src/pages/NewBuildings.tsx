@@ -3,6 +3,7 @@ import { Plus, Loader2 } from 'lucide-react';
 import casaLogo from '@/assets/casa-logo.png';
 import { usePublishedProjects } from '@/hooks/useProjects';
 import { formatPrice } from '@/components/PropertyCard';
+import CategoryTabs from '@/components/CategoryTabs';
 
 const buildingStatusLabel: Record<string, string> = {
   UNDER_CONSTRUCTION: 'Строится',
@@ -30,19 +31,7 @@ const NewBuildings = () => {
         </div>
       </header>
 
-      <div className="px-4 pb-2">
-        <div className="flex gap-1 p-1 rounded-full bg-accent w-fit">
-          <button
-            onClick={() => navigate('/')}
-            className="px-4 py-1.5 rounded-full text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Вторичка
-          </button>
-          <button className="px-4 py-1.5 rounded-full text-[13px] font-medium bg-card shadow-sm text-foreground">
-            Новостройки
-          </button>
-        </div>
-      </div>
+      <CategoryTabs active="new-builds" />
 
       <div className="px-4 pt-3 pb-6 space-y-3">
         {isLoading && (
@@ -92,7 +81,7 @@ const NewBuildings = () => {
                 <p className="text-sm text-muted-foreground">Застройщик: {project.developerName}</p>
               )}
               <button
-                className="w-full h-14 bg-primary text-primary-foreground rounded-2xl font-medium active:scale-[0.98] transition-all mt-2"
+                className="casa-btn-primary mt-2"
                 onClick={(e) => { e.stopPropagation(); navigate(`/novostroyki/${project.id}`); }}
               >
                 Смотреть квартиры

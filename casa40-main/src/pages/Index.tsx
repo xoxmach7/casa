@@ -7,6 +7,7 @@ import FilterSheet, { defaultFilters, type Filters } from '@/components/FilterSh
 import PublicMap from '@/components/PublicMap';
 import casaLogo from '@/assets/casa-logo.png';
 import { usePublishedProperties } from '@/hooks/useProperties';
+import CategoryTabs from '@/components/CategoryTabs';
 
 const FALLBACK_MAX = 80000000;
 const SLIDER_MIN = 10000000;
@@ -160,19 +161,7 @@ const BuyerHome = () => {
         </div>
       </header>
 
-      <div className="px-4 pb-2">
-        <div className="flex gap-1 p-1 rounded-full bg-accent w-fit">
-          <button className="px-4 py-1.5 rounded-full text-[13px] font-medium bg-card shadow-sm text-foreground">
-            Вторичка
-          </button>
-          <button
-            onClick={() => navigate('/novostroyki')}
-            className="px-4 py-1.5 rounded-full text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Новостройки
-          </button>
-        </div>
-      </div>
+      <CategoryTabs active="secondary" />
 
       <div className="px-4 space-y-3 pb-6">
         {/* Budget Card */}

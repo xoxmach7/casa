@@ -143,7 +143,7 @@ const NewBuildingDetail = () => {
 
         <a
           href={`tel:${phoneDigits}`}
-          className="w-full h-14 bg-primary text-primary-foreground rounded-2xl font-medium active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+          className="casa-btn-primary flex items-center justify-center gap-2"
         >
           <Phone className="w-4 h-4" />
           Позвонить застройщику

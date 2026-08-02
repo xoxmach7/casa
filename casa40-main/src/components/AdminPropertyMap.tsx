@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin } from 'lucide-react';
-import { TOMTOM_API_KEY, LEAFLET_MARKER_ICON_URL, LEAFLET_MARKER_ICON_RETINA_URL, LEAFLET_MARKER_SHADOW_URL } from '@/data/constants';
+import { LEAFLET_MARKER_ICON_URL, LEAFLET_MARKER_ICON_RETINA_URL, LEAFLET_MARKER_SHADOW_URL } from '@/data/constants';
 
 // Fix default marker icon for Vite/production builds
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -37,13 +36,12 @@ function LeafletMap({ lat, lng, onCoordinateChange }: Props) {
       zoomControl: true,
     });
 
-    L.tileLayer(
-      `https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=${TOMTOM_API_KEY}`,
-      {
-        attribution: '&copy; <a href="https://www.tomtom.com">TomTom</a>',
-        maxZoom: 19,
-      },
-    ).addTo(map);
+    // Same TomTom-key-is-referer-restricted issue as PublicMap.tsx — see
+    // that file's comment. OSM tiles used here too until it's resolved.
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
 
     if (hasPin) {
       markerRef.current = L.marker([lat, lng]).addTo(map);
@@ -61,7 +59,13 @@ function LeafletMap({ lat, lng, onCoordinateChange }: Props) {
 
     mapRef.current = map;
 
+    const resizeObserver = new ResizeObserver(() => {
+      mapRef.current?.invalidateSize();
+    });
+    resizeObserver.observe(containerRef.current);
+
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
@@ -92,17 +96,6 @@ function LeafletMap({ lat, lng, onCoordinateChange }: Props) {
 }
 
 const AdminPropertyMap = ({ lat, lng, onCoordinateChange }: Props) => {
-  if (!TOMTOM_API_KEY) {
-    return (
-      <div className="rounded-xl bg-accent/50 border border-border/30 flex flex-col items-center justify-center gap-1.5 py-8 px-4 text-center">
-        <MapPin className="w-5 h-5 text-muted-foreground/40" />
-        <p className="text-[11px] text-muted-foreground/60">
-          Карта недоступна — не задан VITE_TOMTOM_API_KEY
-        </p>
-      </div>
-    );
-  }
-
   return <LeafletMap lat={lat} lng={lng} onCoordinateChange={onCoordinateChange} />;
 };
 

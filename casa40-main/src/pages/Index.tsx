@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, CheckCircle, SlidersHorizontal, Loader2, Maximize2 } from 'lucide-react';
+import { Plus, CheckCircle, SlidersHorizontal, Loader2, Maximize2, X } from 'lucide-react';
 import { formatPrice } from '@/components/PropertyCard';
 import TrustLabel from '@/components/TrustLabel';
 import FilterSheet, { defaultFilters, type Filters } from '@/components/FilterSheet';
@@ -19,6 +19,7 @@ const BuyerHome = () => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(defaultFilters);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const fitAllRef = useRef<(() => void) | null>(null);
 
   const { data: published = [], isLoading } = usePublishedProperties();
@@ -227,22 +228,41 @@ const BuyerHome = () => {
           </div>
         </div>
 
-        {/* Map + Property Card */}
-        <div className="rounded-2xl overflow-hidden border border-border relative z-0" style={{ boxShadow: 'var(--shadow-card)' }}>
-          <div className="relative h-[220px]">
+        {/* Map + Property Card — bounded rectangle, centered, independent of viewport width */}
+        <div className="max-w-xl mx-auto rounded-2xl overflow-hidden border border-border relative z-0" style={{ boxShadow: 'var(--shadow-card)' }}>
+          <div className={mapFullscreen ? 'fixed inset-0 z-[2000] bg-background' : 'relative h-[220px]'}>
             <PublicMap
               properties={mapMarkers}
               onMarkerClick={handlePinClick}
               selectedId={active?.id}
               onFitAllRef={fitAllRef}
             />
-            <button
-              onClick={() => fitAllRef.current?.()}
-              className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1 px-2 py-1 rounded-md bg-card/90 backdrop-blur-sm border border-border text-[11px] font-medium text-foreground shadow-sm hover:bg-card transition-colors"
-            >
-              <Maximize2 className="w-3 h-3" />
-              Все
-            </button>
+            <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5">
+              <button
+                onClick={() => fitAllRef.current?.()}
+                className="flex items-center gap-1 px-2 py-1 rounded-md bg-card/90 backdrop-blur-sm border border-border text-[11px] font-medium text-foreground shadow-sm hover:bg-card transition-colors"
+              >
+                <Maximize2 className="w-3 h-3" />
+                Все
+              </button>
+              {mapFullscreen ? (
+                <button
+                  onClick={() => setMapFullscreen(false)}
+                  aria-label="Свернуть карту"
+                  className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 backdrop-blur-sm border border-border text-foreground shadow-sm hover:bg-card transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setMapFullscreen(true)}
+                  aria-label="Развернуть карту на весь экран"
+                  className="w-7 h-7 flex items-center justify-center rounded-md bg-card/90 backdrop-blur-sm border border-border text-foreground shadow-sm hover:bg-card transition-colors"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {active && (

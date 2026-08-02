@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { TOMTOM_API_KEY } from '@/data/constants';
 
 export interface MapProperty {
   id: string;
@@ -80,7 +79,20 @@ const PublicMap = ({ properties, onMarkerClick, selectedId, onFitAllRef }: Props
 
     mapRef.current = map;
 
+    // Leaflet measures its container's pixel size exactly once at init. If
+    // that size is wrong or changes afterward (sibling content loading
+    // async, a fullscreen toggle, a card above resizing once react-query
+    // data arrives), the map keeps rendering at the stale size until told
+    // otherwise — this is what caused the map to appear to "bleed" out of
+    // its rounded container. A ResizeObserver + invalidateSize keeps it
+    // correct whenever the container's actual size changes.
+    const resizeObserver = new ResizeObserver(() => {
+      mapRef.current?.invalidateSize();
+    });
+    resizeObserver.observe(containerRef.current);
+
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
       markersRef.current.clear();
@@ -143,8 +155,6 @@ const PublicMap = ({ properties, onMarkerClick, selectedId, onFitAllRef }: Props
       marker.setZIndexOffset(isSelected ? 1000 : 0);
     });
   }, [selectedId]);
-
-  if (!TOMTOM_API_KEY) return null;
 
   return (
     <div

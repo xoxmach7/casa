@@ -54,6 +54,7 @@ model User {
   mortgageApplications MortgageApplication[] @relation("BrokerApplications")
   fixations            Fixation[]
   testAttempts         TestAttempt[]
+  auditLogs            AuditLog[]
 
   @@map("users")
 }
@@ -1482,6 +1483,41 @@ model SystemSettings {
   updatedAt   DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+// =========================================
+// AUDIT LOG (CASA Developer Handoff v2.0 — Foundation)
+// Append-only для обычных ролей: удаление и правка старых записей
+// запрещены на уровне приложения (нет DELETE/UPDATE роута), не БД.
+// =========================================
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  actorUserId     String?  @map("actor_user_id")
+  actorRole       String?  @map("actor_role")
+  // HUMAN | AI — AI-действия обязаны маркироваться отдельно и не могут
+  // менять критические статусы (Green, deposit, booking, notary, sold/failed).
+  actorType       String   @default("HUMAN") @map("actor_type")
+  aiModel         String?  @map("ai_model")
+  aiPromptVersion String?  @map("ai_prompt_version")
+  action          String
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id")
+  requestId       String?  @map("request_id")
+  source          String?  // api | system | import | ai
+  oldValues       Json?    @map("old_values")
+  newValues       Json?    @map("new_values")
+  reason          String?  @db.Text
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 // =========================================

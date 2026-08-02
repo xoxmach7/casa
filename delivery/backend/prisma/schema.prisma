@@ -55,6 +55,8 @@ model User {
   fixations            Fixation[]
   testAttempts         TestAttempt[]
   auditLogs            AuditLog[]
+  configVersions       ConfigVersion[]
+  fileAssets           FileAsset[]
 
   @@map("users")
 }
@@ -1518,6 +1520,59 @@ model AuditLog {
   @@index([actorUserId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// Версионируемые справочники/коэффициенты (валюационные модификаторы,
+// ипотечные пороги, комиссионные тарифы) — CASA Developer Handoff v2.0
+// требует, чтобы эти значения не были зашиты в код и хранили историю.
+// Значение считается активным на дату, если effective_from <= now
+// и (effective_to IS NULL OR effective_to > now).
+model ConfigVersion {
+  id            String    @id @default(cuid())
+  key           String // "valuation.modifiers.almaty", "mortgage.otbasy.thresholds", ...
+  scope         String? // доп. разрез: city_id, bank_id и т.п., свободный текст
+  value         Json
+  effectiveFrom DateTime  @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  isActive      Boolean   @default(true) @map("is_active")
+  reason        String?   @db.Text
+  createdBy     String?   @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  creator User? @relation(fields: [createdBy], references: [id])
+
+  @@index([key, effectiveFrom])
+  @@index([key, isActive])
+  @@map("config_versions")
+}
+
+// Единая точка ссылки на файлы в закрытом хранилище — CASA Developer
+// Handoff v2.0 запрещает публичные бессрочные URL для критичных файлов
+// (документы сделки, подтверждающие фото/сканы). PropertyMedia/DealDocument
+// и т.п. ссылаются сюда вместо хранения url-строки напрямую.
+// NB: существующие маршруты загрузки (uploads.routes.ts, public-uploads.routes.ts)
+// пока не переведены на FileAsset — это отдельная, более рискованная миграция
+// (нужно не сломать уже открытые в проде публичные URL), см. gap-audit.
+model FileAsset {
+  id           String   @id @default(cuid())
+  bucket       String
+  objectKey    String   @map("object_key")
+  originalName String?  @map("original_name")
+  mimeType     String?  @map("mime_type")
+  sizeBytes    Int?     @map("size_bytes")
+  checksum     String?
+  // Тип и ID сущности-владельца (property_media, deal_document, client_document...)
+  ownerType    String?  @map("owner_type")
+  ownerId      String?  @map("owner_id")
+  uploadedBy   String?  @map("uploaded_by")
+  isPublic     Boolean  @default(false) @map("is_public")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  uploader User? @relation(fields: [uploadedBy], references: [id])
+
+  @@index([ownerType, ownerId])
+  @@index([uploadedBy])
+  @@map("file_assets")
 }
 
 // =========================================

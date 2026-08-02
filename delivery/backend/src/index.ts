@@ -39,6 +39,7 @@ import { crmPropertiesRouter } from './routes/crm-properties.routes';
 import { buyersRouter } from './routes/buyers.routes';
 import { selectionsRouter } from './routes/selections.routes';
 import { fixationsRouter } from './routes/fixations.routes';
+import { valuationsRouter } from './routes/valuations.routes';
 import { scoringRouter } from './routes/scoring.routes';
 import { uploadsRouter } from './routes/uploads.routes';
 import { analyticsRouter } from './routes/analytics.routes';
@@ -166,6 +167,7 @@ app.use('/api/crm-properties', crmPropertiesRouter);
 app.use('/api/buyers', buyersRouter);
 app.use('/api/selections', selectionsRouter);
 app.use('/api/fixations', fixationsRouter);
+app.use('/api/valuations', valuationsRouter);
 app.use('/api/scoring', scoringRouter);
 app.use('/api/uploads', uploadsRouter);     // CRM property image/document uploads (local storage)
 app.use('/api/analytics', analyticsRouter);

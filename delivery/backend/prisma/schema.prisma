@@ -57,6 +57,7 @@ model User {
   auditLogs            AuditLog[]
   configVersions       ConfigVersion[]
   fileAssets           FileAsset[]
+  reviewedValuations   ValuationVersion[]
 
   @@map("users")
 }
@@ -1436,6 +1437,7 @@ model CrmProperty {
   customFieldValues     CustomFieldValue[]
   events                Event[]
   viewingRequests       ViewingRequest[]
+  valuations            Valuation[]
 
   aiRecommendation      String?         @map("ai_recommendation") @db.Text
 
@@ -1677,4 +1679,156 @@ model ViewingRequest {
 
   @@index([propertyId])
   @@map("viewing_requests")
+}
+
+// =========================================
+// VALUATION (CASA Developer Handoff v2.0 — Valuation module)
+// Путь: submitted → preliminary_calculation → preliminary_ready |
+// manual_review_required → comparable_collection → human_review →
+// confirmed → accepted | accepted_with_price_condition | rejected.
+// Hard guard из 02_CASA_Valuation_Spec: предварительная оценка ≠ принятие
+// объекта; confirmed-версия неизменяема (isImmutable) после подтверждения.
+// =========================================
+
+enum ValuationStatus {
+  SUBMITTED
+  PRELIMINARY_CALCULATION
+  PRELIMINARY_READY
+  MANUAL_REVIEW_REQUIRED
+  COMPARABLE_COLLECTION
+  HUMAN_REVIEW
+  CONFIRMED
+  ACCEPTED
+  ACCEPTED_WITH_PRICE_CONDITION
+  REJECTED
+}
+
+enum ValuationLiquidity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ValuationConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ValuationDecision {
+  ACCEPTED
+  ACCEPTED_WITH_PRICE_CONDITION
+  REJECTED
+}
+
+enum ComparableCompatibility {
+  DIRECT          // Прямой аналог (тот же ЖК/адрес)
+  CLOSE           // Близкий аналог (тот же район/класс)
+  MARKET_CONTEXT  // Только городская аналитика — не заменяет прямые аналоги
+}
+
+model Valuation {
+  id             String          @id @default(cuid())
+  propertyId     String          @map("property_id")
+  status         ValuationStatus @default(SUBMITTED)
+  currentVersion Int             @default(0) @map("current_version")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  property CrmProperty        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  versions ValuationVersion[]
+
+  @@index([propertyId])
+  @@index([status])
+  @@map("valuations")
+}
+
+// Каждое подтверждение/пересчёт создаёт новую версию, а не правит старую —
+// confirmed-версия immutable (раздел 9 acceptance criteria спеки).
+model ValuationVersion {
+  id            String @id @default(cuid())
+  valuationId   String @map("valuation_id")
+  versionNumber Int    @map("version_number")
+
+  preliminaryLow  Decimal? @map("preliminary_low") @db.Decimal(15, 2)
+  preliminaryHigh Decimal? @map("preliminary_high") @db.Decimal(15, 2)
+
+  confirmedLow           Decimal? @map("confirmed_low") @db.Decimal(15, 2)
+  confirmedHigh          Decimal? @map("confirmed_high") @db.Decimal(15, 2)
+  urgentLow              Decimal? @map("urgent_low") @db.Decimal(15, 2)
+  urgentHigh             Decimal? @map("urgent_high") @db.Decimal(15, 2)
+  recommendedLaunchPrice Decimal? @map("recommended_launch_price") @db.Decimal(15, 2)
+  maxLaunchPrice         Decimal? @map("max_launch_price") @db.Decimal(15, 2)
+
+  liquidity      ValuationLiquidity?
+  confidence     ValuationConfidence?
+  decision       ValuationDecision?
+  reviewerReason String?              @map("reviewer_reason") @db.Text
+  reviewerId     String?              @map("reviewer_id")
+  reviewedAt     DateTime?            @map("reviewed_at")
+
+  // true только после confirm — дальше версия не редактируется, только
+  // создаётся новая (раздел "Acceptance criteria": изменение аналогов или
+  // модификаторов создаёт новую версию результата).
+  isImmutable Boolean @default(false) @map("is_immutable")
+
+  marketReferenceId String? @map("market_reference_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  valuation       Valuation        @relation(fields: [valuationId], references: [id], onDelete: Cascade)
+  reviewer        User?            @relation(fields: [reviewerId], references: [id])
+  marketReference MarketReference? @relation(fields: [marketReferenceId], references: [id])
+  comparables     Comparable[]
+
+  @@unique([valuationId, versionNumber])
+  @@index([valuationId])
+  @@map("valuation_versions")
+}
+
+model Comparable {
+  id                 String                  @id @default(cuid())
+  valuationVersionId String                  @map("valuation_version_id")
+  sourceRef          String                  @map("source_ref")
+  checkedAt          DateTime                @map("checked_at")
+  askingPrice        Decimal                 @map("asking_price") @db.Decimal(15, 2)
+  totalArea          Decimal                 @map("total_area") @db.Decimal(10, 2)
+  pricePerM2         Decimal?                @map("price_per_m2") @db.Decimal(15, 2)
+  compatibility      ComparableCompatibility
+  included           Boolean                 @default(true)
+  reasonExcluded      String?                @map("reason_excluded") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  valuationVersion ValuationVersion @relation(fields: [valuationVersionId], references: [id], onDelete: Cascade)
+
+  // Уникально valuation_version_id + normalized_source_ref (раздел 4 спеки);
+  // нормализация (trim/lowercase) — на уровне сервиса перед записью.
+  @@unique([valuationVersionId, sourceRef])
+  @@index([valuationVersionId])
+  @@map("comparables")
+}
+
+// Базовый рыночный ориентир (город → ЖК/адрес → комнаты → ремонт, fallback —
+// район) для предварительного расчёта. Отдельно от ConfigVersion: это сырые
+// рыночные данные с датой проверки и сроком годности, а не коэффициент.
+model MarketReference {
+  id                   String   @id @default(cuid())
+  cityId               String   @map("city_id")
+  districtId           String?  @map("district_id")
+  residentialComplexId String?  @map("residential_complex_id")
+  rooms                Int?
+  renovationState      String?  @map("renovation_state")
+  basePricePerM2Low    Decimal  @map("base_price_per_m2_low") @db.Decimal(15, 2)
+  basePricePerM2High   Decimal  @map("base_price_per_m2_high") @db.Decimal(15, 2)
+  sourceDate           DateTime @map("source_date")
+  validUntil           DateTime? @map("valid_until")
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  valuationVersions ValuationVersion[]
+
+  @@index([cityId, residentialComplexId, rooms])
+  @@index([cityId, districtId])
+  @@map("market_references")
 }

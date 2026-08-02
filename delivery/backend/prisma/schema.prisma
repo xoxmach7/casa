@@ -59,6 +59,8 @@ model User {
   fileAssets           FileAsset[]
   reviewedValuations   ValuationVersion[]
   propertyInterests    ClientPropertyInterest[]
+  coordinatingDeals    SecondaryDeal[]
+  ownedDealRisks       DealRisk[]
 
   @@map("users")
 }
@@ -1225,6 +1227,7 @@ model Buyer {
   shows  Show[]
   offers Offer[] // New
   propertyInterests ClientPropertyInterest[]
+  secondaryDeals    SecondaryDeal[]
 
   @@index([brokerId])
   @@index([status])
@@ -1296,7 +1299,8 @@ model Offer {
   // Relations
   property CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   buyer    Buyer       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  
+  secondaryDeal SecondaryDeal?
+
   @@index([propertyId])
   @@index([buyerId])
   @@map("crm_offers")
@@ -1476,6 +1480,7 @@ model CrmProperty {
   events                Event[]
   viewingRequests       ViewingRequest[]
   valuations            Valuation[]
+  secondaryDeals        SecondaryDeal[]
   propertyInterests     ClientPropertyInterest[]
 
   aiRecommendation      String?         @map("ai_recommendation") @db.Text
@@ -1907,4 +1912,202 @@ model ClientPropertyInterest {
   @@index([buyerId])
   @@index([brokerId])
   @@map("client_property_interests")
+}
+
+// =========================================
+// SECONDARY DEAL / DEAL ROOM (CASA Developer Handoff v2.0, 04_CASA_Deal_Room_Spec)
+// НЕ путать с существующей моделью Deal — та обслуживает живую фичу
+// брокерского Kanban + ИИ-агента (DealAgentAction, коммит 02e51ea) и
+// работает по совсем другим бизнес-правилам. SecondaryDeal — отдельный
+// контур строго для вторички, открывается первым формальным офером и не
+// принимает задаток (CASA не принимает деньги, раздел 1 спеки).
+//
+// Канонический путь: offer_submitted → seller_review → counteroffer_sent |
+// price_agreed → precheck_in_progress → yellow_blocked | green_1 → green_2 →
+// deposit_agreement_drafting → deposit_agreement_sent → deposit_agreement_signed
+// → deposit_transfer_pending → booking_active → payment_route_in_progress →
+// ready_for_notary → notary_scheduled → registration_or_disbursement →
+// sold | failed.
+// =========================================
+
+enum DealRoomStage {
+  OFFER_SUBMITTED
+  SELLER_REVIEW
+  COUNTEROFFER_SENT
+  PRICE_AGREED
+  PRECHECK_IN_PROGRESS
+  YELLOW_BLOCKED
+  GREEN_1
+  GREEN_2
+  DEPOSIT_AGREEMENT_DRAFTING
+  DEPOSIT_AGREEMENT_SENT
+  DEPOSIT_AGREEMENT_SIGNED
+  DEPOSIT_TRANSFER_PENDING
+  BOOKING_ACTIVE
+  PAYMENT_ROUTE_IN_PROGRESS
+  READY_FOR_NOTARY
+  NOTARY_SCHEDULED
+  REGISTRATION_OR_DISBURSEMENT
+  SOLD
+  FAILED
+}
+
+enum DealRoomTrafficLight {
+  RED
+  YELLOW
+  GREEN_1
+  GREEN_2
+}
+
+enum DealRoomPaymentRoute {
+  CASH
+  BVU
+  OTBASY
+  MIXED
+}
+
+enum DealDepositStatus {
+  NOT_ALLOWED
+  DRAFTING
+  SENT
+  SIGNED
+  TRANSFER_PENDING
+  RECEIVED
+  CANCELLED
+}
+
+enum DealBookingStatus {
+  NOT_CREATED
+  PENDING_CONFIRMATION
+  ACTIVE
+  EXPIRING_SOON
+  EXTENDED
+  EXPIRED
+  CANCELLED
+  CONVERTED_TO_SOLD
+}
+
+enum DealRiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model SecondaryDeal {
+  id            String               @id @default(cuid())
+  propertyId    String               @map("property_id")
+  buyerId       String               @map("buyer_id")
+  offerId       String               @unique @map("offer_id")
+  coordinatorId String?              @map("coordinator_id")
+  stage         DealRoomStage        @default(OFFER_SUBMITTED)
+  trafficLight  DealRoomTrafficLight @default(RED) @map("traffic_light")
+  paymentRoute  DealRoomPaymentRoute? @map("payment_route")
+  finalPrice    Decimal?             @map("final_price") @db.Decimal(15, 2)
+  version       Int                  @default(1)
+  outcomeAt     DateTime?            @map("outcome_at")
+  outcomeReason String?              @map("outcome_reason") @db.Text
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  property    CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  buyer       Buyer       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  offer       Offer       @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  coordinator User?       @relation(fields: [coordinatorId], references: [id])
+
+  precheck DealPrecheck?
+  deposit  DealDeposit?
+  booking  DealBooking?
+  risks    DealRisk[]
+
+  // Раздел 5 из 05_CASA_Data_API_Security: не более одного active Deal на
+  // property_id + buyer_id — гарантируется на уровне сервиса (частичный
+  // уникальный индекс по активным стадиям не выразим декларативно в Prisma).
+  @@index([propertyId])
+  @@index([buyerId])
+  @@index([stage])
+  @@map("secondary_deals")
+}
+
+// Раздел 3: "Покупатель, продавец, объект, маршрут оплаты, completeness,
+// traffic light".
+model DealPrecheck {
+  id                    String   @id @default(cuid())
+  dealId                String   @unique @map("deal_id")
+  buyerVerified         Boolean  @default(false) @map("buyer_verified")
+  sellerVerified        Boolean  @default(false) @map("seller_verified")
+  propertyVerified      Boolean  @default(false) @map("property_verified")
+  paymentRouteConfirmed Boolean  @default(false) @map("payment_route_confirmed")
+  completenessPercent   Int      @default(0) @map("completeness_percent")
+  hasBlockingRisk       Boolean  @default(false) @map("has_blocking_risk")
+  missingAmount         Decimal  @default(0) @map("missing_amount") @db.Decimal(15, 2)
+  mortgagePartConfirmed Boolean  @default(true) @map("mortgage_part_confirmed") // true (n/a) unless route requires financing
+  notes                 String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  deal SecondaryDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@map("deal_prechecks")
+}
+
+// Раздел 6: not_allowed → drafting → sent → signed → transfer_pending →
+// received | cancelled. Раздел 7: booking_active требует signed + proof +
+// coordinator_verification=true. CASA не принимает задаток напрямую —
+// proofFileAssetId ссылается на подтверждающий документ (банковский перевод,
+// расписка), не на сам платёж.
+model DealDeposit {
+  id                 String            @id @default(cuid())
+  dealId             String            @unique @map("deal_id")
+  amount             Decimal?          @db.Decimal(15, 2)
+  contractRef        String?           @map("contract_ref")
+  status             DealDepositStatus @default(NOT_ALLOWED)
+  proofType          String?           @map("proof_type") // bank_transfer | receipt | seller_confirmation | other
+  proofFileAssetId   String?           @map("proof_file_asset_id")
+  coordinatorVerified Boolean          @default(false) @map("coordinator_verified")
+  verifiedBy         String?           @map("verified_by")
+  verifiedAt         DateTime?         @map("verified_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  deal SecondaryDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@map("deal_deposits")
+}
+
+// Раздел 6: not_created → pending_confirmation → active → expiring_soon →
+// extended → expired | cancelled | converted_to_sold. По умолчанию срок
+// брони зависит от маршрута оплаты (cash 3-7 дн., BVU 10-14, Otbasy 14-30 —
+// см. booking.cash_days/bvu_days/otbasy_days в ConfigVersion).
+model DealBooking {
+  id                  String             @id @default(cuid())
+  dealId              String             @unique @map("deal_id")
+  status              DealBookingStatus  @default(NOT_CREATED)
+  expiryAt            DateTime?          @map("expiry_at")
+  coordinatorVerified Boolean            @default(false) @map("coordinator_verified")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  deal SecondaryDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@map("deal_bookings")
+}
+
+model DealRisk {
+  id          String           @id @default(cuid())
+  dealId      String           @map("deal_id")
+  category    String
+  severity    DealRiskSeverity @default(MEDIUM)
+  isBlocker   Boolean          @default(false) @map("is_blocker")
+  ownerId     String?          @map("owner_id")
+  dueDate     DateTime?        @map("due_date")
+  resolution  String?          @db.Text
+  resolvedAt  DateTime?        @map("resolved_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  deal  SecondaryDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  owner User?         @relation(fields: [ownerId], references: [id])
+
+  @@index([dealId])
+  @@map("deal_risks")
 }

@@ -41,6 +41,7 @@ import { selectionsRouter } from './routes/selections.routes';
 import { fixationsRouter } from './routes/fixations.routes';
 import { valuationsRouter } from './routes/valuations.routes';
 import { clientPropertyInterestsRouter } from './routes/client-property-interests.routes';
+import { dealRoomRouter } from './routes/deal-room.routes';
 import { scoringRouter } from './routes/scoring.routes';
 import { uploadsRouter } from './routes/uploads.routes';
 import { analyticsRouter } from './routes/analytics.routes';
@@ -170,6 +171,7 @@ app.use('/api/selections', selectionsRouter);
 app.use('/api/fixations', fixationsRouter);
 app.use('/api/valuations', valuationsRouter);
 app.use('/api/client-property-interests', clientPropertyInterestsRouter);
+app.use('/api/deal-room', dealRoomRouter);
 app.use('/api/scoring', scoringRouter);
 app.use('/api/uploads', uploadsRouter);     // CRM property image/document uploads (local storage)
 app.use('/api/analytics', analyticsRouter);

@@ -22,7 +22,7 @@ vi.mock('../lib/prisma', () => ({
   prisma: {
     buyer: { findUnique: vi.fn(), update: vi.fn() },
     crmProperty: { findUnique: vi.fn() },
-    show: { findMany: vi.fn() },
+    show: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     offer: { findMany: vi.fn() },
   },
 }));
@@ -106,6 +106,51 @@ describe('GET /api/buyers/shows/:propertyId', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
+  });
+});
+
+describe('PUT /api/buyers/shows/:id — canonical transition guard', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('404s when the show does not exist', async () => {
+    (prisma.show.findUnique as any).mockResolvedValue(null);
+
+    const app = buildApp();
+    const res = await request(app).put('/api/buyers/shows/missing').send({ status: 'COMPLETED' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('allows the legacy SCHEDULED -> COMPLETED transition (maps to CONFIRMED -> COMPLETED)', async () => {
+    (prisma.show.findUnique as any).mockResolvedValue({ id: 'show_1', status: 'SCHEDULED', propertyId: 'prop_1' });
+    (prisma.show.update as any).mockResolvedValue({ id: 'show_1', status: 'COMPLETED' });
+
+    const app = buildApp();
+    const res = await request(app).put('/api/buyers/shows/show_1').send({ status: 'COMPLETED' });
+
+    expect(res.status).toBe(200);
+    expect(prisma.show.update).toHaveBeenCalled();
+  });
+
+  it('409s an invalid transition out of a terminal legacy status', async () => {
+    (prisma.show.findUnique as any).mockResolvedValue({ id: 'show_1', status: 'CANCELLED', propertyId: 'prop_1' });
+
+    const app = buildApp();
+    const res = await request(app).put('/api/buyers/shows/show_1').send({ status: 'SCHEDULED' });
+
+    expect(res.status).toBe(409);
+    expect(prisma.show.update).not.toHaveBeenCalled();
+  });
+
+  it('allows updating feedback/rating without a status change regardless of current status', async () => {
+    (prisma.show.findUnique as any).mockResolvedValue({ id: 'show_1', status: 'COMPLETED', propertyId: 'prop_1' });
+    (prisma.show.update as any).mockResolvedValue({ id: 'show_1', status: 'COMPLETED', feedback: 'great' });
+
+    const app = buildApp();
+    const res = await request(app).put('/api/buyers/shows/show_1').send({ feedback: 'great', rating: 5 });
+
+    expect(res.status).toBe(200);
+    expect(prisma.show.update).toHaveBeenCalled();
   });
 });
 

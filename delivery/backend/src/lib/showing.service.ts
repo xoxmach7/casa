@@ -33,6 +33,16 @@ export function canTransitionShow(from: CanonicalShowStatus, to: CanonicalShowSt
   return ALLOWED_SHOW_TRANSITIONS[from].includes(to);
 }
 
+// Legacy ShowStatus values (SCHEDULED/COMPLETED/CANCELLED) predate the
+// canonical set and still exist in the DB/live routes — map them onto their
+// canonical equivalent so the guard above can apply to both without a data
+// migration. Values already in the canonical set map to themselves.
+export type LegacyOrCanonicalShowStatus = CanonicalShowStatus | 'SCHEDULED';
+
+export function toCanonicalShowStatus(status: LegacyOrCanonicalShowStatus): CanonicalShowStatus {
+  return status === 'SCHEDULED' ? 'CONFIRMED' : status;
+}
+
 export function isTerminalShowStatus(status: CanonicalShowStatus): boolean {
   return ALLOWED_SHOW_TRANSITIONS[status].length === 0;
 }

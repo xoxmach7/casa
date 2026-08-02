@@ -183,7 +183,11 @@ export const GlazingTypeEnum = z.enum([
     'STANDARD'      // Стандартное
 ]);
 
-export const ShowStatusEnum = z.enum(['SCHEDULED', 'COMPLETED', 'CANCELLED']);
+export const ShowStatusEnum = z.enum([
+    'SCHEDULED', 'COMPLETED', 'CANCELLED', // legacy — kept for backward compatibility
+    'DRAFT', 'REQUESTED', 'AWAITING_SELLER_CONFIRMATION', 'CONFIRMED',
+    'RESCHEDULE_REQUESTED', 'NO_SHOW_BUYER', 'NO_SHOW_SELLER', 'EXPIRED',
+]);
 export const FeedbackSentimentEnum = z.enum(['POSITIVE', 'NEUTRAL', 'NEGATIVE']);
 export const OfferStatusEnum = z.enum(['PENDING', 'ACCEPTED', 'REJECTED']);
 export const BuyerStatusEnum = z.enum(['NEW', 'ACTIVE', 'OFFER_MADE', 'ARCHIVED', 'REFUSAL']);

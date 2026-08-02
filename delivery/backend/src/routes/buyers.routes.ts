@@ -13,6 +13,7 @@ import {
     CreateShowSchema, UpdateShowSchema,
     CreateOfferSchema, UpdateOfferSchema
 } from '../lib/validation.schemas';
+import { canTransitionShow, toCanonicalShowStatus } from '../lib/showing.service';
 
 export const buyersRouter = Router();
 
@@ -208,6 +209,22 @@ buyersRouter.put('/shows/:id', validate(UpdateShowSchema), async (req: Request, 
         if (!existing) {
             res.status(404).json({ error: "Show not found" });
             return;
+        }
+
+        // Гейт канонического стейт-машина показов (03_CASA_Showings_Spec) —
+        // применяется и к legacy-статусам через toCanonicalShowStatus, чтобы
+        // не требовать миграции данных перед включением проверки.
+        if (status && status !== existing.status) {
+            const allowed = canTransitionShow(
+                toCanonicalShowStatus(existing.status as any),
+                toCanonicalShowStatus(status)
+            );
+            if (!allowed) {
+                res.status(409).json({
+                    error: `Недопустимый переход статуса показа: ${existing.status} → ${status}`,
+                });
+                return;
+            }
         }
 
         const show = await prisma.show.update({

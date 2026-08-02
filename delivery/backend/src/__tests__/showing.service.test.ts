@@ -4,8 +4,21 @@ import {
   isTerminalShowStatus,
   hasSchedulingConflict,
   canConfirmSlot,
+  toCanonicalShowStatus,
   ALLOWED_SHOW_TRANSITIONS,
 } from '../lib/showing.service';
+
+describe('toCanonicalShowStatus', () => {
+  it('maps legacy SCHEDULED to canonical CONFIRMED', () => {
+    expect(toCanonicalShowStatus('SCHEDULED')).toBe('CONFIRMED');
+  });
+
+  it('passes through values already in the canonical set unchanged', () => {
+    expect(toCanonicalShowStatus('COMPLETED')).toBe('COMPLETED');
+    expect(toCanonicalShowStatus('CANCELLED')).toBe('CANCELLED');
+    expect(toCanonicalShowStatus('DRAFT')).toBe('DRAFT');
+  });
+});
 
 describe('canTransitionShow', () => {
   it('allows the full happy path through to completed', () => {

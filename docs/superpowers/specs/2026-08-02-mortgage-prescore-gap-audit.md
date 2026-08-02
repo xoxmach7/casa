@@ -1,0 +1,37 @@
+# Гэп-аудит: Mortgage Pre-Score v1.1 (AUDITED) vs текущая реализация
+
+**Источник требований:** `CASA_Mortgage_PreScore_Product_Technical_Spec_v1.1_AUDITED.docx` + `CASA_Mortgage_PreScore_Independent_Audit_v1.0.docx`, полученные от пользователя 2026-08-02, сохранены в `docs/handoff/CASA_Mortgage_PreScore_v1.1/`. Level 3 domain spec, подчинена тому же `01_Source_of_Truth_CASA_Product_Master_v1.1` SOT, что и [[project_casa_handoff_v2_pivot]].
+
+**Вердикт спеки:** READY WITH BLOCKING DECISIONS BEFORE PILOT — 7 блокеров (BD-01…BD-07) с владельцами вне разработки (Legal, Bank Partner, DPO, CISO/CTO, Product Ops, CPO). До их закрытия **реальные PII клиентов в pilot/production запрещены**. Это не техническое решение — я (Claude) не могу закрыть эти блокеры, только подготовить фундамент.
+
+**Решение пользователя (2026-08-02):** только технический гэп-аудит + безопасный Foundation-слой (consent-модель, versioned rule cards, reason-code registry, исправленный Decimal-движок как чистые функции). **Не трогать существующие live-роуты ипотеки и не включать эту логику в реальные запросы с PII** до отдельного решения.
+
+## Итог одним абзацем
+
+Текущая реализация (`MortgageApplication`, `MortgageCalculation`, `ClientScoring`, `MortgageProgram`, `scoring.service.ts`) — это ровно тот наивный v1.0-паттерн, который независимый аудит разобрал построчно и оценил на 64/100 (NOT READY). Проверка кода подтвердила буквально каждый пункт аудита на практике: `scoring.service.ts` использует один захардкоженный `MAX_DEBT_SERVICE_RATIO = 0.5`, смешивающий регуляторный КДН (закон, до 0.5), affordability конкретного банка и внутренний буфer CASA в одну константу (соответствует AUD-024/AUD-034); формула `maxPropertyPrice = maxLoanAmount + downPayment` завышает бюджет, игнорируя LTV/appraisal/cap (соответствует AUD-027, идентичная формулировка ошибки в обоих документах); `Math.round`/`number` вместо `Decimal` (AUD-030); `MortgageProgram` — плоская таблица без версии/author/approver/source (AUD-031); нет ConsentRevision/RecipientGrant вообще (AUD-048); нет reason-code registry (AUD-035).
+
+## Карта по доменам
+
+| Domain (canonical) | Каноническая сущность | Существующий аналог | Решение | Комментарий |
+|---|---|---|---|---|
+| Consent | ClientConsent + ConsentRevision + RecipientGrant | Отсутствует | **CREATE** | Тот же пробел, что уже отмечен в [[project_casa_handoff_v2_pivot]] гэп-аудите вторички (ClientConsent — CREATE). Одна модель обслуживает оба домена. |
+| Case | MortgageCase + MortgageCaseParty | `MortgageApplication` (плоская, без party/co-borrower, без workflow guards) | **FIX позже** (не в этом проходе) | `MortgageApplication` смешивает "заявку в банк" (после расчёта) с самим кейсом обработки; в каноне это разные стадии. Не трогаем — только фиксируем разрыв. |
+| Documents | FinancialDocument + ExtractedFieldRevision | `ClientDocument` (просто url+type, без provenance/confidence/bbox) | **FIX позже** | Уже есть `FileAsset` (создан в Foundation вторички) — можно переиспользовать как объект хранения при будущей реализации. |
+| Credit/Income | IncomeStream/EvidenceLink, CreditFacility/DelinquencyEpisode | Отсутствует; `ClientScoring` хранит только агрегаты (`avgMonthlyPension`, `existingMonthlyDebt`) без дедупликации/provenance | **CREATE позже** | Дедупликация дохода/кредитных обязательств (payer+period+amount fingerprint) — вообще не реализована; это прямой риск двойного счёта дохода созаёмщиков. |
+| Rules | MortgageRuleVersion (DRAFT→IN_REVIEW→APPROVED→ACTIVE→RETIRED\|REJECTED, author≠approver) + RegulatoryMetricRule (отдельно от ProgramAffordabilityRule/CasaSafetyPolicy) | `MortgageProgram` (плоская, `isActive: Boolean`, без lifecycle) | **CREATE** (этот проход, как чистая схема без данных) | Ключевой структурный фикс аудита: три независимые метрики (регуляторный КДН / банковская affordability / CASA safety overlay) должны версионироваться и логироваться раздельно, не сводиться к одному числу. |
+| Result | PreScoreResult → ProgramAssessment/PropertyAssessment (5 независимых осей: Eligibility/Affordability/Credit discipline/Income stability/Data confidence + Overall matrix) | `ClientScoring` (один `scoreValue: Int` + один `approvalLikelihood`) | **CREATE позже** | Текущая модель — одно число вместо пяти независимых осей + reason codes. Полная замена, не инкремент. |
+| Reason codes | ReasonCode registry (versioned, code/dimension/severity/message_key) | Отсутствует (советы — просто строки `advice: String[]` в `scoring.service.ts`) | **CREATE** (этот проход) | Строковые советы нельзя контрактно тестировать и версионировать — типичный "необъяснимый результат", как отмечает аудит (AUD-035). |
+| Financial engine | Decimal(19,2)+precision≥34, formula versions, golden tests GC-01…GC-06 | `scoring.service.ts` — plain JS `number`, `Math.round`, формулы с точными багами из аудита | **CREATE parallel, не трогая live** (этот проход) | Новый файл `mortgage-financial.service.ts` с исправленными формулами как чистые функции + golden-тесты из обоих документов. Существующий `scoring.service.ts` НЕ удаляется и НЕ используется этим новым кодом — замена live-логики требует решения BD-01 (кто владеет какой ставкой) вне разработки. |
+| Scenarios | ScenarioRun (copy-on-write на замороженном snapshot) | Отсутствует | **CREATE позже** | Не актуально до появления VerifiedFinancialSnapshot. |
+
+## Что сделано в этом проходе (Foundation only)
+
+1. `ClientConsent` + `ConsentRevision` — версионированное согласие клиента на обработку конкретной цели (используется и здесь, и в будущей работе по вторичке).
+2. `MortgageRuleVersion` — версионированная карточка правила банка/программы с lifecycle `DRAFT → IN_REVIEW → APPROVED → ACTIVE → RETIRED | REJECTED`, author/approver, source hash, effective interval. Хранит структурированные группы (identity/property/borrower/income/credit/affordability/pricing/governance/safety) как JSON payload с governance-полями как реальными колонками — детальный SQL-схема каждого вложенного банковского поля избыточна на этом этапе.
+3. `ReasonCode` registry — versioned справочник `code/dimension/severity/message_key`, immutable.
+4. `mortgage-financial.service.ts` — чистые Decimal-safe функции: `availablePayment`, `kdnAfter`, `annuityPayment`/`annuityPrincipal` (обе ветки, включая нулевую ставку), `eligibleCollateral`, `requiredDownPayment`, `abstractMaxPropertyPrice` (правильная формула вместо `maxLoan + downPayment`). Golden-тесты GC-01…GC-06 из обоих документов встроены как unit-тесты.
+5. Никакие существующие роуты/сервисы (`scoring.service.ts`, `mortgage.routes.ts`, `scoring-document.service.ts`) не изменены и не вызывают новый код — по явному решению пользователя не подключать это к реальным запросам до отдельного решения.
+
+## Открытые вопросы (не мои — Legal/DPO/CISO/Bank Partner/CPO/CEO)
+
+Ровно BD-01…BD-07 из спеки: applicability регуляторной формулы КДН (Legal+Underwriting), партнёрские карточки банков по пилотным программам (Mortgage Policy+Bank Partner), consent/retention/legal-hold текст (DPO/Legal), RK data residency + внешний LLM route (CISO/CTO), repository-level gap audit перед первой миграцией (Architect/Tech Lead — частично закрыт этим документом), freshness SLA (Product Ops), pilot scope (CPO). Ничего из этого не решается кодом.

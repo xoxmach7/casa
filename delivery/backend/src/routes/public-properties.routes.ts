@@ -14,15 +14,29 @@ const CARD_SELECT = {
   area: true,
   price: true,
   images: true,
+  negotiable: true,
 };
 
+// Extended for casa40-main's richer detail page (see gap-audit
+// docs/superpowers/specs/2026-08-02 mortgage/vtorichka pattern) — every
+// field here already existed on CrmProperty except description/negotiable/
+// readyToMoveIn, added specifically for this catalog.
 const DETAIL_SELECT = {
   ...CARD_SELECT,
   floor: true,
   totalFloors: true,
+  yearBuilt: true,
   buildingType: true,
   repairState: true,
   balconyType: true,
+  bathroomType: true,
+  layoutType: true,
+  ceilingHeight: true,
+  furnitureLevel: true,
+  appliancesLevel: true,
+  layoutImage: true,
+  description: true,
+  readyToMoveIn: true,
 };
 
 function serializeCard(property: any) {
@@ -30,6 +44,7 @@ function serializeCard(property: any) {
     ...property,
     area: Number(property.area),
     price: Number(property.price),
+    ceilingHeight: property.ceilingHeight != null ? Number(property.ceilingHeight) : null,
   };
 }
 

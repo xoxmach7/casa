@@ -1465,6 +1465,9 @@ model CrmProperty {
   
   // === Мета ===
   notes                 String?     @db.Text
+  description            String?     @db.Text
+  negotiable             Boolean     @default(false) // "торг" — публичная карточка casa40
+  readyToMoveIn          Boolean     @default(true) @map("ready_to_move_in")
   status                PropertyStatus @default(ACTIVE)
   createdAt             DateTime    @default(now()) @map("created_at")
   updatedAt             DateTime    @updatedAt @map("updated_at")
@@ -1487,6 +1490,8 @@ model CrmProperty {
   secondaryDeals        SecondaryDeal[]
   selectionEntries      SelectionCrmProperty[]
   propertyInterests     ClientPropertyInterest[]
+  publicListingOps      PublicListingOps?
+  publicListingLeads    PublicListingLead[]
 
   aiRecommendation      String?         @map("ai_recommendation") @db.Text
 
@@ -2248,4 +2253,72 @@ model ReasonCode {
   createdAt   DateTime           @default(now()) @map("created_at")
 
   @@map("reason_codes")
+}
+
+// =========================================
+// PUBLIC LISTING OPS (casa40-main integration, 2026-08-02)
+// Лёгкая админка сайта casa.kz (простой статус-флоу new→published→showing→
+// in_deal, приём оплаты риелторского вознаграждения, чек-лист документов) —
+// сознательно НЕ объединена с полноценной брокерской CRM-воронкой
+// (crm-properties.routes.ts/Show/Offer/Deal). Хранит своё состояние поверх
+// той же CrmProperty (публичная карточка объекта уже там), но со своими
+// правилами и без брокерских полей funnelStage/strategy/liquidity.
+// =========================================
+
+enum PublicListingStatus {
+  NEW
+  PUBLISHED
+  SHOWING
+  IN_DEAL
+  ARCHIVED
+}
+
+enum PublicListingPaymentStatus {
+  UNPAID
+  PAID
+}
+
+model PublicListingOps {
+  id                    String                      @id @default(cuid())
+  propertyId            String                      @unique @map("property_id")
+  status                PublicListingStatus         @default(NEW)
+  selectedLeadId        String?                     @map("selected_lead_id")
+  paymentStatus         PublicListingPaymentStatus  @default(UNPAID) @map("payment_status")
+  paymentAmount         Decimal?                    @map("payment_amount") @db.Decimal(15, 2)
+  paymentReceiptFileId  String?                     @map("payment_receipt_file_id")
+  paymentComment        String?                     @map("payment_comment") @db.Text
+  verificationChecklist Json?                       @map("verification_checklist")
+  createdAt             DateTime                    @default(now()) @map("created_at")
+  updatedAt             DateTime                    @updatedAt @map("updated_at")
+
+  property     CrmProperty        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  selectedLead PublicListingLead? @relation("SelectedLead", fields: [selectedLeadId], references: [id])
+
+  @@map("public_listing_ops")
+}
+
+// FK'd directly to CrmProperty (not PublicListingOps) — a lead can arrive
+// before any admin has touched PublicListingOps for that property, so ops
+// state is created lazily on first admin action, not required upfront.
+model PublicListingLead {
+  id               String    @id @default(cuid())
+  propertyId       String    @map("property_id")
+  buyerName        String    @map("buyer_name")
+  buyerPhone       String    @map("buyer_phone")
+  status           String    @default("new")
+  comment          String?   @db.Text
+  financingType    String?   @map("financing_type")
+  financingBank    String?   @map("financing_bank")
+  preApproved      Boolean?  @map("pre_approved")
+  mortgageAmount   Decimal?  @map("mortgage_amount") @db.Decimal(15, 2)
+  expectedTimeline String?   @map("expected_timeline")
+  viewingDatetime  DateTime? @map("viewing_datetime")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  property    CrmProperty       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  selectedFor PublicListingOps[] @relation("SelectedLead")
+
+  @@index([propertyId])
+  @@map("public_listing_leads")
 }

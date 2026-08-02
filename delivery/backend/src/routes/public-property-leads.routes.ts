@@ -20,6 +20,18 @@ const propertyLeadSchema = z.object({
   contactName: z.string().min(1),
   contactPhone: z.string().min(1),
   photoUrls: z.array(z.string()).optional(),
+  // Necessary for casa40-main's richer seller form — all optional so the
+  // existing casa root site's simpler payload keeps working unchanged.
+  floor: z.number().int().min(0).optional(),
+  totalFloors: z.number().int().min(0).optional(),
+  yearBuilt: z.number().int().optional(),
+  ceilingHeight: z.number().positive().optional(),
+  buildingType: z.enum(['MONOLITH', 'BRICK', 'PANEL', 'MONOLITH_BRICK', 'BLOCK']).optional(),
+  repairState: z.enum(['NONE', 'COSMETIC', 'CAPITAL', 'EURO', 'DESIGNER']).optional(),
+  bathroomType: z.string().optional(),
+  balconyType: z.string().optional(),
+  description: z.string().optional(),
+  floorPlanUrl: z.string().optional(),
 });
 
 publicPropertyLeadsRouter.post('/', async (req: Request, res: Response): Promise<void> => {
@@ -66,9 +78,18 @@ publicPropertyLeadsRouter.post('/', async (req: Request, res: Response): Promise
           address: fullAddress,
           rooms: data.rooms,
           area: data.area,
-          floor: 0,
-          totalFloors: 0,
-          yearBuilt: new Date().getFullYear(),
+          floor: data.floor ?? 0,
+          totalFloors: data.totalFloors ?? 0,
+          yearBuilt: data.yearBuilt ?? new Date().getFullYear(),
+          ceilingHeight: data.ceilingHeight,
+          buildingType: data.buildingType,
+          repairState: data.repairState,
+          bathroomType: data.bathroomType,
+          balconyType: data.balconyType,
+          description: data.description,
+          layoutImage: data.floorPlanUrl,
+          negotiable: data.negotiable,
+          readyToMoveIn: data.moveInReady,
           price: data.price,
           images: data.photoUrls ?? [],
           // Owner-submitted listings are never live immediately — CASA

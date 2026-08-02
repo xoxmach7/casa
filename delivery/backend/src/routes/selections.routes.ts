@@ -31,6 +31,10 @@ const addApartmentSchema = z.object({
     apartmentId: z.string().min(1),
 });
 
+const addPropertySchema = z.object({
+    propertyId: z.string().min(1),
+});
+
 const updateSelectionSchema = z.object({
     name: z.string().optional(),
     status: z.enum(['DRAFT', 'SHARED', 'VIEWED', 'CLIENT_SELECTED', 'CLOSED']).optional(),
@@ -44,7 +48,7 @@ selectionsRouter.get('/', async (req: Request, res: Response): Promise<void> => 
             orderBy: { createdAt: 'desc' },
             include: {
                 client: { select: { id: true, firstName: true, lastName: true, phone: true } },
-                _count: { select: { apartments: true } },
+                _count: { select: { apartments: true, crmProperties: true } },
             },
         });
 
@@ -67,6 +71,10 @@ selectionsRouter.get('/:id', async (req: Request, res: Response): Promise<void> 
                     include: {
                         apartment: { include: { project: { select: { id: true, name: true, address: true } } } },
                     },
+                },
+                crmProperties: {
+                    orderBy: { addedAt: 'desc' },
+                    include: { crmProperty: true },
                 },
             },
         });
@@ -248,6 +256,72 @@ selectionsRouter.delete(
         } catch (error) {
             console.error('Remove apartment from selection error:', error);
             res.status(500).json({ error: 'Ошибка удаления квартиры из подборки' });
+        }
+    }
+);
+
+// POST /api/selections/:id/properties — добавить объект вторички в подборку
+// (CASA Developer Handoff v2.0: подборка объединяет вторичку и новостройки)
+selectionsRouter.post(
+    '/:id/properties',
+    validate(addPropertySchema),
+    async (req: Request, res: Response): Promise<void> => {
+        try {
+            const { id } = req.params;
+            const { propertyId } = req.body;
+
+            const selection = await prisma.selection.findUnique({ where: { id } });
+            if (!selection) {
+                res.status(404).json({ error: 'Подборка не найдена' });
+                return;
+            }
+
+            if (RESTRICTED_ROLES.includes(req.user?.role || '') && selection.brokerId !== req.user!.userId) {
+                res.status(403).json({ error: 'Доступ запрещен' });
+                return;
+            }
+
+            // Idempotent — adding a property already in the selection is a no-op.
+            const entry = await prisma.selectionCrmProperty.upsert({
+                where: { selectionId_crmPropertyId: { selectionId: id, crmPropertyId: propertyId } },
+                update: {},
+                create: { selectionId: id, crmPropertyId: propertyId },
+            });
+
+            res.status(201).json(entry);
+        } catch (error) {
+            console.error('Add property to selection error:', error);
+            res.status(500).json({ error: 'Ошибка добавления объекта в подборку' });
+        }
+    }
+);
+
+// DELETE /api/selections/:id/properties/:propertyId
+selectionsRouter.delete(
+    '/:id/properties/:propertyId',
+    async (req: Request, res: Response): Promise<void> => {
+        try {
+            const { id, propertyId } = req.params;
+
+            const selection = await prisma.selection.findUnique({ where: { id } });
+            if (!selection) {
+                res.status(404).json({ error: 'Подборка не найдена' });
+                return;
+            }
+
+            if (RESTRICTED_ROLES.includes(req.user?.role || '') && selection.brokerId !== req.user!.userId) {
+                res.status(403).json({ error: 'Доступ запрещен' });
+                return;
+            }
+
+            await prisma.selectionCrmProperty.deleteMany({
+                where: { selectionId: id, crmPropertyId: propertyId },
+            });
+
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Remove property from selection error:', error);
+            res.status(500).json({ error: 'Ошибка удаления объекта из подборки' });
         }
     }
 );

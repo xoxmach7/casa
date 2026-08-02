@@ -22,6 +22,10 @@ vi.mock('../lib/prisma', () => ({
       upsert: vi.fn(),
       deleteMany: vi.fn(),
     },
+    selectionCrmProperty: {
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
+    },
   },
 }));
 
@@ -121,6 +125,56 @@ describe('DELETE /api/selections/:id/apartments/:apartmentId', () => {
     expect(res.status).toBe(200);
     expect(prisma.selectionApartment.deleteMany).toHaveBeenCalledWith({
       where: { selectionId: 'sel_1', apartmentId: 'apt_1' },
+    });
+  });
+});
+
+describe('POST /api/selections/:id/properties', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('403s when the selection belongs to a different broker', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', brokerId: 'broker_2' });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/selections/sel_1/properties')
+      .send({ propertyId: 'prop_1' });
+
+    expect(res.status).toBe(403);
+    expect(prisma.selectionCrmProperty.upsert).not.toHaveBeenCalled();
+  });
+
+  it('adds a secondary-market property idempotently via upsert', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', brokerId: 'broker_1' });
+    (prisma.selectionCrmProperty.upsert as any).mockResolvedValue({ id: 'sp_1' });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/selections/sel_1/properties')
+      .send({ propertyId: 'prop_1' });
+
+    expect(res.status).toBe(201);
+    expect(prisma.selectionCrmProperty.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { selectionId_crmPropertyId: { selectionId: 'sel_1', crmPropertyId: 'prop_1' } },
+      })
+    );
+  });
+});
+
+describe('DELETE /api/selections/:id/properties/:propertyId', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('removes the property when the selection belongs to the requesting broker', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', brokerId: 'broker_1' });
+    (prisma.selectionCrmProperty.deleteMany as any).mockResolvedValue({ count: 1 });
+
+    const app = buildApp();
+    const res = await request(app).delete('/api/selections/sel_1/properties/prop_1');
+
+    expect(res.status).toBe(200);
+    expect(prisma.selectionCrmProperty.deleteMany).toHaveBeenCalledWith({
+      where: { selectionId: 'sel_1', crmPropertyId: 'prop_1' },
     });
   });
 });

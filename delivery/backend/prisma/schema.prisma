@@ -454,6 +454,10 @@ model Selection {
   shareToken String          @unique @default(cuid())
   viewedAt   DateTime?       @map("viewed_at")
   selectedApartmentId String? @map("selected_apartment_id")
+  // Вторичка (CASA Developer Handoff v2.0, раздел 7.2 Product Master —
+  // "Подборка объединяет вторичку и новостройки"). Отдельное поле, а не
+  // переиспользование selectedApartmentId, т.к. это разные сущности/таблицы.
+  selectedCrmPropertyId String? @map("selected_crm_property_id")
   brokerId   String          @map("broker_id")
   clientId   String          @map("client_id")
   createdAt  DateTime        @default(now()) @map("created_at")
@@ -462,10 +466,29 @@ model Selection {
   broker     User                 @relation(fields: [brokerId], references: [id])
   client     Client               @relation(fields: [clientId], references: [id])
   apartments SelectionApartment[]
+  crmProperties SelectionCrmProperty[]
 
   @@index([brokerId])
   @@index([clientId])
   @@map("selections")
+}
+
+// Вторичка-аналог SelectionApartment — отдельная join-таблица, а не
+// полиморфный apartmentId, чтобы не трогать существующую NOT NULL колонку
+// с живыми данными (см. gap-audit, раздел про Selection).
+model SelectionCrmProperty {
+  id            String   @id @default(cuid())
+  selectionId   String   @map("selection_id")
+  crmPropertyId String   @map("crm_property_id")
+  addedAt       DateTime @default(now()) @map("added_at")
+
+  selection   Selection   @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+  crmProperty CrmProperty @relation(fields: [crmPropertyId], references: [id], onDelete: Cascade)
+
+  @@unique([selectionId, crmPropertyId])
+  @@index([selectionId])
+  @@index([crmPropertyId])
+  @@map("selection_crm_properties")
 }
 
 model SelectionApartment {
@@ -1481,6 +1504,7 @@ model CrmProperty {
   viewingRequests       ViewingRequest[]
   valuations            Valuation[]
   secondaryDeals        SecondaryDeal[]
+  selectionEntries      SelectionCrmProperty[]
   propertyInterests     ClientPropertyInterest[]
 
   aiRecommendation      String?         @map("ai_recommendation") @db.Text

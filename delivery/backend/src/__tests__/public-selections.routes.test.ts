@@ -6,6 +6,7 @@ vi.mock('../lib/prisma', () => ({
   prisma: {
     selection: { findUnique: vi.fn(), update: vi.fn() },
     selectionApartment: { findUnique: vi.fn() },
+    selectionCrmProperty: { findUnique: vi.fn() },
   },
 }));
 
@@ -43,6 +44,7 @@ describe('GET /api/public/selections/:shareToken', () => {
           apartment: { id: 'apt_1', number: '12', floor: 3, rooms: 2, area: 61, price: 30000000, status: 'AVAILABLE', project: { id: 'proj_1', name: 'Prime Garden' } },
         },
       ],
+      crmProperties: [],
     });
     (prisma.selection.update as any).mockResolvedValue({});
 
@@ -56,6 +58,30 @@ describe('GET /api/public/selections/:shareToken', () => {
     expect(res.body.apartments[0].project.name).toBe('Prime Garden');
   });
 
+  it('includes secondary-market properties alongside apartments', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({
+      id: 'sel_1',
+      name: 'Для Ержана',
+      status: 'VIEWED',
+      createdAt: new Date('2026-07-01'),
+      apartments: [],
+      crmProperties: [
+        {
+          crmPropertyId: 'prop_1',
+          crmProperty: { id: 'prop_1', district: 'Есиль', residentialComplex: 'ЖК Дом', area: 61, price: 28000000, images: [], status: 'ACTIVE' },
+        },
+      ],
+    });
+
+    const app = buildApp();
+    const res = await request(app).get('/api/public/selections/tok_abc');
+
+    expect(res.status).toBe(200);
+    expect(res.body.properties).toHaveLength(1);
+    expect(res.body.properties[0].district).toBe('Есиль');
+    expect(res.body.properties[0].area).toBe(61);
+  });
+
   it('transitions SHARED -> VIEWED on first open', async () => {
     (prisma.selection.findUnique as any).mockResolvedValue({
       id: 'sel_1',
@@ -63,6 +89,7 @@ describe('GET /api/public/selections/:shareToken', () => {
       status: 'SHARED',
       createdAt: new Date(),
       apartments: [],
+      crmProperties: [],
     });
     (prisma.selection.update as any).mockResolvedValue({});
 
@@ -84,6 +111,7 @@ describe('GET /api/public/selections/:shareToken', () => {
       status: 'CLIENT_SELECTED',
       createdAt: new Date(),
       apartments: [],
+      crmProperties: [],
     });
 
     const app = buildApp();
@@ -102,6 +130,7 @@ describe('GET /api/public/selections/:shareToken', () => {
       createdAt: new Date(),
       selectedApartmentId: 'apt_1',
       apartments: [],
+      crmProperties: [],
     });
 
     const app = buildApp();
@@ -145,7 +174,46 @@ describe('POST /api/public/selections/:shareToken/apartments/:apartmentId/select
     expect(res.body).toEqual({ status: 'CLIENT_SELECTED', selectedApartmentId: 'apt_1' });
     expect(prisma.selection.update).toHaveBeenCalledWith({
       where: { shareToken: 'tok_abc' },
-      data: { status: 'CLIENT_SELECTED', selectedApartmentId: 'apt_1' },
+      data: { status: 'CLIENT_SELECTED', selectedApartmentId: 'apt_1', selectedCrmPropertyId: null },
+    });
+  });
+});
+
+describe('POST /api/public/selections/:shareToken/properties/:propertyId/select', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('404s when the selection token is unknown', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue(null);
+
+    const app = buildApp();
+    const res = await request(app).post('/api/public/selections/unknown/properties/prop_1/select');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('404s when the property is not part of the selection', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', shareToken: 'tok_abc' });
+    (prisma.selectionCrmProperty.findUnique as any).mockResolvedValue(null);
+
+    const app = buildApp();
+    const res = await request(app).post('/api/public/selections/tok_abc/properties/prop_x/select');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('marks the selection CLIENT_SELECTED when the property belongs to it', async () => {
+    (prisma.selection.findUnique as any).mockResolvedValue({ id: 'sel_1', shareToken: 'tok_abc' });
+    (prisma.selectionCrmProperty.findUnique as any).mockResolvedValue({ id: 'sp_1' });
+    (prisma.selection.update as any).mockResolvedValue({ status: 'CLIENT_SELECTED', selectedCrmPropertyId: 'prop_1' });
+
+    const app = buildApp();
+    const res = await request(app).post('/api/public/selections/tok_abc/properties/prop_1/select');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'CLIENT_SELECTED', selectedCrmPropertyId: 'prop_1' });
+    expect(prisma.selection.update).toHaveBeenCalledWith({
+      where: { shareToken: 'tok_abc' },
+      data: { status: 'CLIENT_SELECTED', selectedCrmPropertyId: 'prop_1', selectedApartmentId: null },
     });
   });
 });

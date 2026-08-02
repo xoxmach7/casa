@@ -37,7 +37,6 @@ model User {
   notifications  Notification[]
   tasks          Task[]
   deals          Deal[]
-  properties     Property[]       @relation("BrokerProperties")
   curator        User?            @relation("CuratorBrokers", fields: [curatorId], references: [id])
   brokers        User[]           @relation("CuratorBrokers")
   payments       Payment[]
@@ -90,14 +89,13 @@ model Client {
   documents            ClientDocument[]
   broker               User                  @relation(fields: [brokerId], references: [id])
   mortgageCalculations MortgageCalculation[]
-  sellingProperties    Property[]            @relation("SellerProperties")
-  boughtProperties     Property[]            @relation("BuyerProperties")
   deals                Deal[]
   events               Event[]
   mortgageApplications MortgageApplication[]
   selections           Selection[]
   scorings             ClientScoring[]
   fixations            Fixation[]
+  propertyLinks        ClientPropertyLink[]
 
   @@index([brokerId])
   @@index([status])
@@ -829,53 +827,32 @@ model Task {
   @@map("tasks")
 }
 
-// ... (Property model remains unchanged) ...
-// Secondary Real Estate (Вторичная недвижимость)
-model Property {
-  id          String         @id @default(cuid())
-  title       String // "3-комнатная квартира в центре"
-  description String?        @db.Text
-  propertyType PropertyType  @default(APARTMENT) @map("property_type") // APARTMENT, HOUSE, COMMERCIAL, LAND
-  city        String
-  district    String?
-  address     String
-  floor       Int?
-  totalFloors Int?           @map("total_floors")
-  rooms       Int?
-  area        Decimal        @db.Decimal(10, 2)
-  price       Decimal        @db.Decimal(15, 2)
-  status      PropertyStatus @default(ACTIVE)
-  images      String[]       @default([])
-  videoUrl    String?        @map("video_url")
-  yearBuilt   Int?           @map("year_built")
-  condition   String? // ЕВРОРЕМОНТ, ТРЕБУЕТ РЕМОНТА, и т.д.
-  features    String[] // ["БАЛКОН", "ПАРКОВКА", "МЕБЕЛЬ"]
-  notes       String?        @db.Text
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  brokerId    String         @map("broker_id")
-  sellerId    String?        @map("seller_id") // Client who is selling
-  buyerId     String?        @map("buyer_id") // Client who bought it
+// Legacy "Property" model + /dashboard/properties dashboard section removed
+// 2026-08-02 — zero rows in production, fully superseded by CrmProperty and
+// the sellers/buyers/deal-room CRM flow (see gap-audit). The one live thing
+// it powered — linking a property to a client as seller/buyer from the
+// client detail page — is preserved below as ClientPropertyLink, now
+// pointing at CrmProperty instead of the removed model.
 
-  // Relations
-  broker User    @relation("BrokerProperties", fields: [brokerId], references: [id])
-  seller Client? @relation("SellerProperties", fields: [sellerId], references: [id])
-  buyer  Client? @relation("BuyerProperties", fields: [buyerId], references: [id])
+model ClientPropertyLink {
+  id            String                 @id @default(cuid())
+  clientId      String                 @map("client_id")
+  crmPropertyId String                 @map("crm_property_id")
+  role          ClientPropertyLinkRole
+  createdAt     DateTime               @default(now()) @map("created_at")
 
-  @@index([brokerId])
-  @@index([sellerId])
-  @@index([buyerId])
-  @@index([status])
-  @@index([city])
-  @@index([propertyType])
-  @@map("properties")
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  crmProperty CrmProperty @relation(fields: [crmPropertyId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, crmPropertyId, role])
+  @@index([clientId])
+  @@index([crmPropertyId])
+  @@map("client_property_links")
 }
 
-enum PropertyType {
-  APARTMENT // Квартира
-  HOUSE // Дом
-  COMMERCIAL // Коммерция
-  LAND // Участок
+enum ClientPropertyLinkRole {
+  SELLER
+  BUYER
 }
 
 enum PropertyStatus {
@@ -1503,6 +1480,7 @@ model CrmProperty {
   events                Event[]
   viewingRequests       ViewingRequest[]
   valuations            Valuation[]
+  clientLinks           ClientPropertyLink[]
   secondaryDeals        SecondaryDeal[]
   selectionEntries      SelectionCrmProperty[]
   propertyInterests     ClientPropertyInterest[]

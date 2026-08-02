@@ -118,8 +118,8 @@ test.describe('BROKER — Полный цикл работы', () => {
     await page.waitForTimeout(3000);
   });
 
-  test('3. Мои объекты', async ({ page }) => {
-    await page.goto('/dashboard/properties');
+  test('3. Мои объекты (CRM)', async ({ page }) => {
+    await page.goto('/dashboard/crm');
     await page.waitForTimeout(2000);
   });
 

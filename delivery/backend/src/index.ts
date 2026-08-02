@@ -21,7 +21,6 @@ import { commissionsRouter } from './routes/commissions.routes';
 import { dealAgentRouter } from './routes/deal-agent.routes';
 import { runDealAgent } from './lib/deal-agent-runner';
 import { tasksRouter } from './routes/tasks.routes';
-import { propertiesRouter } from './routes/properties.routes';
 import { dashboardRouter } from './routes/dashboard.routes';
 import { uploadRouter } from './routes/upload.routes';
 import { paymentsRouter } from './routes/payments.routes';
@@ -149,7 +148,6 @@ app.use('/api/deals/agent', dealAgentRouter);
 app.use('/api/deals', dealsRouter);
 app.use('/api/commissions', commissionsRouter);
 app.use('/api/tasks', tasksRouter);
-app.use('/api/properties', propertiesRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/upload', uploadRouter);       // MinIO / general file uploads
 app.use('/api/payments', paymentsRouter);

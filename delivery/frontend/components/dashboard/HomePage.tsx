@@ -174,7 +174,7 @@ export function HomePage() {
 
             {/* Quick Actions */}
             <div className="flex flex-wrap gap-2">
-                <Link href="/dashboard/properties/new">
+                <Link href="/dashboard/crm">
                     <Button size="sm" className="gap-2 bg-[#2E7D5E] hover:bg-[#256B4E] text-white shadow-sm">
                         <Home className="h-3.5 w-3.5" />Добавить объект
                     </Button>

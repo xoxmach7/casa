@@ -17,8 +17,7 @@ vi.mock('../lib/prisma', () => ({
 
 const mockTx = {
   deal: { create: vi.fn() },
-  crmProperty: { findUnique: vi.fn(), update: vi.fn() },
-  property: { update: vi.fn() },
+  crmProperty: { update: vi.fn() },
   commission: { create: vi.fn() },
 };
 
@@ -42,9 +41,9 @@ const VALID_BODY = {
 describe('POST /api/deals — objectType PROPERTY resolution', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('updates the CRM CrmProperty (not the legacy Property model) when the objectId is a CrmProperty', async () => {
+  it('updates the CrmProperty status to SOLD when objectType is PROPERTY', async () => {
     (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1', commission: 500000 });
-    (mockTx.crmProperty.findUnique as any).mockResolvedValue({ id: 'prop_1' });
+    (mockTx.crmProperty.update as any).mockResolvedValue({});
 
     const app = buildApp();
     const res = await request(app).post('/api/deals').send(VALID_BODY);
@@ -54,28 +53,11 @@ describe('POST /api/deals — objectType PROPERTY resolution', () => {
       where: { id: 'prop_1' },
       data: { status: 'SOLD' },
     });
-    expect(mockTx.property.update).not.toHaveBeenCalled();
   });
 
-  it('falls back to the legacy Property model when the objectId is not a CrmProperty', async () => {
+  it('rolls back the Deal (transaction throws) when the objectId matches no CrmProperty', async () => {
     (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1', commission: 500000 });
-    (mockTx.crmProperty.findUnique as any).mockResolvedValue(null);
-    (mockTx.property.update as any).mockResolvedValue({});
-
-    const app = buildApp();
-    const res = await request(app).post('/api/deals').send(VALID_BODY);
-
-    expect(res.status).toBe(201);
-    expect(mockTx.property.update).toHaveBeenCalledWith({
-      where: { id: 'prop_1' },
-      data: { status: 'SOLD' },
-    });
-  });
-
-  it('rolls back the Deal (transaction throws) when the objectId matches neither model', async () => {
-    (mockTx.deal.create as any).mockResolvedValue({ id: 'deal_1', commission: 500000 });
-    (mockTx.crmProperty.findUnique as any).mockResolvedValue(null);
-    (mockTx.property.update as any).mockRejectedValue(new Error('Record not found'));
+    (mockTx.crmProperty.update as any).mockRejectedValue(new Error('Record not found'));
 
     const app = buildApp();
     const res = await request(app).post('/api/deals').send(VALID_BODY);

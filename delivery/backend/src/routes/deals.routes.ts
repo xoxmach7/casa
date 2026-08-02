@@ -112,19 +112,12 @@ dealsRouter.post('/', async (req: Request, res: Response): Promise<void> => {
         },
       });
 
-      // "PROPERTY" here can mean either the legacy secondary-market `Property`
-      // model or the newer CRM `CrmProperty` model — the two aren't merged.
-      // Try CrmProperty first since that's what the current seller/CRM flow
-      // uses; only the legacy model otherwise. Doing this inside the same
-      // transaction means a bad objectId rolls back the Deal too, instead of
-      // leaving an orphaned Deal row with no matching property update.
+      // Doing this inside the same transaction means a bad objectId rolls
+      // back the Deal too, instead of leaving an orphaned Deal row with no
+      // matching property update. (Legacy secondary-market `Property` model
+      // removed 2026-08-02 — CrmProperty is the only property domain now.)
       if (data.objectType === 'PROPERTY' && data.objectId) {
-        const crmProperty = await tx.crmProperty.findUnique({ where: { id: data.objectId } });
-        if (crmProperty) {
-          await tx.crmProperty.update({ where: { id: data.objectId }, data: { status: 'SOLD' } });
-        } else {
-          await tx.property.update({ where: { id: data.objectId }, data: { status: 'SOLD' } });
-        }
+        await tx.crmProperty.update({ where: { id: data.objectId }, data: { status: 'SOLD' } });
       }
 
       // Every deal gets a tracked Commission record from the start — a plain

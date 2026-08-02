@@ -65,12 +65,17 @@ interface MortgageCalculation {
 
 interface LinkedProperty {
   id: string;
-  title: string;
-  propertyType: string;
-  address: string;
+  residentialComplex: string;
+  district: string;
+  address?: string | null;
   price: number;
   status: string;
   images: string[];
+}
+
+interface PropertyLink {
+  role: 'SELLER' | 'BUYER';
+  crmProperty: LinkedProperty;
 }
 
 interface Client {
@@ -97,14 +102,14 @@ interface Client {
   bookings: any[];
   documents: any[];
   mortgageCalculations: MortgageCalculation[];
-  sellerProperties: LinkedProperty[];
-  buyerProperties: LinkedProperty[];
+  propertyLinks: PropertyLink[];
 }
 
 interface AvailableProperty {
   id: string;
-  title: string;
-  address: string;
+  residentialComplex: string;
+  district: string;
+  address?: string | null;
   price: number;
 }
 
@@ -193,11 +198,11 @@ export default function ClientDetailPage() {
     }
   };
 
-  // Fetch available properties for linking
+  // Fetch available properties for linking (secondary-market CrmProperty)
   const fetchAvailableProperties = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/properties?limit=100`, {
+      const response = await fetch(`${API_URL}/crm-properties?limit=100`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -465,7 +470,7 @@ export default function ClientDetailPage() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Home className="h-5 w-5" />
-                  Связанные объекты ({(client.sellerProperties?.length || 0) + (client.buyerProperties?.length || 0)})
+                  Связанные объекты ({client.propertyLinks?.length || 0})
                 </CardTitle>
                 <CardDescription>Объекты, где клиент - продавец или покупатель</CardDescription>
               </div>
@@ -491,27 +496,26 @@ export default function ClientDetailPage() {
           </CardHeader>
           <CollapsibleContent>
             <CardContent className="pt-0 space-y-4">
-              {/* Seller Properties */}
-              {client.sellerProperties && client.sellerProperties.length > 0 && (
+              {/* Seller links */}
+              {client.propertyLinks?.filter((l) => l.role === 'SELLER').length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-muted-foreground mb-2">Продаёт:</p>
                   <div className="space-y-2">
-                    {client.sellerProperties.map((property) => (
-                      <div 
-                        key={property.id} 
-                        className="flex items-center gap-3 p-3 border rounded-lg bg-orange-50/50 hover:bg-orange-50 transition-colors cursor-pointer"
-                        onClick={() => router.push(`/dashboard/properties/${property.id}`)}
+                    {client.propertyLinks.filter((l) => l.role === 'SELLER').map(({ crmProperty: property }) => (
+                      <div
+                        key={property.id}
+                        className="flex items-center gap-3 p-3 border rounded-lg bg-orange-50/50"
                       >
                         {property.images?.[0] ? (
-                          <img src={property.images[0]} alt={property.title} className="w-12 h-12 object-cover rounded" />
+                          <img src={property.images[0]} alt={property.residentialComplex} className="w-12 h-12 object-cover rounded" />
                         ) : (
                           <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
                             <Home className="h-5 w-5 text-muted-foreground" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{property.title}</p>
-                          <p className="text-sm text-muted-foreground truncate">{property.address}</p>
+                          <p className="font-medium truncate">{property.residentialComplex}</p>
+                          <p className="text-sm text-muted-foreground truncate">{property.address || property.district}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">{property.status}</Badge>
@@ -534,27 +538,26 @@ export default function ClientDetailPage() {
                 </div>
               )}
 
-              {/* Buyer Properties */}
-              {client.buyerProperties && client.buyerProperties.length > 0 && (
+              {/* Buyer links */}
+              {client.propertyLinks?.filter((l) => l.role === 'BUYER').length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-muted-foreground mb-2">Покупает:</p>
                   <div className="space-y-2">
-                    {client.buyerProperties.map((property) => (
-                      <div 
-                        key={property.id} 
-                        className="flex items-center gap-3 p-3 border rounded-lg bg-green-50/50 hover:bg-green-50 transition-colors cursor-pointer"
-                        onClick={() => router.push(`/dashboard/properties/${property.id}`)}
+                    {client.propertyLinks.filter((l) => l.role === 'BUYER').map(({ crmProperty: property }) => (
+                      <div
+                        key={property.id}
+                        className="flex items-center gap-3 p-3 border rounded-lg bg-green-50/50"
                       >
                         {property.images?.[0] ? (
-                          <img src={property.images[0]} alt={property.title} className="w-12 h-12 object-cover rounded" />
+                          <img src={property.images[0]} alt={property.residentialComplex} className="w-12 h-12 object-cover rounded" />
                         ) : (
                           <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
                             <Home className="h-5 w-5 text-muted-foreground" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{property.title}</p>
-                          <p className="text-sm text-muted-foreground truncate">{property.address}</p>
+                          <p className="font-medium truncate">{property.residentialComplex}</p>
+                          <p className="text-sm text-muted-foreground truncate">{property.address || property.district}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">{property.status}</Badge>
@@ -577,8 +580,7 @@ export default function ClientDetailPage() {
                 </div>
               )}
 
-              {(!client.sellerProperties || client.sellerProperties.length === 0) && 
-               (!client.buyerProperties || client.buyerProperties.length === 0) && (
+              {(!client.propertyLinks || client.propertyLinks.length === 0) && (
                 <p className="text-muted-foreground text-sm text-center py-4">
                   Нет связанных объектов. Нажмите "Привязать" чтобы добавить.
                 </p>
@@ -619,7 +621,7 @@ export default function ClientDetailPage() {
                 <SelectContent>
                   {availableProperties.map((prop) => (
                     <SelectItem key={prop.id} value={prop.id}>
-                      {prop.title} - {prop.address} ({prop.price?.toLocaleString()} ₸)
+                      {prop.residentialComplex} - {prop.address || prop.district} ({prop.price?.toLocaleString()} ₸)
                     </SelectItem>
                   ))}
                 </SelectContent>

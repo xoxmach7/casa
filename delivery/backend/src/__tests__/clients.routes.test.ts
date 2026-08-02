@@ -23,7 +23,8 @@ vi.mock('../middleware/auth.middleware', () => ({
 vi.mock('../lib/prisma', () => ({
   prisma: {
     client: { findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-    property: { findUnique: vi.fn(), update: vi.fn() },
+    crmProperty: { findUnique: vi.fn() },
+    clientPropertyLink: { upsert: vi.fn(), deleteMany: vi.fn() },
   },
 }));
 
@@ -141,7 +142,7 @@ describe('DELETE /api/clients/:id/unlink-property', () => {
       .send({ propertyId: 'prop_1', role: 'buyer' });
 
     expect(res.status).toBe(403);
-    expect(prisma.property.update).not.toHaveBeenCalled();
+    expect(prisma.clientPropertyLink.deleteMany).not.toHaveBeenCalled();
   });
 
   it('404s when the client does not exist', async () => {
@@ -157,8 +158,8 @@ describe('DELETE /api/clients/:id/unlink-property', () => {
 
   it('unlinks the property when the requesting broker owns the client', async () => {
     (prisma.client.findUnique as any).mockResolvedValue({ id: 'client_1', brokerId: 'broker_1' });
-    (prisma.property.findUnique as any).mockResolvedValue({ id: 'prop_1' });
-    (prisma.property.update as any).mockResolvedValue({});
+    (prisma.crmProperty.findUnique as any).mockResolvedValue({ id: 'prop_1' });
+    (prisma.clientPropertyLink.deleteMany as any).mockResolvedValue({ count: 1 });
 
     const app = buildApp();
     const res = await request(app)
@@ -166,9 +167,8 @@ describe('DELETE /api/clients/:id/unlink-property', () => {
       .send({ propertyId: 'prop_1', role: 'buyer' });
 
     expect(res.status).toBe(200);
-    expect(prisma.property.update).toHaveBeenCalledWith({
-      where: { id: 'prop_1' },
-      data: { buyerId: null },
+    expect(prisma.clientPropertyLink.deleteMany).toHaveBeenCalledWith({
+      where: { clientId: 'client_1', crmPropertyId: 'prop_1', role: 'BUYER' },
     });
   });
 });

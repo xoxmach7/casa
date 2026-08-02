@@ -13,7 +13,6 @@ import {
   FileText,
   Settings,
   Target,
-  LayoutList,
   Archive,
   Search,
 } from "lucide-react"
@@ -29,9 +28,8 @@ import {
 
 const pages = [
   { title: "Главная", icon: Home, url: "/dashboard", keywords: ["dashboard", "главная", "home"] },
-  { title: "Сделки (CRM)", icon: Briefcase, url: "/dashboard/crm", keywords: ["crm", "сделки", "deals"] },
+  { title: "Мои объекты (CRM)", icon: Briefcase, url: "/dashboard/crm", keywords: ["crm", "объекты", "properties", "недвижимость", "вторичка"] },
   { title: "Стратегии (CASA)", icon: Target, url: "/dashboard/strategies", keywords: ["стратегии", "strategies", "casa"] },
-  { title: "Мои объекты", icon: LayoutList, url: "/dashboard/properties", keywords: ["объекты", "properties", "недвижимость"] },
   { title: "Клиенты", icon: Users, url: "/dashboard/sellers", keywords: ["клиенты", "sellers", "продавцы"] },
   { title: "Каталог ЖК", icon: Building2, url: "/dashboard/projects", keywords: ["жк", "проекты", "новостройки", "catalog"] },
   { title: "Шахматка", icon: Grid3x3, url: "/dashboard/chess", keywords: ["шахматка", "chess", "квартиры"] },

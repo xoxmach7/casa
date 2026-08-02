@@ -145,26 +145,20 @@ clientsRouter.get('/:id', async (req: Request, res: Response): Promise<void> => 
         },
         documents: true,
         mortgageCalculations: true,
-        sellingProperties: {
+        propertyLinks: {
           select: {
-            id: true,
-            title: true,
-            propertyType: true,
-            address: true,
-            price: true,
-            status: true,
-            images: true,
-          },
-        },
-        boughtProperties: {
-          select: {
-            id: true,
-            title: true,
-            propertyType: true,
-            address: true,
-            price: true,
-            status: true,
-            images: true,
+            role: true,
+            crmProperty: {
+              select: {
+                id: true,
+                residentialComplex: true,
+                district: true,
+                address: true,
+                price: true,
+                status: true,
+                images: true,
+              },
+            },
           },
         },
       },
@@ -325,7 +319,9 @@ clientsRouter.delete('/:id', requireRole('BROKER', 'ADMIN'), async (req: Request
   }
 });
 
-// POST /api/clients/:id/link-property - привязать объект к клиенту
+// POST /api/clients/:id/link-property - привязать объект вторички к клиенту
+// (как продавца или покупателя). propertyId ссылается на CrmProperty —
+// legacy Property удалён 2026-08-02 (0 строк в проде, см. gap-audit).
 clientsRouter.post('/:id/link-property', requireRole('BROKER', 'ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -342,7 +338,7 @@ clientsRouter.post('/:id/link-property', requireRole('BROKER', 'ADMIN'), async (
       return;
     }
 
-    const property = await prisma.property.findUnique({ where: { id: propertyId } });
+    const property = await prisma.crmProperty.findUnique({ where: { id: propertyId } });
     if (!property) {
       res.status(404).json({ error: 'Объект не найден' });
       return;
@@ -355,11 +351,20 @@ clientsRouter.post('/:id/link-property', requireRole('BROKER', 'ADMIN'), async (
       return;
     }
 
-    const updateData = role === 'seller' ? { sellerId: id } : { buyerId: id };
-
-    await prisma.property.update({
-      where: { id: propertyId },
-      data: updateData,
+    await prisma.clientPropertyLink.upsert({
+      where: {
+        clientId_crmPropertyId_role: {
+          clientId: id,
+          crmPropertyId: propertyId,
+          role: role === 'seller' ? 'SELLER' : 'BUYER',
+        },
+      },
+      update: {},
+      create: {
+        clientId: id,
+        crmPropertyId: propertyId,
+        role: role === 'seller' ? 'SELLER' : 'BUYER',
+      },
     });
 
     res.json({ message: `Клиент успешно привязан к объекту как ${role === 'seller' ? 'продавец' : 'покупатель'}` });
@@ -369,7 +374,7 @@ clientsRouter.post('/:id/link-property', requireRole('BROKER', 'ADMIN'), async (
   }
 });
 
-// DELETE /api/clients/:id/unlink-property - отвязать объект от клиента
+// DELETE /api/clients/:id/unlink-property - отвязать объект вторички от клиента
 clientsRouter.delete('/:id/unlink-property', requireRole('BROKER', 'ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -392,17 +397,18 @@ clientsRouter.delete('/:id/unlink-property', requireRole('BROKER', 'ADMIN'), asy
       return;
     }
 
-    const property = await prisma.property.findUnique({ where: { id: propertyId } });
+    const property = await prisma.crmProperty.findUnique({ where: { id: propertyId } });
     if (!property) {
       res.status(404).json({ error: 'Объект не найден' });
       return;
     }
 
-    const updateData = role === 'seller' ? { sellerId: null } : { buyerId: null };
-
-    await prisma.property.update({
-      where: { id: propertyId },
-      data: updateData,
+    await prisma.clientPropertyLink.deleteMany({
+      where: {
+        clientId: id,
+        crmPropertyId: propertyId,
+        role: role === 'seller' ? 'SELLER' : 'BUYER',
+      },
     });
 
     res.json({ message: 'Объект успешно отвязан от клиента' });

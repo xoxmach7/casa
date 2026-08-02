@@ -19,14 +19,11 @@ import { API_URL } from "@/lib/config"
 
 interface Property {
   id: string
-  title: string
+  residentialComplex: string
+  district: string
+  address?: string | null
   price: number
   seller?: {
-    firstName: string
-    lastName: string
-  }
-  buyer?: {
-    id: string
     firstName: string
     lastName: string
   }
@@ -60,7 +57,7 @@ export default function NewDealPage() {
     if (!token || !propertyId) return
 
     try {
-      const res = await fetch(`${API_URL}/properties/${propertyId}`, {
+      const res = await fetch(`${API_URL}/crm-properties/${propertyId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
 
@@ -71,7 +68,6 @@ export default function NewDealPage() {
           ...prev,
           amount: data.price.toString(),
           objectId: data.id,
-          clientId: data.buyer?.id || "",
         }))
       }
     } catch (error) {
@@ -139,7 +135,9 @@ export default function NewDealPage() {
             <div className="grid gap-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Объект:</span>
-                <span className="font-medium">{property.title}</span>
+                <span className="font-medium">
+                  {property.residentialComplex} — {property.address || property.district}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Цена:</span>
@@ -150,14 +148,6 @@ export default function NewDealPage() {
                   <span className="text-muted-foreground">Продавец:</span>
                   <span className="font-medium">
                     {property.seller.firstName} {property.seller.lastName}
-                  </span>
-                </div>
-              )}
-              {property.buyer && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Покупатель:</span>
-                  <span className="font-medium">
-                    {property.buyer.firstName} {property.buyer.lastName}
                   </span>
                 </div>
               )}

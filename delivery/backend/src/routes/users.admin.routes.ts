@@ -291,7 +291,6 @@ usersAdminRouter.delete('/:id', async (req: Request, res: Response): Promise<voi
       // Удаляем сделки, клиентов, объекты вторички
       await tx.deal.deleteMany({ where: { brokerId: id } });
       await tx.booking.deleteMany({ where: { brokerId: id } });
-      await tx.property.deleteMany({ where: { brokerId: id } });
       await tx.client.deleteMany({ where: { brokerId: id } });
 
       // Удаляем проекты (для застройщиков)

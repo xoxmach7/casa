@@ -16,7 +16,6 @@ async function main() {
   await prisma.clientDocument.deleteMany();
   await prisma.mortgageCalculation.deleteMany();
 
-  await prisma.property.deleteMany();
   await prisma.payment.deleteMany();
 
   await prisma.client.deleteMany(); // Clients depend on brokers

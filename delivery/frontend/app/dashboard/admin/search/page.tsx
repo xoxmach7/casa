@@ -85,7 +85,7 @@ export default function GlobalSearchPage() {
           <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Объекты вторички</h3>
           <div className="space-y-2">
             {results.properties.map((p) => (
-              <Card key={p.id} className="cursor-pointer hover:border-primary" onClick={() => router.push(`/dashboard/properties/${p.id}`)}>
+              <Card key={p.id}>
                 <CardContent className="p-3 text-sm">
                   {p.residentialComplex} — {p.district}{p.address ? `, ${p.address}` : ""}
                 </CardContent>

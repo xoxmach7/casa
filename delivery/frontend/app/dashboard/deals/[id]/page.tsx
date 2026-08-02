@@ -35,12 +35,6 @@ interface Deal {
     phone: string
     email?: string
   } | null
-  property?: {
-    id: string
-    title: string
-    address: string
-    price: number
-  }
   apartment?: {
     id: string
     number: string
@@ -423,25 +417,6 @@ export default function DealDetailPage() {
                   onClick={() => router.push(`/dashboard/projects/${deal.apartment?.project.id}`)}
                 >
                   Открыть проект
-                </Button>
-              </>
-            ) : deal.property ? (
-              <>
-                <div>
-                  <p className="font-medium">{deal.property.title}</p>
-                  <p className="text-sm text-muted-foreground">{deal.property.address}</p>
-                </div>
-                <div className="text-sm">
-                  <span className="text-muted-foreground">Цена: </span>
-                  <span className="font-medium">{formatCurrency(deal.property.price)}</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => router.push(`/dashboard/properties/${deal.property?.id}`)}
-                >
-                  Открыть объект
                 </Button>
               </>
             ) : (

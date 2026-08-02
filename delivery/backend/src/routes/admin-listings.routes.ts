@@ -198,12 +198,15 @@ adminListingsRouter.post('/:id/status', async (req: Request, res: Response): Pro
       },
     });
 
-    // Keep the public catalog's own status/publishedAt in sync with the
-    // lightweight admin's simpler flow (PUBLISHED -> catalog visible).
+    // Keep the public catalog's own status/funnelStage/publishedAt in sync
+    // with the lightweight admin's simpler flow — public-properties.routes.ts
+    // requires ALL THREE (status=ACTIVE, funnelStage=LEADS, publishedAt set)
+    // before a listing is catalog-visible.
     await prisma.crmProperty.update({
       where: { id: property.id },
       data: {
-        status: body.status === 'ARCHIVED' ? 'ARCHIVED' : property.status,
+        status: body.status === 'ARCHIVED' ? 'ARCHIVED' : body.status === 'PUBLISHED' ? 'ACTIVE' : property.status,
+        funnelStage: body.status === 'PUBLISHED' ? 'LEADS' : property.funnelStage,
         publishedAt: body.status === 'PUBLISHED' && !property.publishedAt ? new Date() : property.publishedAt,
       },
     });
@@ -348,13 +351,15 @@ const updateLeadSchema = z.object({
   buyerName: z.string().optional(),
   buyerPhone: z.string().optional(),
   status: z.string().optional(),
-  comment: z.string().optional(),
-  financingType: z.string().optional(),
-  financingBank: z.string().optional(),
-  preApproved: z.boolean().optional(),
-  mortgageAmount: z.number().positive().optional(),
-  expectedTimeline: z.string().optional(),
-  viewingDatetime: z.coerce.date().optional(),
+  comment: z.string().nullable().optional(),
+  // Switching financing method clears the previous bank/pre-approval/amount
+  // on the client — these must accept an explicit null, not just be absent.
+  financingType: z.string().nullable().optional(),
+  financingBank: z.string().nullable().optional(),
+  preApproved: z.boolean().nullable().optional(),
+  mortgageAmount: z.number().positive().nullable().optional(),
+  expectedTimeline: z.string().nullable().optional(),
+  viewingDatetime: z.coerce.date().nullable().optional(),
 });
 
 // PATCH /api/admin/listings/leads/:id

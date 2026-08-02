@@ -100,8 +100,13 @@ describe('POST /api/admin/listings/:id/status', () => {
     expect(res.status).toBe(400);
   });
 
-  it('publishes a listing and stamps publishedAt on the underlying CrmProperty', async () => {
-    (prisma.crmProperty.findUnique as any).mockResolvedValue({ id: 'p1', status: 'MODERATION', publishedAt: null });
+  it('publishes a listing and flips status/funnelStage/publishedAt so it matches the public catalog filter', async () => {
+    (prisma.crmProperty.findUnique as any).mockResolvedValue({
+      id: 'p1',
+      status: 'MODERATION',
+      funnelStage: 'CREATED',
+      publishedAt: null,
+    });
     (prisma.publicListingOps.upsert as any).mockResolvedValue({ id: 'ops_1', propertyId: 'p1' });
     (prisma.publicListingOps.update as any).mockResolvedValue({ id: 'ops_1', status: 'PUBLISHED' });
     (prisma.crmProperty.update as any).mockResolvedValue({});
@@ -114,9 +119,16 @@ describe('POST /api/admin/listings/:id/status', () => {
       where: { propertyId: 'p1' },
       data: expect.objectContaining({ status: 'PUBLISHED' }),
     });
+    // Regression: public-properties.routes.ts requires status=ACTIVE AND
+    // funnelStage=LEADS AND publishedAt set — publishing previously only
+    // stamped publishedAt, leaving the listing invisible in the catalog.
     expect(prisma.crmProperty.update).toHaveBeenCalledWith({
       where: { id: 'p1' },
-      data: expect.objectContaining({ publishedAt: expect.any(Date) }),
+      data: expect.objectContaining({
+        status: 'ACTIVE',
+        funnelStage: 'LEADS',
+        publishedAt: expect.any(Date),
+      }),
     });
   });
 

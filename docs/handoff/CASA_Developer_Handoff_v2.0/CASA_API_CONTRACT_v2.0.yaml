@@ -1,0 +1,365 @@
+openapi: 3.1.0
+info:
+  title: CASA Core Operations API
+  version: 2.0.0
+  description: Developer handoff contract for valuation, showings and Deal Room.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Seller submissions
+  - name: Valuations
+  - name: Viewings
+  - name: Offers
+  - name: Deals
+paths:
+  /seller-submissions:
+    post:
+      tags: [Seller submissions]
+      security: []
+      operationId: createSellerSubmission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SellerSubmissionCreate'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /valuations:
+    post:
+      tags: [Valuations]
+      operationId: createValuation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [property_id]
+              properties:
+                property_id: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+  /valuations/{valuationId}/calculate-preliminary:
+    post:
+      tags: [Valuations]
+      operationId: calculatePreliminaryValuation
+      parameters:
+        - {$ref: '#/components/parameters/ValuationId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /valuations/{valuationId}/comparables:
+    post:
+      tags: [Valuations]
+      operationId: addValuationComparable
+      parameters:
+        - {$ref: '#/components/parameters/ValuationId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ComparableCreate'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+  /valuations/{valuationId}/confirm:
+    post:
+      tags: [Valuations]
+      operationId: confirmValuation
+      parameters:
+        - {$ref: '#/components/parameters/ValuationId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ValuationConfirm'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/BusinessRuleError'}
+  /viewings:
+    post:
+      tags: [Viewings]
+      operationId: createViewing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ViewingCreate'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /viewings/{viewingId}/confirm:
+    post:
+      tags: [Viewings]
+      operationId: confirmViewing
+      parameters:
+        - {$ref: '#/components/parameters/ViewingId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ViewingConfirm'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /viewings/{viewingId}/transition:
+    post:
+      tags: [Viewings]
+      operationId: transitionViewing
+      parameters:
+        - {$ref: '#/components/parameters/ViewingId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ViewingTransition'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /viewings/{viewingId}/feedback:
+    post:
+      tags: [Viewings]
+      operationId: createViewingFeedback
+      parameters:
+        - {$ref: '#/components/parameters/ViewingId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ViewingFeedbackCreate'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /offers:
+    post:
+      tags: [Offers]
+      operationId: createOfferAndOpenDeal
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OfferCreate'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /deals/{dealId}/transition:
+    post:
+      tags: [Deals]
+      operationId: transitionDeal
+      parameters:
+        - {$ref: '#/components/parameters/DealId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DealTransition'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/BusinessRuleError'}
+  /deals/{dealId}/deposit/verify-transfer:
+    post:
+      tags: [Deals]
+      operationId: verifyDepositTransfer
+      parameters:
+        - {$ref: '#/components/parameters/DealId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [proof_type, file_asset_id, coordinator_verification, reason]
+              properties:
+                proof_type: {type: string, enum: [bank_transfer, receipt, seller_confirmation, other]}
+                file_asset_id: {$ref: '#/components/schemas/Uuid'}
+                coordinator_verification: {type: boolean, const: true}
+                reason: {type: string, minLength: 3}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 8, maxLength: 128}
+    ValuationId: {name: valuationId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+    ViewingId: {name: viewingId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+    DealId: {name: dealId, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+  schemas:
+    Uuid: {type: string, format: uuid}
+    Money:
+      type: string
+      pattern: '^[0-9]+(\\.[0-9]{1,2})?$'
+      description: Decimal string; float is forbidden.
+    SellerSubmissionCreate:
+      type: object
+      required: [name, phone_or_whatsapp, authority_type, city_id, district_id, rooms, total_area, floor, floors_total, renovation_state, move_in_ready, seller_desired_price, desired_sale_horizon, consent_version]
+      properties:
+        name: {type: string, minLength: 2}
+        phone_or_whatsapp: {type: string, minLength: 7}
+        authority_type: {type: string, enum: [owner, representative]}
+        city_id: {$ref: '#/components/schemas/Uuid'}
+        district_id: {$ref: '#/components/schemas/Uuid'}
+        residential_complex_id: {$ref: '#/components/schemas/Uuid'}
+        street: {type: string}
+        house_number: {type: string}
+        rooms: {type: integer, minimum: 1}
+        total_area: {type: string, pattern: '^[0-9]+(\\.[0-9]{1,2})?$'}
+        floor: {type: integer, minimum: 1}
+        floors_total: {type: integer, minimum: 1}
+        renovation_state: {type: string}
+        move_in_ready: {type: boolean}
+        seller_desired_price: {$ref: '#/components/schemas/Money'}
+        desired_sale_horizon: {type: string}
+        consent_version: {type: string}
+    ComparableCreate:
+      type: object
+      required: [source_ref, checked_at, asking_price, total_area, compatibility, included]
+      properties:
+        source_ref: {type: string}
+        checked_at: {type: string, format: date-time}
+        asking_price: {$ref: '#/components/schemas/Money'}
+        total_area: {type: string}
+        price_per_m2: {$ref: '#/components/schemas/Money'}
+        compatibility: {type: string, enum: [direct, close, market_context]}
+        included: {type: boolean}
+        reason_excluded: {type: string}
+    ValuationConfirm:
+      type: object
+      required: [confirmed_range_low, confirmed_range_high, urgent_range_low, urgent_range_high, recommended_launch_price, max_launch_price, liquidity, confidence, decision, reviewer_reason, expected_version]
+      properties:
+        confirmed_range_low: {$ref: '#/components/schemas/Money'}
+        confirmed_range_high: {$ref: '#/components/schemas/Money'}
+        urgent_range_low: {$ref: '#/components/schemas/Money'}
+        urgent_range_high: {$ref: '#/components/schemas/Money'}
+        recommended_launch_price: {$ref: '#/components/schemas/Money'}
+        max_launch_price: {$ref: '#/components/schemas/Money'}
+        liquidity: {type: string, enum: [low, medium, high]}
+        confidence: {type: string, enum: [low, medium, high]}
+        decision: {type: string, enum: [accepted, accepted_with_price_condition, rejected]}
+        reviewer_reason: {type: string, minLength: 3}
+        expected_version: {type: integer, minimum: 1}
+    ViewingCreate:
+      type: object
+      required: [property_id, client_id, broker_id, proposed_start_at, proposed_end_at, timezone]
+      properties:
+        property_id: {$ref: '#/components/schemas/Uuid'}
+        client_id: {$ref: '#/components/schemas/Uuid'}
+        broker_id: {$ref: '#/components/schemas/Uuid'}
+        showing_manager_id: {$ref: '#/components/schemas/Uuid'}
+        proposed_start_at: {type: string, format: date-time}
+        proposed_end_at: {type: string, format: date-time}
+        timezone: {type: string, example: Asia/Almaty}
+    ViewingConfirm:
+      type: object
+      required: [confirmed_start_at, confirmed_end_at, confirmation_source, expected_version]
+      properties:
+        confirmed_start_at: {type: string, format: date-time}
+        confirmed_end_at: {type: string, format: date-time}
+        confirmation_source: {type: string, enum: [in_app, phone, whatsapp, sms, other]}
+        expected_version: {type: integer, minimum: 1}
+    ViewingTransition:
+      type: object
+      required: [target_status, expected_version]
+      properties:
+        target_status: {type: string, enum: [reschedule_requested, completed, no_show_buyer, no_show_seller, cancelled, expired]}
+        reason: {type: string}
+        actual_at: {type: string, format: date-time}
+        expected_version: {type: integer, minimum: 1}
+    ViewingFeedbackCreate:
+      type: object
+      required: [interest_level, price_reaction, condition_reaction, financing_readiness, next_step]
+      properties:
+        interest_level: {type: string, enum: [strong, medium, weak, none, unknown]}
+        price_reaction: {type: string, enum: [acceptable, negotiation, too_high, not_discussed]}
+        condition_reaction: {type: string, enum: [positive, neutral, negative, not_discussed]}
+        financing_readiness: {type: string, enum: [cash, mortgage_ready, mortgage_in_progress, unknown]}
+        next_step: {type: string, enum: [offer, follow_up, second_viewing, rejected, undecided]}
+        rejection_reason: {type: string}
+        internal_note: {type: string}
+        seller_safe_summary: {type: string}
+    OfferCreate:
+      type: object
+      required: [property_id, client_id, viewing_id, offered_price, payment_type, valid_until]
+      properties:
+        property_id: {$ref: '#/components/schemas/Uuid'}
+        client_id: {$ref: '#/components/schemas/Uuid'}
+        viewing_id: {$ref: '#/components/schemas/Uuid'}
+        offered_price: {$ref: '#/components/schemas/Money'}
+        payment_type: {type: string, enum: [cash, bvu, otbasy, mixed]}
+        valid_until: {type: string, format: date-time}
+        terms: {type: object, additionalProperties: true}
+    DealTransition:
+      type: object
+      required: [target_stage, expected_version]
+      properties:
+        target_stage:
+          type: string
+          enum: [seller_review, counteroffer_sent, price_agreed, precheck_in_progress, yellow_blocked, green_1, green_2, deposit_agreement_drafting, deposit_agreement_sent, deposit_agreement_signed, deposit_transfer_pending, booking_active, payment_route_in_progress, ready_for_notary, notary_scheduled, registration_or_disbursement, sold, failed]
+        reason: {type: string}
+        expected_version: {type: integer, minimum: 1}
+    ApiEnvelope:
+      type: object
+      properties:
+        data: {type: object, additionalProperties: true}
+        meta:
+          type: object
+          properties:
+            request_id: {$ref: '#/components/schemas/Uuid'}
+            version: {type: integer}
+    ErrorEnvelope:
+      type: object
+      required: [error, meta]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            fields: {type: object, additionalProperties: true}
+            blockers: {type: array, items: {type: object, additionalProperties: true}}
+        meta:
+          type: object
+          properties:
+            request_id: {$ref: '#/components/schemas/Uuid'}
+  responses:
+    Success:
+      description: Success
+      content: {application/json: {schema: {$ref: '#/components/schemas/ApiEnvelope'}}}
+    Created:
+      description: Created
+      content: {application/json: {schema: {$ref: '#/components/schemas/ApiEnvelope'}}}
+    ValidationError:
+      description: Validation error
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+    Forbidden:
+      description: Forbidden
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+    Conflict:
+      description: State, version or schedule conflict
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}
+    BusinessRuleError:
+      description: Business rule failed
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}

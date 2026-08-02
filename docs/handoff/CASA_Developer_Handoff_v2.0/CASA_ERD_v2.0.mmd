@@ -1,0 +1,118 @@
+erDiagram
+  ORGANIZATION ||--o{ USER : has
+  USER ||--o{ AUDIT_LOG : acts
+  SELLER ||--o{ SELLER_SUBMISSION : submits
+  SELLER_SUBMISSION ||--|| SECONDARY_PROPERTY : drafts
+  SECONDARY_PROPERTY ||--o{ PROPERTY_MEDIA : has
+  SECONDARY_PROPERTY ||--o{ VALUATION : receives
+  VALUATION ||--o{ VALUATION_VERSION : versions
+  VALUATION_VERSION ||--o{ COMPARABLE : uses
+  MARKET_REFERENCE ||--o{ VALUATION_VERSION : informs
+  CLIENT ||--o{ CLIENT_PROPERTY_INTEREST : creates
+  SECONDARY_PROPERTY ||--o{ CLIENT_PROPERTY_INTEREST : receives
+  CLIENT_PROPERTY_INTEREST ||--o{ VIEWING : schedules
+  VIEWING ||--o{ VIEWING_PARTICIPANT : includes
+  VIEWING ||--o{ VIEWING_FEEDBACK : produces
+  VIEWING_FEEDBACK ||--o| OFFER : may_lead_to
+  OFFER }o--|| SECONDARY_PROPERTY : concerns
+  OFFER }o--|| CLIENT : made_by
+  OFFER ||--o| DEAL : opens
+  DEAL ||--o{ DEAL_PRECHECK : checks
+  DEAL ||--o{ DEAL_DOCUMENT : stores
+  DEAL ||--o{ DEAL_RISK : tracks
+  DEAL ||--o{ DEAL_TASK : assigns
+  DEAL ||--o{ DEAL_EVENT : records
+  DEAL ||--o| DEAL_DEPOSIT : controls
+  DEAL ||--o| DEAL_BOOKING : activates
+  DEAL ||--o| DEAL_MORTGAGE : routes
+  FILE_ASSET ||--o{ DEAL_DOCUMENT : backs
+  FILE_ASSET ||--o{ PROPERTY_MEDIA : backs
+  NOTIFICATION }o--|| USER : targets
+  CONFIG_VERSION ||--o{ MARKET_REFERENCE : governs
+
+  SELLER_SUBMISSION {
+    uuid id PK
+    uuid seller_id FK
+    string consent_version
+    string status
+    timestamptz created_at
+  }
+  SECONDARY_PROPERTY {
+    uuid id PK
+    uuid seller_id FK
+    uuid city_id FK
+    uuid district_id FK
+    string status
+    decimal asking_price
+  }
+  VALUATION {
+    uuid id PK
+    uuid property_id FK
+    string status
+    int current_version
+  }
+  VALUATION_VERSION {
+    uuid id PK
+    uuid valuation_id FK
+    int version_number
+    decimal confirmed_low
+    decimal confirmed_high
+    string confidence
+    string decision
+  }
+  VIEWING {
+    uuid id PK
+    uuid property_id FK
+    uuid client_id FK
+    uuid broker_id FK
+    uuid showing_manager_id FK
+    string status
+    timestamptz confirmed_start_at
+    timestamptz confirmed_end_at
+    int version
+  }
+  VIEWING_FEEDBACK {
+    uuid id PK
+    uuid viewing_id FK
+    string interest_level
+    string next_step
+    int version_number
+  }
+  OFFER {
+    uuid id PK
+    uuid property_id FK
+    uuid client_id FK
+    uuid viewing_id FK
+    decimal offered_price
+    string payment_type
+    string status
+  }
+  DEAL {
+    uuid id PK
+    uuid property_id FK
+    uuid client_id FK
+    uuid offer_id FK
+    string stage
+    string traffic_light
+    string payment_type
+    decimal final_price
+    int version
+  }
+  DEAL_BOOKING {
+    uuid id PK
+    uuid deal_id FK
+    string status
+    timestamptz expiry_at
+    boolean coordinator_verified
+  }
+  AUDIT_LOG {
+    uuid id PK
+    uuid actor_user_id FK
+    string entity_type
+    uuid entity_id
+    string action
+    json old_values
+    json new_values
+    string reason
+    timestamptz created_at
+  }

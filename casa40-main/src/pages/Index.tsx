@@ -229,8 +229,8 @@ const BuyerHome = () => {
         </div>
 
         {/* Map + Property Card — bounded rectangle, centered, independent of viewport width */}
-        <div className="max-w-xl mx-auto rounded-2xl overflow-hidden border border-border relative z-0" style={{ boxShadow: 'var(--shadow-card)' }}>
-          <div className={mapFullscreen ? 'fixed inset-0 z-[2000] bg-background' : 'relative h-[220px]'}>
+        <div className="rounded-2xl overflow-hidden border border-border relative z-0" style={{ boxShadow: 'var(--shadow-card)' }}>
+          <div className={mapFullscreen ? 'fixed inset-0 z-[2000] bg-background' : 'relative h-[420px]'}>
             <PublicMap
               properties={mapMarkers}
               onMarkerClick={handlePinClick}

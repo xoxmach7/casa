@@ -58,6 +58,7 @@ model User {
   configVersions       ConfigVersion[]
   fileAssets           FileAsset[]
   reviewedValuations   ValuationVersion[]
+  propertyInterests    ClientPropertyInterest[]
 
   @@map("users")
 }
@@ -1223,12 +1224,19 @@ model Buyer {
   broker User    @relation("BrokerBuyers", fields: [brokerId], references: [id])
   shows  Show[]
   offers Offer[] // New
-  
+  propertyInterests ClientPropertyInterest[]
+
   @@index([brokerId])
   @@index([status])
   @@map("crm_buyers")
 }
 
+// Show = каноническая сущность "Viewing" из CASA Developer Handoff v2.0
+// (03_CASA_Showings_Spec). Поля ниже расширяют модель до канонического
+// стейт-машина (см. ShowStatus) аддитивно — старые поля (date/status
+// SCHEDULED|COMPLETED|CANCELLED) оставлены как есть, чтобы не сломать живые
+// маршруты buyers.routes.ts; новые поля nullable до отдельного шага, где
+// эти маршруты переведут на канонический guard (см. showing.service.ts).
 model Show {
   id         String   @id @default(cuid())
   date       DateTime
@@ -1236,17 +1244,38 @@ model Show {
   feedback   String?  @db.Text
   feedbackSentiment FeedbackSentiment? @map("feedback_sentiment")
   rating     Int?     // 1-5 Оценка клиента объекту
-  
+
+  // === Канонические поля Viewing (03_CASA_Showings_Spec, раздел 5) ===
+  showingManagerId    String?   @map("showing_manager_id")
+  proposedStartAt     DateTime? @map("proposed_start_at")
+  proposedEndAt       DateTime? @map("proposed_end_at")
+  confirmedStartAt    DateTime? @map("confirmed_start_at")
+  confirmedEndAt      DateTime? @map("confirmed_end_at")
+  timezone            String?   @default("Asia/Almaty")
+  confirmationSource  String?   @map("confirmation_source") // in_app | phone | whatsapp | sms | other
+  confirmedBy         String?   @map("confirmed_by")
+  confirmedAt         DateTime? @map("confirmed_at")
+  cancellationReason  String?   @map("cancellation_reason") @db.Text
+  meetingInstructionsSafe String? @map("meeting_instructions_safe") @db.Text
+  accessMode          String?   @map("access_mode")
+  internalAccessNote  String?   @map("internal_access_note") @db.Text
+  attendanceStatus    String?   @map("attendance_status")
+  completedAt         DateTime? @map("completed_at")
+  feedbackStatus      String?   @map("feedback_status")
+  nextStep            String?   @map("next_step")
+  version             Int       @default(1)
+  createdBy           String?   @map("created_by")
+
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-  
+
   propertyId String   @map("property_id")
   buyerId    String   @map("buyer_id")
-  
+
   // Relations
   property CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   buyer    Buyer       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  
+
   @@index([propertyId])
   @@index([buyerId])
   @@map("crm_shows")
@@ -1282,9 +1311,18 @@ enum BuyerStatus {
 }
 
 enum ShowStatus {
-   SCHEDULED
+   SCHEDULED // legacy — сохранён для обратной совместимости живых маршрутов
    COMPLETED
    CANCELLED
+   // === Канонические статусы Viewing из 03_CASA_Showings_Spec ===
+   DRAFT
+   REQUESTED
+   AWAITING_SELLER_CONFIRMATION
+   CONFIRMED
+   RESCHEDULE_REQUESTED
+   NO_SHOW_BUYER
+   NO_SHOW_SELLER
+   EXPIRED
 }
 
 enum FeedbackSentiment {
@@ -1438,6 +1476,7 @@ model CrmProperty {
   events                Event[]
   viewingRequests       ViewingRequest[]
   valuations            Valuation[]
+  propertyInterests     ClientPropertyInterest[]
 
   aiRecommendation      String?         @map("ai_recommendation") @db.Text
 
@@ -1831,4 +1870,41 @@ model MarketReference {
   @@index([cityId, residentialComplexId, rooms])
   @@index([cityId, districtId])
   @@map("market_references")
+}
+
+// =========================================
+// CLIENT PROPERTY INTEREST (CASA Developer Handoff v2.0 — Showings module)
+// Промежуточный шаг между лидом/подборкой и запросом показа (03_CASA_
+// Showings_Spec, канонический путь: ClientPropertyInterest → viewing draft
+// → ... ). Отдельная сущность от Show/Viewing — фиксирует сам факт интереса
+// до того, как показ реально запрошен/назначен.
+// NB: не связана FK с Show в этом проходе — полноценная перестройка
+// Show.propertyId/buyerId на ссылку через ClientPropertyInterest отложена
+// как отдельная, более рискованная миграция (см. gap-audit).
+// =========================================
+
+enum ClientPropertyInterestStatus {
+  ACTIVE
+  CLOSED
+}
+
+model ClientPropertyInterest {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  buyerId    String   @map("buyer_id")
+  brokerId   String   @map("broker_id")
+  status     ClientPropertyInterestStatus @default(ACTIVE)
+  note       String?  @db.Text
+  closedAt   DateTime? @map("closed_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  property CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  buyer    Buyer       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  broker   User        @relation(fields: [brokerId], references: [id])
+
+  @@index([propertyId])
+  @@index([buyerId])
+  @@index([brokerId])
+  @@map("client_property_interests")
 }

@@ -56,7 +56,7 @@ const PublicMap = ({ properties, onMarkerClick, selectedId, onFitAllRef }: Props
   }, [onFitAllRef]);
 
   useEffect(() => {
-    if (!containerRef.current || !TOMTOM_API_KEY || mapRef.current) return;
+    if (!containerRef.current || mapRef.current) return;
 
     const map = L.map(containerRef.current, {
       center: ASTANA_CENTER,
@@ -67,13 +67,16 @@ const PublicMap = ({ properties, onMarkerClick, selectedId, onFitAllRef }: Props
 
     L.control.zoom({ position: 'topleft' }).addTo(map);
 
-    L.tileLayer(
-      `https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=${TOMTOM_API_KEY}`,
-      {
-        attribution: '&copy; <a href="https://www.tomtom.com">TomTom</a>',
-        maxZoom: 19,
-      },
-    ).addTo(map);
+    // TomTom's key (TOMTOM_API_KEY) is referer-restricted to a domain that
+    // isn't this deployment — every tile request 403s with InvalidReferer.
+    // Fixing that requires access to the TomTom account dashboard, which
+    // isn't available here. OSM's public tile server needs no key and has
+    // no referer restriction, so it's used as the stopgap until either the
+    // TomTom key's allowed referrers are updated or a paid provider is set up.
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
 
     mapRef.current = map;
 

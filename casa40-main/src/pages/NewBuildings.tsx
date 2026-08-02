@@ -24,9 +24,10 @@ const NewBuildings = () => {
         <div className="flex items-center">
           <button
             onClick={() => navigate('/sell')}
-            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-accent transition-colors"
+            aria-label="Продать квартиру"
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-primary/10 hover:bg-primary/15 transition-colors"
           >
-            <Plus className="w-5 h-5 text-foreground" strokeWidth={1.5} />
+            <Plus className="w-5 h-5 text-primary" strokeWidth={2} />
           </button>
         </div>
       </header>

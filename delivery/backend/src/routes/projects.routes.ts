@@ -26,6 +26,7 @@ const createProjectSchema = z.object({
   mortgagePrograms: z.array(z.string()).optional(),
   videoUrl: z.string().optional(),
   images: z.array(z.string()).optional(),
+  isPublished: z.boolean().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial();
@@ -331,6 +332,7 @@ projectsRouter.put('/:id', requireRole('DEVELOPER', 'ADMIN'), async (req: Reques
       data: {
         ...data,
         deliveryDate: data.deliveryDate ? (() => { const d = new Date(data.deliveryDate); return d.getFullYear() > 1900 && d.getFullYear() < 2100 ? d : undefined; })() : undefined,
+        publishedAt: data.isPublished && !existing.publishedAt ? new Date() : undefined,
       } as any,
       include: {
         developer: {

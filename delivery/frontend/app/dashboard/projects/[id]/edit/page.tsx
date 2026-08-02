@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Card,
   CardContent,
@@ -33,6 +34,7 @@ interface Project {
   class: string;
   deliveryDate: string;
   images: string[];
+  isPublished: boolean;
 }
 
 export default function EditProjectPage() {
@@ -50,6 +52,7 @@ export default function EditProjectPage() {
     class: 'Комфорт',
     deliveryDate: '',
     images: [],
+    isPublished: false,
   });
 
   useEffect(() => {
@@ -88,6 +91,7 @@ export default function EditProjectPage() {
         class: data.class || 'Комфорт',
         deliveryDate,
         images: data.images || [],
+        isPublished: data.isPublished || false,
       });
     } catch (error) {
       console.error('Error fetching project:', error);
@@ -146,6 +150,10 @@ export default function EditProjectPage() {
 
   const handleChange = (field: keyof Project, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handlePublishedChange = (checked: boolean) => {
+    setFormData((prev) => ({ ...prev, isPublished: checked }));
   };
 
   const handleRemoveImage = (urlToRemove: string) => {
@@ -260,6 +268,20 @@ export default function EditProjectPage() {
                     onChange={(e) => handleChange('deliveryDate', e.target.value)}
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="isPublished">Опубликовать на сайте</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Виден в публичном каталоге новостроек casa.kz
+                  </p>
+                </div>
+                <Switch
+                  id="isPublished"
+                  checked={formData.isPublished}
+                  onCheckedChange={handlePublishedChange}
+                />
               </div>
             </CardContent>
           </Card>

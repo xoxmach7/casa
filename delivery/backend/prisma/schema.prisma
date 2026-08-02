@@ -228,6 +228,8 @@ model Project {
   lng              Float?  // Долгота для карты
   class            String? // эконом, комфорт, бизнес
   buildingStatus   BuildingStatus @default(UNDER_CONSTRUCTION) @map("building_status") // New
+  isPublished      Boolean        @default(false) @map("is_published") // Виден на публичном сайте (casa40)
+  publishedAt      DateTime?      @map("published_at")
   deliveryDate     DateTime?      @map("delivery_date")
   developerName    String?        @map("developer_name") // New: застройщик
   developerPhone   String?        @map("developer_phone") // New
@@ -251,6 +253,7 @@ model Project {
   @@index([city])
   @@index([district])
   @@index([buildingStatus])
+  @@index([isPublished])
   @@map("projects")
 }
 

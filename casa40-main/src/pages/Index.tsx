@@ -229,7 +229,7 @@ const BuyerHome = () => {
 
         {/* Map + Property Card */}
         <div className="rounded-2xl overflow-hidden border border-border relative z-0" style={{ boxShadow: 'var(--shadow-card)' }}>
-          <div className="relative" style={{ aspectRatio: '4/4.5' }}>
+          <div className="relative" style={{ aspectRatio: '4/2.4' }}>
             <PublicMap
               properties={mapMarkers}
               onMarkerClick={handlePinClick}

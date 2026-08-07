@@ -7,8 +7,11 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
 COPY package.json package-lock.json* ./
-# Install all dependencies (TypeScript needed for next.config.ts)
-RUN npm ci
+# Install all dependencies including devDependencies (TypeScript, Tailwind,
+# and its plugins are all devDeps, needed to build — Railway's build
+# environment injects NODE_ENV=production even at this stage, which makes
+# plain `npm ci` silently skip devDependencies and break the build).
+RUN npm ci --include=dev
 
 # Builder stage  
 FROM base AS builder

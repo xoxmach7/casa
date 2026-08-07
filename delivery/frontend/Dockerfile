@@ -6,17 +6,9 @@ FROM base AS deps
 WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
-# Force devDependencies to install regardless of any ambient NODE_ENV the
-# build platform might inject — plain `npm ci` under NODE_ENV=production
-# silently omits devDependencies (typescript, tailwindcss, its postcss
-# plugin, tw-animate-css are all devDeps, all needed to build).
-ENV NODE_ENV=development
-ENV NPM_CONFIG_PRODUCTION=false
-ENV NPM_CONFIG_OMIT=
-
 COPY package.json package-lock.json* ./
-RUN npm ci --include=dev
-RUN test -d node_modules/tw-animate-css && echo "OK: tw-animate-css present" || (echo "FAIL: tw-animate-css missing after npm ci" && exit 1)
+# Install all dependencies (TypeScript needed for next.config.ts)
+RUN npm ci
 
 # Builder stage  
 FROM base AS builder

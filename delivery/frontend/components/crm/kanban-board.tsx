@@ -18,7 +18,6 @@ import {
 import { toast } from "sonner";
 import { DateFilter } from "./DateFilter";
 import { BrokerFilter } from "./BrokerFilter";
-import { FormLinksButton } from "./FormLinksButton";
 import { isSameMonth, parseISO } from "date-fns";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -72,7 +71,6 @@ export function KanbanBoard() {
     const [strategiesOpen, setStrategiesOpen] = useState(false);
     const [brokerFilter, setBrokerFilter] = useState<string | undefined>(undefined);
     const [userRole, setUserRole] = useState<string | null>(null);
-    const [userId, setUserId] = useState<string>("");
 
     // Edit Seller State
     const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
@@ -92,7 +90,6 @@ export function KanbanBoard() {
             try {
                 const user = JSON.parse(userStr);
                 setUserRole(user.role);
-                setUserId(user.id);
 
                 // Determine Mode
                 if (['DEVELOPER', 'AGENCY', 'REALTOR'].includes(user.role)) {
@@ -325,6 +322,12 @@ export function KanbanBoard() {
             {/* Control Panel */}
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-2.5 bg-background border-b shrink-0">
                 <div className="flex items-center gap-2">
+                    {(activeTab === "sellers" || isCustom) && (
+                        <Button size="sm" className="h-7 text-xs" onClick={() => setIsSellerFormOpen(true)}>
+                            <Plus className="mr-1 h-3.5 w-3.5" />
+                            Добавить сделку
+                        </Button>
+                    )}
                     {isCustom && (
                         <div className="flex items-center gap-2">
                             {isLoadingFunnels ? (
@@ -358,21 +361,12 @@ export function KanbanBoard() {
                             className="w-[160px]"
                         />
                     )}
-                    {userRole === "BROKER" && userId && (
-                        <FormLinksButton userId={userId} />
-                    )}
                     <DateFilter dateRange={dateRange} setDateRange={setDateRange} />
                     <Link href="/dashboard/settings/fields" title="Поля">
                         <Button variant="ghost" size="icon" className="h-7 w-7">
                             <LayoutList className="h-3.5 w-3.5" />
                         </Button>
                     </Link>
-                    {(activeTab === "sellers" || isCustom) && (
-                        <Button size="sm" className="h-7 text-xs" onClick={() => setIsSellerFormOpen(true)}>
-                            <Plus className="mr-1 h-3.5 w-3.5" />
-                            Добавить сделку
-                        </Button>
-                    )}
                 </div>
             </div>
 

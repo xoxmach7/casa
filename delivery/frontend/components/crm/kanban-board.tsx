@@ -6,7 +6,7 @@ import { CreateSellerForm } from "./forms/CreateSellerForm";
 import { CreatePropertyForm } from "./forms/CreatePropertyForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Plus, Filter, Settings, Target, LayoutList } from "lucide-react";
+import { Plus, Filter, Settings, LayoutList } from "lucide-react";
 import {
     SellerFunnelStage,
     PropertyFunnelStage,
@@ -325,31 +325,6 @@ export function KanbanBoard() {
             {/* Control Panel */}
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-2.5 bg-background border-b shrink-0">
                 <div className="flex items-center gap-2">
-                    {!isCustom && (
-                        <div className="flex bg-muted rounded-lg p-0.5">
-                            <button
-                                onClick={() => setActiveTab("sellers")}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                    activeTab === "sellers"
-                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                        : "text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                Продавцы
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("properties")}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                    activeTab === "properties"
-                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                        : "text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                Объекты
-                            </button>
-                        </div>
-                    )}
-
                     {isCustom && (
                         <div className="flex items-center gap-2">
                             {isLoadingFunnels ? (
@@ -373,19 +348,6 @@ export function KanbanBoard() {
                             </Link>
                         </div>
                     )}
-
-                    <div className="w-px h-5 bg-border mx-1" />
-
-                    {/* Strategies button */}
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2.5 text-xs gap-1.5 border-[#2E7D5E]/20 text-[#2E7D5E] hover:bg-[#2E7D5E]/5"
-                        onClick={() => setStrategiesOpen(true)}
-                    >
-                        <Target className="h-3.5 w-3.5" />
-                        Стратегии
-                    </Button>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -408,7 +370,7 @@ export function KanbanBoard() {
                     {(activeTab === "sellers" || isCustom) && (
                         <Button size="sm" className="h-7 text-xs" onClick={() => setIsSellerFormOpen(true)}>
                             <Plus className="mr-1 h-3.5 w-3.5" />
-                            {isCustom ? "Новая сделка" : "Новый продавец"}
+                            Добавить сделку
                         </Button>
                     )}
                 </div>

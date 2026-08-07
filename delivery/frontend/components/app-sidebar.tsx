@@ -3,7 +3,6 @@
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 import {
-  Home,
   Users,
   Building2,
   Calculator,
@@ -18,7 +17,6 @@ import {
   GraduationCap,
   Wallet,
   MessageCircle,
-  FileText,
   Scale,
   Settings,
   LayoutList,
@@ -81,13 +79,6 @@ interface MenuSection {
 }
 
 const menuItems: MenuSection[] = [
-  // 0. Главная - Dashboard
-  {
-    title: "Главная",
-    icon: Home,
-    url: "/dashboard",
-    roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
-  },
   // 1. Сделки (CRM) - единая страница с вкладками; Воронки/Поля (бывшие
   // "Настройки") теперь иконки внутри самой этой страницы, не свой пункт меню.
   {
@@ -131,13 +122,6 @@ const menuItems: MenuSection[] = [
     icon: Users,
     url: "/dashboard/agency/team",
     roles: ["AGENCY"],
-  },
-  // Формы (Admin)
-  {
-    title: "Формы",
-    icon: FileText,
-    url: "/dashboard/forms",
-    roles: ["ADMIN", "BROKER", "AGENCY"], // Maybe Realtors too? restricted for now
   },
   // Профиль и Архив убраны из меню: профиль открывается иконкой-карандашом
   // у карточки пользователя внизу сайдбара; архив пока скрыт.

@@ -1,10 +1,36 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 export const exportRouter = Router();
 exportRouter.use(authenticate);
+
+// Prefixes a leading =, +, -, @ with a quote so spreadsheet apps never
+// interpret an exported cell (free-text fields like comments/addresses)
+// as a formula when the CSV is later opened in Excel/Sheets.
+function csvEscape(value: unknown): string {
+  let s = String(value ?? '');
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function rowsToCsv(rows: Record<string, unknown>[]): string {
+  if (rows.length === 0) return '';
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.map(csvEscape).join(',')];
+  for (const r of rows) lines.push(headers.map((h) => csvEscape(r[h])).join(','));
+  return lines.join('\n');
+}
+
+function addJsonSheet(wb: ExcelJS.Workbook, name: string, rows: Record<string, unknown>[]) {
+  const ws = wb.addWorksheet(name);
+  if (rows.length === 0) return ws;
+  const headers = Object.keys(rows[0]);
+  ws.addRow(headers);
+  for (const r of rows) ws.addRow(headers.map((h) => r[h] ?? ''));
+  return ws;
+}
 
 // GET /api/export/clients?format=xlsx|csv
 exportRouter.get('/clients', async (req: Request, res: Response): Promise<void> => {
@@ -39,20 +65,17 @@ exportRouter.get('/clients', async (req: Request, res: Response): Promise<void> 
       'Дата создания': c.createdAt.toLocaleDateString('ru-RU'),
     }));
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Клиенты');
-
     if (format === 'csv') {
-      const csv = XLSX.utils.sheet_to_csv(ws);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename=clients.csv');
-      res.send('\uFEFF' + csv); // BOM for Excel UTF-8
+      res.send('﻿' + rowsToCsv(rows)); // BOM for Excel UTF-8
     } else {
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const wb = new ExcelJS.Workbook();
+      addJsonSheet(wb, 'Клиенты', rows);
+      const buf = await wb.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=clients.xlsx');
-      res.send(buf);
+      res.send(Buffer.from(buf));
     }
   } catch (error) {
     console.error('Export clients error:', error);
@@ -112,21 +135,19 @@ exportRouter.get('/analytics', async (req: Request, res: Response): Promise<void
       { 'Показатель': 'Общая комиссия', 'Значение': deals.filter(d => d.status === 'COMPLETED').reduce((s, d) => s + Number(d.commission), 0) },
     ];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Сводка');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dealsRows), 'Сделки');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bookingsRows), 'Брони');
-
     if (format === 'csv') {
-      const csv = XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(summaryRows));
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename=analytics.csv');
-      res.send('\uFEFF' + csv);
+      res.send('﻿' + rowsToCsv(summaryRows));
     } else {
-      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const wb = new ExcelJS.Workbook();
+      addJsonSheet(wb, 'Сводка', summaryRows);
+      addJsonSheet(wb, 'Сделки', dealsRows);
+      addJsonSheet(wb, 'Брони', bookingsRows);
+      const buf = await wb.xlsx.writeBuffer();
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename=analytics.xlsx');
-      res.send(buf);
+      res.send(Buffer.from(buf));
     }
   } catch (error) {
     console.error('Export analytics error:', error);

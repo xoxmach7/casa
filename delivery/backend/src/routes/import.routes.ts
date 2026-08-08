@@ -41,7 +41,7 @@ importRouter.post('/upload', upload.single('file'), async (req: Request, res: Re
       return;
     }
 
-    const parsed = parseFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    const parsed = await parseFile(req.file.buffer, req.file.mimetype, req.file.originalname);
 
     if (parsed.totalRows === 0) {
       res.status(400).json({ error: 'Файл не содержит данных для импорта' });

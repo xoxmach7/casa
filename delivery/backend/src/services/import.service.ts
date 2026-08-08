@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { prisma } from '../lib/prisma';
 import { normalizePhone } from '../lib/phone.utils';
 
@@ -41,34 +41,90 @@ export interface ImportResult {
 
 // ── parseFile ──
 
-export function parseFile(buffer: Buffer, mimetype: string, originalname: string): ParseResult {
-  let workbook: XLSX.WorkBook;
+// Minimal RFC4180-ish CSV parser (quoted fields, embedded commas/newlines,
+// escaped "" quotes) — replaces XLSX's CSV-to-array behavior.
+function parseCsvText(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
 
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else if (c === '\r') {
+      // skip — \n follows
+    } else {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function cellToString(v: ExcelJS.CellValue): string {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return v.toLocaleDateString('ru-RU');
+  if (typeof v === 'object') {
+    if ('text' in v) return String((v as any).text ?? '');
+    if ('result' in v) return String((v as any).result ?? '');
+    return String(v);
+  }
+  return String(v);
+}
+
+export async function parseFile(buffer: Buffer, mimetype: string, originalname: string): Promise<ParseResult> {
   const isCSV =
     mimetype === 'text/csv' ||
     originalname.toLowerCase().endsWith('.csv');
+
+  let raw: string[][];
 
   if (isCSV) {
     // Try UTF-8 first, fallback to Windows-1251
     let csvText: string;
     try {
-      const utf8 = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-      csvText = utf8;
+      csvText = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
     } catch {
       csvText = new TextDecoder('windows-1251').decode(buffer);
     }
-    workbook = XLSX.read(csvText, { type: 'string' });
+    raw = parseCsvText(csvText);
   } else {
-    workbook = XLSX.read(buffer, { type: 'buffer' });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as any);
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
+      return { columns: [], rows: [], totalRows: 0 };
+    }
+    raw = [];
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const values = row.values as ExcelJS.CellValue[]; // 1-indexed; index 0 is empty
+      raw.push(values.slice(1).map(cellToString));
+    });
   }
-
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) {
-    return { columns: [], rows: [], totalRows: 0 };
-  }
-
-  const sheet = workbook.Sheets[sheetName];
-  const raw: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
   if (raw.length === 0) {
     return { columns: [], rows: [], totalRows: 0 };

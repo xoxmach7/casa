@@ -27,12 +27,14 @@
   "license": "PRIVATE",
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "@sentry/node": "^10.69.0",
     "@types/minio": "^7.1.0",
     "axios": "^1.13.3",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.3.1",
     "helmet": "^8.1.0",
@@ -41,7 +43,6 @@
     "multer": "^1.4.5-lts.2",
     "pdf-parse": "^1.1.1",
     "uuid": "^11.1.0",
-    "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

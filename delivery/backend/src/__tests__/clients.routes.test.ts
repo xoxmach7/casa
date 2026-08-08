@@ -172,3 +172,38 @@ describe('DELETE /api/clients/:id/unlink-property', () => {
     });
   });
 });
+
+describe('POST /api/clients — iin placeholder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'broker_1', role: 'BROKER' };
+  });
+
+  it('generates a 12-char placeholder IIN when none is given', async () => {
+    (prisma.client.findUnique as any).mockResolvedValue(null);
+    (prisma.client.create as any).mockResolvedValue({ id: 'client_1' });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/clients')
+      .send({ firstName: 'Аружан', lastName: 'Смагулова', phone: '+77001112233' });
+
+    expect(res.status).toBe(201);
+    const createCall = (prisma.client.create as any).mock.calls[0][0];
+    expect(createCall.data.iin).toMatch(/^FX\d{10}$/);
+  });
+
+  it('keeps a real IIN when one is provided', async () => {
+    (prisma.client.findUnique as any).mockResolvedValue(null);
+    (prisma.client.create as any).mockResolvedValue({ id: 'client_1' });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/clients')
+      .send({ firstName: 'Аружан', lastName: 'Смагулова', phone: '+77001112233', iin: '123456789012' });
+
+    expect(res.status).toBe(201);
+    const createCall = (prisma.client.create as any).mock.calls[0][0];
+    expect(createCall.data.iin).toBe('123456789012');
+  });
+});

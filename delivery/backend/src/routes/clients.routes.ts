@@ -8,7 +8,7 @@ clientsRouter.use(authenticate);
 
 // Validation schemas
 const createClientSchema = z.object({
-  iin: z.string().length(12, 'ИИН должен содержать 12 цифр'),
+  iin: z.string().length(12, 'ИИН должен содержать 12 цифр').optional(),
   firstName: z.string().min(1, 'Имя обязательно'),
   lastName: z.string().min(1, 'Фамилия обязательна'),
   middleName: z.string().optional(),
@@ -186,7 +186,10 @@ clientsRouter.get('/:id', async (req: Request, res: Response): Promise<void> => 
 // POST /api/clients - создать клиента
 clientsRouter.post('/', requireRole('BROKER', 'ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const data = createClientSchema.parse(req.body);
+    const parsed = createClientSchema.parse(req.body);
+    // ИИН часто неизвестен на момент фиксации клиента (см. docs/superpowers/specs/2026-08-08-shakhmatka-fixation-design.md) —
+    // ставим плейсхолдер того же вида, что уже используется при CSV-импорте без ИИН (import.service.ts).
+    const data = { ...parsed, iin: parsed.iin || `FX${Date.now().toString().slice(-10)}` };
 
     // Проверка уникальности ИИН
     const existing = await prisma.client.findUnique({

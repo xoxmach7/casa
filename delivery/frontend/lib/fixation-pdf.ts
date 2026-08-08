@@ -61,7 +61,9 @@ export async function generateFixationSheetPdf(data: FixationPdfData) {
     ['ЖК', data.projectName],
     ['Квартира', data.apartmentNumber],
     ['Способ оплаты', data.paymentMethodLabel],
-    ['Сумма ДДУ', `${data.dealAmount.toLocaleString('ru-RU')} ₸`],
+    // The ₸ tenge sign has no glyph in the embedded Roboto subset (renders as a
+    // blank box), so the PDF spells the currency out instead of using the symbol.
+    ['Сумма ДДУ', `${data.dealAmount.toLocaleString('ru-RU')} тг.`],
   ]);
 
   doc.setFontSize(9);

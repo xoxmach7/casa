@@ -64,7 +64,7 @@ describe('POST /api/fixations', () => {
 describe('PATCH /api/fixations/:id/status', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('allows a valid transition (DRAFT -> SENT) and sets sentAt/expiresAt', async () => {
+  it('allows a valid transition (DRAFT -> SENT) and sets expiresAt 24 hours out', async () => {
     (prisma.fixation.findUnique as any).mockResolvedValue({ id: 'fix_1', brokerId: 'broker_1', status: 'DRAFT' });
     (prisma.fixation.update as any).mockResolvedValue({ id: 'fix_1', status: 'SENT' });
 
@@ -76,6 +76,8 @@ describe('PATCH /api/fixations/:id/status', () => {
     expect(updateCall.data.status).toBe('SENT');
     expect(updateCall.data.sentAt).toBeInstanceOf(Date);
     expect(updateCall.data.expiresAt).toBeInstanceOf(Date);
+    const durationMs = updateCall.data.expiresAt.getTime() - updateCall.data.sentAt.getTime();
+    expect(durationMs).toBe(24 * 60 * 60 * 1000);
     expect(prisma.notification.create).toHaveBeenCalled();
   });
 
@@ -120,5 +122,25 @@ describe('PATCH /api/fixations/:id/status', () => {
     const res = await request(app).patch('/api/fixations/missing/status').send({ status: 'SENT' });
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/fixations — payment fields', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('accepts paymentMethod and dealAmount', async () => {
+    (prisma.fixation.create as any).mockResolvedValue({ id: 'fix_1', status: 'DRAFT' });
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/fixations')
+      .send({ clientId: 'client_1', projectId: 'proj_1', apartmentId: 'apt_1', paymentMethod: 'FULL', dealAmount: 34986400 });
+
+    expect(res.status).toBe(201);
+    expect(prisma.fixation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paymentMethod: 'FULL', dealAmount: 34986400 }),
+      })
+    );
   });
 });

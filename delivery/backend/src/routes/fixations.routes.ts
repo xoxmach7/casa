@@ -26,6 +26,8 @@ const createFixationSchema = z.object({
     clientId: z.string().min(1),
     projectId: z.string().min(1),
     apartmentId: z.string().optional(),
+    paymentMethod: z.enum(['FULL', 'MORTGAGE', 'INSTALLMENT']).optional(),
+    dealAmount: z.number().positive().optional(),
 });
 
 const transitionSchema = z.object({
@@ -97,13 +99,15 @@ fixationsRouter.get('/:id', async (req: Request, res: Response): Promise<void> =
 // POST /api/fixations - создать черновик
 fixationsRouter.post('/', validate(createFixationSchema), async (req: Request, res: Response): Promise<void> => {
     try {
-        const { clientId, projectId, apartmentId } = req.body;
+        const { clientId, projectId, apartmentId, paymentMethod, dealAmount } = req.body;
 
         const fixation = await prisma.fixation.create({
             data: {
                 clientId,
                 projectId,
                 apartmentId,
+                paymentMethod,
+                dealAmount,
                 brokerId: req.user!.userId,
                 status: 'DRAFT',
                 statusHistory: { create: { toStatus: 'DRAFT', changedBy: req.user!.userId } },
@@ -155,8 +159,8 @@ fixationsRouter.patch(
             };
             if (status === 'SENT') {
                 updateData.sentAt = new Date();
-                // Заявка живёт 14 дней, если застройщик не ответил.
-                updateData.expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+                // Заявка живёт 24 часа, если застройщик не ответил.
+                updateData.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
             }
             if (isRejection) {
                 updateData.rejectionReason = reason ?? null;

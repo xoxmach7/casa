@@ -22,7 +22,8 @@ vi.mock('../middleware/auth.middleware', () => ({
 
 vi.mock('../lib/prisma', () => ({
   prisma: {
-    apartment: { findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn() },
+    apartment: { findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
+    project: { findUnique: vi.fn() },
   },
 }));
 
@@ -172,5 +173,55 @@ describe('GET /api/apartments/:id — booking contact redaction', () => {
     const res = await request(app).get('/api/apartments/missing');
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/apartments — building/entrance passthrough', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'broker_1', role: 'BROKER' };
+  });
+
+  it('includes building in the response', async () => {
+    (prisma.apartment.findMany as any).mockResolvedValue([]);
+    (prisma.apartment.count as any).mockResolvedValue(0);
+
+    const app = buildApp();
+    await request(app).get('/api/apartments?projectId=proj_1');
+
+    const call = (prisma.apartment.findMany as any).mock.calls[0][0];
+    expect(call.include.building).toBe(true);
+  });
+});
+
+describe('POST /api/apartments — buildingId/entrance', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'admin_1', role: 'ADMIN' };
+  });
+
+  it('accepts optional buildingId and entrance', async () => {
+    (prisma.project.findUnique as any).mockResolvedValue({ id: 'proj_1', developerId: 'dev_1' });
+    (prisma.apartment.findUnique as any).mockResolvedValue(null);
+    (prisma.apartment.create as any).mockResolvedValue({ id: 'apt_1' });
+
+    const app = buildApp();
+    const res = await request(app).post('/api/apartments').send({
+      number: '101',
+      floor: 1,
+      rooms: 2,
+      area: 55,
+      price: 20000000,
+      projectId: 'proj_1',
+      buildingId: 'building_1',
+      entrance: 2,
+    });
+
+    expect(res.status).toBe(201);
+    expect(prisma.apartment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ buildingId: 'building_1', entrance: 2 }),
+      })
+    );
   });
 });

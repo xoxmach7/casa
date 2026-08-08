@@ -16,6 +16,8 @@ const createApartmentSchema = z.object({
   status: z.enum(['AVAILABLE', 'RESERVED', 'SOLD']).default('AVAILABLE'),
   layoutImage: z.string().optional(),
   projectId: z.string().min(1, 'ID проекта обязателен'),
+  buildingId: z.string().optional(),
+  entrance: z.number().int().positive().optional(),
 });
 
 const updateApartmentSchema = createApartmentSchema.partial().omit({ projectId: true });
@@ -106,6 +108,7 @@ apartmentsRouter.get('/', async (req: Request, res: Response): Promise<void> => 
               developerId: true,
             },
           },
+          building: true,
           bookings: {
             where: {
               status: { in: ['PENDING', 'CONFIRMED'] },

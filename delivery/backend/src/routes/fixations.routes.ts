@@ -75,6 +75,7 @@ fixationsRouter.get('/:id', async (req: Request, res: Response): Promise<void> =
                 client: true,
                 project: { select: { id: true, name: true, developerName: true } },
                 apartment: true,
+                broker: { select: { id: true, firstName: true, lastName: true, phone: true } },
                 statusHistory: { orderBy: { createdAt: 'desc' } },
             },
         });

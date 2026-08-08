@@ -41,6 +41,35 @@ describe('GET /api/fixations', () => {
   });
 });
 
+describe('GET /api/fixations/:id', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('includes the broker relation so the fixation sheet can show who filed it', async () => {
+    (prisma.fixation.findUnique as any).mockResolvedValue({
+      id: 'fix_1',
+      brokerId: 'broker_1',
+      broker: { id: 'broker_1', firstName: 'Иван', lastName: 'Брокеров', phone: '+77001234567' },
+    });
+
+    const app = buildApp();
+    const res = await request(app).get('/api/fixations/fix_1');
+
+    expect(res.status).toBe(200);
+    expect(prisma.fixation.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          broker: expect.objectContaining({
+            select: expect.objectContaining({ firstName: true, lastName: true, phone: true }),
+          }),
+        }),
+      })
+    );
+    expect(res.body.broker).toEqual(
+      expect.objectContaining({ firstName: 'Иван', lastName: 'Брокеров' })
+    );
+  });
+});
+
 describe('POST /api/fixations', () => {
   beforeEach(() => vi.clearAllMocks());
 

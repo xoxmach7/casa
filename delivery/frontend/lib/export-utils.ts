@@ -21,8 +21,10 @@ export async function exportToCsv(endpoint: string, filename: string) {
 export async function exportToPdf(title: string, headers: string[], rows: string[][]) {
   const { default: jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
+  const { registerCyrillicFont } = await import('./pdf-fonts');
 
   const doc = new jsPDF();
+  registerCyrillicFont(doc);
   doc.setFontSize(16);
   doc.text(title, 14, 20);
   doc.setFontSize(10);
@@ -32,7 +34,7 @@ export async function exportToPdf(title: string, headers: string[], rows: string
     head: [headers],
     body: rows,
     startY: 35,
-    styles: { fontSize: 8 },
+    styles: { font: 'Roboto', fontSize: 8 },
     headStyles: { fillColor: [59, 130, 246] },
   });
 

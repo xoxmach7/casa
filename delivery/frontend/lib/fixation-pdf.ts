@@ -16,8 +16,10 @@ export interface FixationPdfData {
 export async function generateFixationSheetPdf(data: FixationPdfData) {
   const { default: jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
+  const { registerCyrillicFont } = await import('./pdf-fonts');
 
   const doc = new jsPDF();
+  registerCyrillicFont(doc);
 
   doc.setFontSize(14);
   doc.text(`Лист фиксации №${data.fixationId}`, 14, 18);
@@ -37,7 +39,7 @@ export async function generateFixationSheetPdf(data: FixationPdfData) {
       body: rows,
       startY: y + 3,
       theme: 'plain',
-      styles: { fontSize: 9, cellPadding: 1.5 },
+      styles: { font: 'Roboto', fontSize: 9, cellPadding: 1.5 },
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55 } },
     });
     y = (doc as any).lastAutoTable.finalY + 8;

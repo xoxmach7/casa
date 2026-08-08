@@ -43,6 +43,13 @@ interface Apartment {
   price: string;
   status: string;
   description?: string;
+  buildingId?: string | null;
+  entrance?: number | null;
+}
+
+interface Building {
+  id: string;
+  name: string;
 }
 
 export default function EditApartmentPage() {
@@ -61,11 +68,52 @@ export default function EditApartmentPage() {
     area: '',
     price: '',
     description: '',
+    buildingId: '',
+    entrance: '',
   });
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [newBuildingName, setNewBuildingName] = useState('');
+  const [creatingBuilding, setCreatingBuilding] = useState(false);
 
   useEffect(() => {
     fetchApartment();
+    fetchBuildings();
   }, []);
+
+  const fetchBuildings = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(getApiUrl(`/buildings?projectId=${params.id}`), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setBuildings(await res.json());
+    } catch {
+      setBuildings([]);
+    }
+  };
+
+  const handleCreateBuilding = async () => {
+    if (!newBuildingName.trim()) return;
+    setCreatingBuilding(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(getApiUrl('/buildings'), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newBuildingName, projectId: params.id }),
+      });
+      if (!res.ok) throw new Error('Ошибка создания здания');
+      const building = await res.json();
+      setBuildings((prev) => [...prev, building]);
+      setFormData((prev) => ({ ...prev, buildingId: building.id }));
+      setNewBuildingName('');
+      toast({ title: 'Здание добавлено', description: building.name });
+    } catch {
+      toast({ title: 'Ошибка', description: 'Не удалось создать здание', variant: 'destructive' });
+    } finally {
+      setCreatingBuilding(false);
+    }
+  };
 
   const fetchApartment = async () => {
     try {
@@ -91,6 +139,8 @@ export default function EditApartmentPage() {
         area: apartment.area,
         price: apartment.price,
         description: apartment.description || '',
+        buildingId: apartment.buildingId || '',
+        entrance: apartment.entrance != null ? apartment.entrance.toString() : '',
       });
     } catch (error) {
       console.error('Error fetching apartment:', error);
@@ -127,6 +177,8 @@ export default function EditApartmentPage() {
             area: parseFloat(formData.area),
             price: parseFloat(formData.price),
             description: formData.description || undefined,
+            buildingId: formData.buildingId || undefined,
+            entrance: formData.entrance ? parseInt(formData.entrance) : undefined,
           }),
         }
       );
@@ -297,6 +349,46 @@ export default function EditApartmentPage() {
                     value={formData.area}
                     onChange={(e) => handleChange('area', e.target.value)}
                     required
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="buildingId">Здание</Label>
+                  <Select
+                    value={formData.buildingId}
+                    onValueChange={(value) => handleChange('buildingId', value)}
+                  >
+                    <SelectTrigger id="buildingId">
+                      <SelectValue placeholder="Без здания" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {buildings.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Новое здание, напр. Блок C"
+                      value={newBuildingName}
+                      onChange={(e) => setNewBuildingName(e.target.value)}
+                    />
+                    <Button type="button" variant="outline" onClick={handleCreateBuilding} disabled={creatingBuilding}>
+                      + Здание
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="entrance">Подъезд</Label>
+                  <Input
+                    id="entrance"
+                    type="number"
+                    placeholder="1"
+                    value={formData.entrance}
+                    onChange={(e) => handleChange('entrance', e.target.value)}
                   />
                 </div>
               </div>

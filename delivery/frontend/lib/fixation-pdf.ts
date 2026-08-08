@@ -15,7 +15,7 @@ export interface FixationPdfData {
 
 export async function generateFixationSheetPdf(data: FixationPdfData) {
   const { default: jsPDF } = await import('jspdf');
-  await import('jspdf-autotable');
+  const { default: autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF();
 
@@ -33,7 +33,7 @@ export async function generateFixationSheetPdf(data: FixationPdfData) {
   const section = (title: string, rows: [string, string][]) => {
     doc.setFontSize(11);
     doc.text(title, 14, y);
-    (doc as any).autoTable({
+    autoTable(doc, {
       body: rows,
       startY: y + 3,
       theme: 'plain',

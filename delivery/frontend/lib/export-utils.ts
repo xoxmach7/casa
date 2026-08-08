@@ -20,7 +20,7 @@ export async function exportToCsv(endpoint: string, filename: string) {
 
 export async function exportToPdf(title: string, headers: string[], rows: string[][]) {
   const { default: jsPDF } = await import('jspdf');
-  await import('jspdf-autotable');
+  const { default: autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF();
   doc.setFontSize(16);
@@ -28,7 +28,7 @@ export async function exportToPdf(title: string, headers: string[], rows: string
   doc.setFontSize(10);
   doc.text(`Дата: ${new Date().toLocaleDateString('ru-RU')}`, 14, 28);
 
-  (doc as any).autoTable({
+  autoTable(doc, {
     head: [headers],
     body: rows,
     startY: 35,

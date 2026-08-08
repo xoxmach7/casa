@@ -374,6 +374,12 @@ model ClientScoring {
 // "Фиксация" — заявка брокера застройщику на закрепление клиента за собой
 // для конкретного ЖК/квартиры, чтобы защитить происхождение клиента и
 // избежать двойных комиссий (ТЗ раздел 8).
+enum FixationPaymentMethod {
+  FULL         // 100% оплата
+  MORTGAGE     // Ипотека
+  INSTALLMENT  // Рассрочка
+}
+
 enum FixationStatus {
   DRAFT               // Черновик, ещё не отправлена
   SENT                // Отправлена застройщику
@@ -395,6 +401,8 @@ model Fixation {
   apartmentId     String?        @map("apartment_id")
   brokerId        String         @map("broker_id")
   status          FixationStatus @default(DRAFT)
+  paymentMethod   FixationPaymentMethod? @map("payment_method")
+  dealAmount      Decimal?       @map("deal_amount") @db.Decimal(15, 2)
   rejectionReason String?        @map("rejection_reason") @db.Text
   sentAt          DateTime?      @map("sent_at")
   expiresAt       DateTime?      @map("expires_at")

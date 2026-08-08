@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import * as Sentry from '@sentry/node';
 
 export const errorHandler = (
   err: Error & { status?: number; type?: string },
@@ -21,6 +22,9 @@ export const errorHandler = (
   console.error('Error:', err);
 
   const statusCode = err.status || 500;
+  if (statusCode >= 500 && process.env.SENTRY_DSN) {
+    Sentry.captureException(err);
+  }
   res.status(statusCode).json({
     error: statusCode === 500 ? 'Internal Server Error' : err.message,
     message: process.env.NODE_ENV === 'development' ? err.message : undefined,

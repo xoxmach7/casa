@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
@@ -19,4 +20,11 @@ const nextConfig: NextConfig = {
   trailingSlash: false,
 };
 
-export default nextConfig;
+// withSentryConfig no-ops the source-map-upload/release-tagging build steps
+// when SENTRY_AUTH_TOKEN isn't set (no Sentry account wired up yet) — the
+// runtime init above is what actually matters, this just uploads sourcemaps.
+export default withSentryConfig(nextConfig, {
+  silent: true,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+});

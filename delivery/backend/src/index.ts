@@ -1,3 +1,5 @@
+import './instrument';
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -35,6 +37,8 @@ import { publicListingLeadsRouter } from './routes/public-listing-leads.routes';
 import { adminListingsRouter } from './routes/admin-listings.routes';
 import { publicSelectionsRouter } from './routes/public-selections.routes';
 import { publicBuyerLeadsRouter } from './routes/public-buyer-leads.routes';
+import { publicLandingLeadsRouter } from './routes/public-landing-leads.routes';
+import { landingLeadsRouter } from './routes/landing-leads.routes';
 import { publicUploadsRouter } from './routes/public-uploads.routes';
 import { sellersRouter } from './routes/sellers.routes';
 import { crmPropertiesRouter } from './routes/crm-properties.routes';
@@ -164,6 +168,7 @@ app.use('/api/public/property-leads', publicPropertyLeadsRouter);
 app.use('/api/public/listings', publicListingLeadsRouter);
 app.use('/api/admin/listings', adminListingsRouter);
 app.use('/api/public/buyer-leads', publicBuyerLeadsRouter);
+app.use('/api/public/landing-leads', publicLandingLeadsRouter);
 app.use('/api/public/selections', publicSelectionsRouter);
 app.use('/api/public/uploads', publicUploadsRouter);
 
@@ -181,6 +186,7 @@ app.use('/api/uploads', uploadsRouter);     // CRM property image/document uploa
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/admin/settings', settingsRouter);
 app.use('/api/admin/moderation', moderationRouter);
+app.use('/api/admin/landing-leads', landingLeadsRouter);
 app.use('/api/admin/search', searchRouter);
 app.use('/api/custom-funnels', customFunnelsRouter);
 app.use('/api/custom-fields', customFieldsRouter);
@@ -192,6 +198,9 @@ app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/mortgage-applications', mortgageApplicationsRouter);
 
 // Error handling
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 app.use(errorHandler);
 
 // Start server
@@ -209,6 +218,7 @@ app.listen(PORT, async () => {
       console.log(`[Health] OK — ${new Date().toISOString()}`);
     } catch (e) {
       console.error(`[Health] DB connection failed — ${new Date().toISOString()}`, e);
+      Sentry.captureException(e);
     }
   }, 15 * 60 * 1000);
 
@@ -219,6 +229,7 @@ app.listen(PORT, async () => {
       console.log(`[DealAgent] checked=${stats.checkedDeals} stalled=${stats.stalledCount} suggested=${stats.suggestedCount} — ${new Date().toISOString()}`);
     } catch (e) {
       console.error(`[DealAgent] run failed — ${new Date().toISOString()}`, e);
+      Sentry.captureException(e);
     }
   }, 60 * 60 * 1000);
 });

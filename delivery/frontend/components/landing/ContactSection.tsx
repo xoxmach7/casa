@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { submitLandingLead } from '@/lib/submit-landing-lead';
 
 const ROLES = ['Застройщик', 'Риелтор / брокер', 'Ипотечный специалист'];
 
@@ -11,22 +12,32 @@ export default function ContactSection() {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState(ROLES[0]);
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Note: this is not yet wired to a backend — submitting just confirms the
-  // request client-side. Needs a real destination (email/CRM lead) before
-  // this can be trusted to actually reach anyone.
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !phone.trim()) return;
+    if (!name.trim() || !phone.trim() || isSubmitting) return;
 
-    setSubmitted(true);
-    toast({
-      title: 'Заявка отправлена',
-      description: 'Мы свяжемся с вами в ближайшее время.',
-    });
-    setName('');
-    setPhone('');
-    setRole(ROLES[0]);
+    setIsSubmitting(true);
+    try {
+      await submitLandingLead({ name, phone, role, source: 'landing' });
+      setSubmitted(true);
+      toast({
+        title: 'Заявка отправлена',
+        description: 'Мы свяжемся с вами в ближайшее время.',
+      });
+      setName('');
+      setPhone('');
+      setRole(ROLES[0]);
+    } catch {
+      toast({
+        title: 'Не удалось отправить заявку',
+        description: 'Попробуйте ещё раз чуть позже.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -80,9 +91,10 @@ export default function ContactSection() {
 
           <button
             type="submit"
-            className="mt-2 w-full rounded-full border border-white/70 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#14213d]"
+            disabled={isSubmitting}
+            className="mt-2 w-full rounded-full border border-white/70 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#14213d] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-white"
           >
-            Запросить доступ
+            {isSubmitting ? 'Отправляем…' : 'Запросить доступ'}
           </button>
 
           {submitted && (

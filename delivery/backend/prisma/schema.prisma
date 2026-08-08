@@ -2325,3 +2325,22 @@ model PublicListingLead {
   @@index([propertyId])
   @@map("public_listing_leads")
 }
+
+// "Запросить доступ" form on the CRM marketing landing (both / and /gpt-taste
+// variants) — unauthenticated submission, held for ADMIN moderation before
+// anyone acts on it.
+model LandingLead {
+  id           String    @id @default(cuid())
+  name         String
+  phone        String
+  role         String    // one of the landing form's role options, free text
+  source       String    @default("landing") // which page variant submitted
+  status       String    @default("NEW") // NEW, CONTACTED, REJECTED
+  reviewedAt   DateTime? @map("reviewed_at")
+  reviewedById String?   @map("reviewed_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("landing_leads")
+}

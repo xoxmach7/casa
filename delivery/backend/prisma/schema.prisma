@@ -245,6 +245,7 @@ model Project {
 
   // Relations
   apartments Apartment[]
+  buildings  Building[]
   sellers   Seller[]
   developer  User        @relation("DeveloperProjects", fields: [developerId], references: [id])
   fixations  Fixation[]
@@ -255,6 +256,18 @@ model Project {
   @@index([buildingStatus])
   @@index([isPublished])
   @@map("projects")
+}
+
+model Building {
+  id         String      @id @default(cuid())
+  name       String
+  projectId  String      @map("project_id")
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  apartments Apartment[]
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@index([projectId])
+  @@map("buildings")
 }
 
 model Apartment {
@@ -270,10 +283,13 @@ model Apartment {
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   projectId   String          @map("project_id")
+  buildingId  String?         @map("building_id")
+  entrance    Int?
 
   // Relations
   sellers              Seller[]
   project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  building             Building?             @relation(fields: [buildingId], references: [id], onDelete: SetNull)
   bookings             Booking[]
   mortgageCalculations MortgageCalculation[]
   selectionApartments  SelectionApartment[]
@@ -283,6 +299,7 @@ model Apartment {
   @@index([projectId])
   @@index([status])
   @@index([rooms])
+  @@index([buildingId])
   @@map("apartments")
 }
 

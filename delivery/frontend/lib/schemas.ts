@@ -118,3 +118,48 @@ export const createPropertySchema = z.object({
 });
 
 export type CreatePropertyValues = z.infer<typeof createPropertySchema>;
+
+// Combined "Новая сделка" form (kanban Добавить сделку button) — captures a
+// seller and the property they're selling in one screen/one submit instead
+// of two separate forms at two separate times. Field set is intentionally
+// the *minimal* one each backend route actually requires at creation time
+// (SellerContactStageSchema / CrmPropertyMinimalSchema on the server) —
+// richer property detail (repair state, mortgage, media…) still gets filled
+// in later via the existing per-entity edit forms, unchanged by this.
+export const createDealSchema = z.object({
+    // === Продавец ===
+    firstName: z.string().min(2, "Имя слишком короткое"),
+    lastName: z.string().min(2, "Фамилия слишком короткая"),
+    phone: z.preprocess(
+        (val) => (typeof val === 'string' ? val.replace(/[\s\-\(\)]/g, '') : val),
+        z.string().regex(/^(\+?7|8)?[0-9]{10}$/, "Некорректный формат телефона")
+    ),
+    source: z.string().optional(),
+    managerComment: z.string().optional(),
+    reason: z.preprocess(val => (val === "" || val === null || val === undefined) ? undefined : val, z.enum(["SIZE_CHANGE", "RELOCATION", "INVESTMENT", "DIVORCE", "INHERITANCE", "FINANCIAL_NEED", "OTHER"]).optional()),
+    reasonOther: z.string().optional(),
+    nextPurchaseFormat: z.preprocess(val => (val === "" || val === null || val === undefined) ? undefined : val, z.enum(["NEW_BUILDING", "SECONDARY", "HOUSE", "NOT_DECIDED"]).optional()),
+    purchaseBudget: z.preprocess(val => (val === "" || val === null || val === undefined || val === 0) ? undefined : val, z.coerce.number().positive("Бюджет должен быть положительным").optional()),
+    projectId: z.string().optional(),
+
+    // === Объект продажи ===
+    residentialComplex: z.string().min(2, "Укажите ЖК или дом"),
+    district: z.string().min(2, "Укажите район"),
+    address: z.string().optional(),
+    rooms: z.coerce.number().min(1, "Минимум 1 комната").max(10),
+    area: z.coerce.number().positive("Укажите площадь"),
+    floor: z.coerce.number().min(-1, "Некорректный этаж"),
+    totalFloors: z.coerce.number().min(1, "Всего этажей"),
+    yearBuilt: z.coerce.number().min(1900, "Год постройки неверный").max(new Date().getFullYear() + 5),
+    price: z.coerce.number().positive("Укажите цену"),
+}).superRefine((data, ctx) => {
+    if (data.reason === "OTHER" && (!data.reasonOther || data.reasonOther.length < 2)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Укажите причину",
+            path: ["reasonOther"]
+        });
+    }
+});
+
+export type CreateDealValues = z.infer<typeof createDealSchema>;

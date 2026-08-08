@@ -4,6 +4,7 @@ import { CloseDealDialog } from "./forms/CloseDealDialog";
 import { KanbanBoard as DndBoard } from "./KanbanBoard";
 import { CreateSellerForm } from "./forms/CreateSellerForm";
 import { CreatePropertyForm } from "./forms/CreatePropertyForm";
+import { CreateDealForm } from "./forms/CreateDealForm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Plus, Filter, Settings, LayoutList } from "lucide-react";
@@ -66,6 +67,7 @@ function CrmSkeleton() {
 export function KanbanBoard() {
     const [activeTab, setActiveTab] = useState<"sellers" | "properties">("sellers");
     const [isSellerFormOpen, setIsSellerFormOpen] = useState(false);
+    const [isDealFormOpen, setIsDealFormOpen] = useState(false);
     const [monthFilter, setMonthFilter] = useState<Date | undefined>(undefined);
     const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
     const [strategiesOpen, setStrategiesOpen] = useState(false);
@@ -310,6 +312,11 @@ export function KanbanBoard() {
                 sellerId={selectedSellerId}
                 initialData={selectedProperty as any}
             />
+            <CreateDealForm
+                open={isDealFormOpen}
+                onOpenChange={setIsDealFormOpen}
+                activeFunnelId={activeFunnelId}
+            />
             {propertyConfigToClose && (
                 <CloseDealDialog
                     open={isCloseDealOpen}
@@ -323,7 +330,11 @@ export function KanbanBoard() {
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between px-4 py-2.5 bg-background border-b shrink-0">
                 <div className="flex items-center gap-2">
                     {(activeTab === "sellers" || isCustom) && (
-                        <Button size="sm" className="h-7 text-xs" onClick={() => setIsSellerFormOpen(true)}>
+                        <Button
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => (isCustom ? setIsSellerFormOpen(true) : setIsDealFormOpen(true))}
+                        >
                             <Plus className="mr-1 h-3.5 w-3.5" />
                             Добавить сделку
                         </Button>

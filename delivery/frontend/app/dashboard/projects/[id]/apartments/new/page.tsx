@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Home, Upload, X, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,12 @@ export default function NewApartmentPage() {
     area: '',
     price: '',
     description: '',
+    buildingId: '',
+    entrance: '',
   });
+  const [buildings, setBuildings] = useState<{ id: string; name: string }[]>([]);
+  const [newBuildingName, setNewBuildingName] = useState('');
+  const [creatingBuilding, setCreatingBuilding] = useState(false);
 
   // Загрузка изображения планировки
   const handleLayoutUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,9 +89,42 @@ export default function NewApartmentPage() {
     }
   };
 
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch(`${API_URL}/buildings?projectId=${params.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then(setBuildings)
+      .catch(() => setBuildings([]));
+  }, [params.id]);
+
+  const handleCreateBuilding = async () => {
+    if (!newBuildingName.trim()) return;
+    setCreatingBuilding(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_URL}/buildings`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newBuildingName, projectId: params.id }),
+      });
+      if (!res.ok) throw new Error('Ошибка создания здания');
+      const building = await res.json();
+      setBuildings((prev) => [...prev, building]);
+      setFormData((prev) => ({ ...prev, buildingId: building.id }));
+      setNewBuildingName('');
+      toast({ title: 'Здание добавлено', description: building.name });
+    } catch {
+      toast({ title: 'Ошибка', description: 'Не удалось создать здание', variant: 'destructive' });
+    } finally {
+      setCreatingBuilding(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     setSubmitting(true);
 
     try {
@@ -108,6 +146,8 @@ export default function NewApartmentPage() {
           status: 'AVAILABLE',
           layoutImage: layoutImage || undefined,
           description: formData.description || undefined,
+          buildingId: formData.buildingId || undefined,
+          entrance: formData.entrance ? parseInt(formData.entrance) : undefined,
         }),
       });
 
@@ -186,6 +226,48 @@ export default function NewApartmentPage() {
                     value={formData.floor}
                     onChange={(e) => handleChange('floor', e.target.value)}
                     required
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="buildingId">Здание</Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={formData.buildingId}
+                      onValueChange={(value) => handleChange('buildingId', value)}
+                    >
+                      <SelectTrigger id="buildingId">
+                        <SelectValue placeholder="Без здания" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {buildings.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Новое здание, напр. Блок C"
+                      value={newBuildingName}
+                      onChange={(e) => setNewBuildingName(e.target.value)}
+                    />
+                    <Button type="button" variant="outline" onClick={handleCreateBuilding} disabled={creatingBuilding}>
+                      + Здание
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="entrance">Подъезд</Label>
+                  <Input
+                    id="entrance"
+                    type="number"
+                    placeholder="1"
+                    value={formData.entrance}
+                    onChange={(e) => handleChange('entrance', e.target.value)}
                   />
                 </div>
               </div>

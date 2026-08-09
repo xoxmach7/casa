@@ -626,7 +626,7 @@ export default function ProjectsCatalogPage() {
                       router.push(`/dashboard/projects/${project.id}?book=true`)
                     }}
                   >
-                    Забронировать
+                    Зафиксировать
                   </Button>
                   {canManageProjects && (
                     <DropdownMenu>

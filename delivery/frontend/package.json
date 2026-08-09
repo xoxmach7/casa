@@ -64,7 +64,7 @@
     "react-hook-form": "^7.67.0",
     "react-leaflet": "^5.0.0",
     "recharts": "^2.15.4",
-    "sharp": "^0.33.2",
+    "sharp": "^0.35.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.1.13"

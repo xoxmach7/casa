@@ -27,7 +27,7 @@ export default function LandingHeader() {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-slate-600 transition-colors hover:text-[#14213d]"
+              className="text-sm font-medium text-slate-600 transition-colors hover:text-[#141f3a]"
             >
               {link.label}
             </a>
@@ -35,12 +35,12 @@ export default function LandingHeader() {
         </nav>
 
         <div className="hidden items-center gap-5 md:flex">
-          <Link href="/login" className="text-sm font-medium text-slate-500 hover:text-[#14213d]">
+          <Link href="/login" className="text-sm font-medium text-slate-500 hover:text-[#141f3a]">
             Войти
           </Link>
           <a
             href="#contact"
-            className="rounded-full bg-[#14213d] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1c2f56]"
+            className="rounded-full bg-[#141f3a] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1c2f56]"
           >
             Запросить доступ
           </a>
@@ -64,7 +64,7 @@ export default function LandingHeader() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className="rounded-md px-2 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#14213d]"
+                className="rounded-md px-2 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#141f3a]"
               >
                 {link.label}
               </a>
@@ -79,7 +79,7 @@ export default function LandingHeader() {
             <a
               href="#contact"
               onClick={() => setOpen(false)}
-              className="mt-2 rounded-full bg-[#14213d] px-5 py-2.5 text-center text-sm font-semibold text-white"
+              className="mt-2 rounded-full bg-[#141f3a] px-5 py-2.5 text-center text-sm font-semibold text-white"
             >
               Запросить доступ
             </a>

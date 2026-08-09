@@ -6,7 +6,7 @@ function CatalogCard() {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm font-semibold text-[#14213d]">Каталог новостроек</p>
+        <p className="text-sm font-semibold text-[#141f3a]">Каталог новостроек</p>
         <p className="text-[11px] text-slate-400">Жилые комплексы от проверенных застройщиков</p>
       </div>
 
@@ -43,7 +43,7 @@ function CatalogCard() {
 function MortgageCard() {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="mb-0.5 text-sm font-semibold text-[#14213d]">Ипотека</p>
+      <p className="mb-0.5 text-sm font-semibold text-[#141f3a]">Ипотека</p>
       <p className="mb-3 text-[11px] text-slate-400">Расчёт ипотеки для новостройки</p>
 
       <div className="grid grid-cols-2 gap-3">
@@ -81,7 +81,7 @@ function MortgageCard() {
         <div className="flex flex-col justify-between rounded-xl bg-[#f3f6fd] p-3">
           <div>
             <p className="text-[9px] text-slate-500">Ежемесячный платёж</p>
-            <p className="mt-1 text-lg font-bold text-[#14213d]">217 084 ₸</p>
+            <p className="mt-1 text-lg font-bold text-[#141f3a]">217 084 ₸</p>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
@@ -100,7 +100,7 @@ function MortgageCard() {
           <button
             type="button"
             tabIndex={-1}
-            className="mt-3 rounded-md bg-[#14213d] py-1.5 text-[9px] font-medium text-white"
+            className="mt-3 rounded-md bg-[#141f3a] py-1.5 text-[9px] font-medium text-white"
           >
             Сохранить расчёт
           </button>

@@ -1,3 +1,5 @@
+import { typo } from '@/lib/typography';
+
 export default function Hero() {
   return (
     <section
@@ -14,29 +16,22 @@ export default function Hero() {
           backgroundSize: '64px 64px',
         }}
       />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-24 -top-24 h-[420px] w-[420px] rounded-full border border-white/10"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-10 -top-10 h-[280px] w-[280px] rounded-full border border-white/10"
-      />
 
       <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
         <h1 className="text-balance text-3xl font-medium leading-tight text-white/90 sm:text-4xl md:text-5xl">
-          CASA Pro —<br className="hidden sm:block" /> закрытая B2B-платформа для{' '}
+          CASA Pro —<br className="hidden sm:block" />{' '}
+          {typo('закрытая B2B-платформа для ')}
           <span className="font-bold text-white">риелторов, ипотечных</span>{' '}
-          брокеров и застройщиков.
+          {typo('брокеров и застройщиков.')}
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-base text-slate-300 sm:text-lg">
-          Объекты, ипотека и сделки — в одной системе.
+          {typo('Объекты, ипотека и сделки — в одной системе.')}
         </p>
 
         <a
           href="#contact"
-          className="mt-10 inline-flex items-center justify-center rounded-full border border-white/70 px-8 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#14213d]"
+          className="mt-10 inline-flex items-center justify-center rounded-full border border-white/70 px-8 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#141f3a]"
         >
           Запросить доступ
         </a>

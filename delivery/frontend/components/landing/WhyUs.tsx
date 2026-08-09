@@ -1,4 +1,5 @@
 import { Building2, ShieldCheck, UsersRound, Workflow, Percent } from 'lucide-react';
+import { typo } from '@/lib/typography';
 
 const ITEMS = [
   { icon: Building2, label: 'Актуальный каталог новостроек' },
@@ -12,7 +13,7 @@ export default function WhyUs() {
   return (
     <section id="why-us" className="bg-white py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="text-center text-2xl font-bold text-[#14213d] sm:text-3xl">
+        <h2 className="text-center text-2xl font-bold text-[#141f3a] sm:text-3xl">
           Почему пользователи выбирают нас
         </h2>
 
@@ -22,7 +23,7 @@ export default function WhyUs() {
               <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#e7edfb]">
                 <Icon className="h-5 w-5 text-[#2f5fdb]" strokeWidth={1.75} />
               </span>
-              <p className="mt-4 text-sm font-medium text-slate-600">{label}</p>
+              <p className="mt-4 text-sm font-medium text-slate-600">{typo(label)}</p>
             </div>
           ))}
         </div>

@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { submitLandingLead } from '@/lib/submit-landing-lead';
+import { typo } from '@/lib/typography';
 
 const ROLES = ['Застройщик', 'Риелтор / брокер', 'Ипотечный специалист'];
 
@@ -42,19 +43,12 @@ export default function ContactSection() {
 
   return (
     <section id="contact" className="relative overflow-hidden bg-[#141f3a] py-24 sm:py-28">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-32 -left-32 h-[420px] w-[420px] rounded-full border border-white/10"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-16 -left-16 h-[280px] w-[280px] rounded-full border border-white/10"
-      />
-
       <div className="relative mx-auto max-w-xl px-4 text-center sm:px-6">
-        <h2 className="text-2xl font-bold text-white sm:text-3xl">Запросите доступ к CASA Pro</h2>
+        <h2 className="text-2xl font-bold text-white sm:text-3xl">
+          {typo('Запросите доступ к CASA Pro')}
+        </h2>
         <p className="mt-3 text-[15px] text-slate-300">
-          Оставьте контакты и команда CASA свяжется с вами
+          {typo('Оставьте контакты и команда CASA свяжется с вами')}
         </p>
 
         <form onSubmit={handleSubmit} className="mt-9 space-y-3 text-left">
@@ -92,7 +86,7 @@ export default function ContactSection() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="mt-2 w-full rounded-full border border-white/70 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#14213d] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-white"
+            className="mt-2 w-full rounded-full border border-white/70 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#141f3a] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-white"
           >
             {isSubmitting ? 'Отправляем…' : 'Запросить доступ'}
           </button>

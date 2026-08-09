@@ -231,11 +231,23 @@ projectsRouter.get('/:id', async (req: Request, res: Response): Promise<void> =>
       _count: true,
     });
 
+    // Фиксации по ЖК — это не то же самое, что забронированные квартиры:
+    // Apartment.status = RESERVED ставит контур броней, а фиксация держит
+    // клиента за брокером и живёт своим статусным циклом. Считаем только
+    // «живые» фиксации: черновики, отказы, истёкшие и отменённые не в счёт.
+    const activeFixations = await prisma.fixation.count({
+      where: {
+        projectId: id,
+        status: { in: ['SENT', 'DUPLICATE_CHECK', 'CONFIRMED', 'BOOKING_REQUESTED', 'BOOKED'] },
+      },
+    });
+
     const stats = {
       total: project.apartments.length,
       available: apartmentStats.find((s) => s.status === 'AVAILABLE')?._count || 0,
       reserved: apartmentStats.find((s) => s.status === 'RESERVED')?._count || 0,
       sold: apartmentStats.find((s) => s.status === 'SOLD')?._count || 0,
+      activeFixations,
     };
 
     res.json({

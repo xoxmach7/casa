@@ -26,6 +26,8 @@ import {
   ClipboardCheck,
   Search,
   Inbox,
+  Handshake,
+  Ruler,
 } from "lucide-react"
 import {
   Sidebar,
@@ -132,6 +134,21 @@ const menuItems: MenuSection[] = [
     icon: Users,
     url: "/dashboard/agency/team",
     roles: ["AGENCY"],
+  },
+  // Контур вторички. Отдельный от брокерского Kanban процесс: комната сделки
+  // со своими Green-гейтами и внутренний пайплайн оценки, где цену
+  // подтверждает человек. Видны только ролям этого контура.
+  {
+    title: "Сделки (вторичка)",
+    icon: Handshake,
+    url: "/dashboard/deal-room",
+    roles: ["ADMIN", "COORDINATOR", "ANALYST"],
+  },
+  {
+    title: "Оценка объектов",
+    icon: Ruler,
+    url: "/dashboard/valuations",
+    roles: ["ADMIN", "COORDINATOR", "ANALYST"],
   },
   // Профиль и Архив убраны из меню: профиль открывается иконкой-карандашом
   // у карточки пользователя внизу сайдбара; архив пока скрыт.

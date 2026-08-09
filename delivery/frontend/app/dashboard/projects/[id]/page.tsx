@@ -82,6 +82,14 @@ interface ProjectDetails {
   images: string[]
   videoUrl?: string
   apartments: Apartment[]
+  apartmentStats?: {
+    total: number
+    available: number
+    reserved: number
+    sold: number
+    // Живые фиксации по ЖК — считаются по Fixation, а не по статусу квартир.
+    activeFixations: number
+  }
 }
 
 export default function ProjectDetailsPage() {
@@ -694,9 +702,9 @@ export default function ProjectDetailsPage() {
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b">
-                <span className="text-muted-foreground">В бронях</span>
+                <span className="text-muted-foreground">Фиксации</span>
                 <span className="font-medium text-orange-600">
-                  {project.apartments.filter(a => a.status === "RESERVED").length}
+                  {project.apartmentStats?.activeFixations ?? 0}
                 </span>
               </div>
               <div className="pt-2 space-y-2">
@@ -706,17 +714,9 @@ export default function ProjectDetailsPage() {
                   <Grid3x3 className="mr-2 h-4 w-4" />
                   Шахматка квартир
                 </Button>
-                {project.developerPhone && (
-                  <Button 
-                    className="w-full" 
-                    size="lg" 
-                    variant="outline"
-                    onClick={() => window.location.href = `tel:${project.developerPhone}`}
-                  >
-                    <Phone className="mr-2 h-4 w-4" />
-                    Позвонить застройщику
-                  </Button>
-                )}
+                {/* Кнопка «Позвонить застройщику» убрана: она делала
+                    tel:-переход, который на десктопе ничего не открывает.
+                    Сам номер остаётся в карточке «Отдел продаж» ниже. */}
                 {/* Ссылка на CRM застройщика - показывается только если указана */}
                 {project.crmUrl && (
                   <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => {

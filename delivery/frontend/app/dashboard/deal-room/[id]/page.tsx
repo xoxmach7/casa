@@ -10,10 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
 import {
+  auditActionLabel,
   blockerLabel,
   dealRoomStageLabel,
   depositStatusLabel,
   formatTenge,
+  riskCategoryLabel,
   trafficLightClass,
   trafficLightLabel,
 } from "@/lib/secondary-market"
@@ -48,7 +50,15 @@ interface DealRoomDetail {
     verifiedAt: string | null
   } | null
   booking: any
-  risks: { id: string; severity: string; description: string; isBlocker: boolean; resolvedAt: string | null }[]
+  risks: {
+    id: string
+    category: string
+    severity: string
+    resolution: string | null
+    isBlocker: boolean
+    dueDate: string | null
+    resolvedAt: string | null
+  }[]
   history: {
     id: string
     action: string
@@ -207,9 +217,17 @@ export default function DealRoomDetailPage() {
               Блокирующие риски ({openBlockers.length})
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-1 text-sm">
+          <CardContent className="space-y-2 text-sm">
             {openBlockers.map((r) => (
-              <p key={r.id}>{r.description}</p>
+              <div key={r.id}>
+                <p className="font-medium">{riskCategoryLabel(r.category)}</p>
+                {r.resolution && <p className="text-muted-foreground">{r.resolution}</p>}
+                {r.dueDate && (
+                  <p className="text-xs text-muted-foreground">
+                    срок — {new Date(r.dueDate).toLocaleDateString("ru-RU")}
+                  </p>
+                )}
+              </div>
             ))}
           </CardContent>
         </Card>
@@ -288,7 +306,7 @@ export default function DealRoomDetailPage() {
                   <p className="font-medium">
                     {entry.newValues?.stage
                       ? dealRoomStageLabel(entry.newValues.stage)
-                      : entry.action}
+                      : auditActionLabel(entry.action)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(entry.createdAt).toLocaleString("ru-RU")}

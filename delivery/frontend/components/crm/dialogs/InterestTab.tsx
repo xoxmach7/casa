@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api-client";
 import { toast } from "sonner";
@@ -24,7 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { User, Calendar, Plus, Save, Check, X, DollarSign } from "lucide-react";
+import { User, Calendar, Plus, Save, Check, X, DollarSign, Handshake } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CreateOfferDialog } from "../forms/DealForms";
@@ -56,6 +57,7 @@ const OfferStatusColors: Record<string, string> = {
 };
 
 export function InterestTab({ propertyId, isSold = false }: InterestTabProps) {
+    const router = useRouter();
     const queryClient = useQueryClient();
     const [isAddingShow, setIsAddingShow] = useState(false);
     const [isOfferDialogOpen, setIsOfferDialogOpen] = useState(false);
@@ -175,6 +177,35 @@ export function InterestTab({ propertyId, isSold = false }: InterestTabProps) {
             toast.success("Оффер отклонён");
         },
         onError: () => toast.error("Ошибка отклонения оффера"),
+    });
+
+    // Комнату сделки ведёт координатор — брокеру эту кнопку не показываем,
+    // сервер её всё равно отклонит.
+    const [canCoordinate, setCanCoordinate] = useState(false);
+    useEffect(() => {
+        const raw = localStorage.getItem("user");
+        const role = raw ? JSON.parse(raw)?.role : null;
+        setCanCoordinate(role === "ADMIN" || role === "COORDINATOR");
+    }, []);
+
+    // Идемпотентно: если комната по этому офферу уже открыта, бэкенд вернёт
+    // её же, а не создаст вторую.
+    const openDealRoomMutation = useMutation({
+        mutationFn: async (offerId: string) => {
+            const res = await api.post(`/deal-room`, { offerId });
+            return res.data?.data;
+        },
+        onSuccess: (deal: any) => {
+            if (deal?.id) router.push(`/dashboard/deal-room/${deal.id}`);
+        },
+        onError: (e: any) => {
+            const err = e?.response?.data?.error;
+            if (err?.code === "state_transition_blocked") {
+                toast.error("По этому объекту и покупателю уже есть активная сделка");
+                return;
+            }
+            toast.error(err?.message || "Не удалось открыть комнату сделки");
+        },
     });
 
     return (
@@ -404,6 +435,17 @@ export function InterestTab({ propertyId, isSold = false }: InterestTabProps) {
                                                     <X className="w-3 h-3 mr-1" /> Отклонить
                                                 </Button>
                                             </div>
+                                        )}
+                                        {offer.status === "ACCEPTED" && canCoordinate && (
+                                            <Button
+                                                size="sm"
+                                                className="h-7 px-2"
+                                                onClick={() => openDealRoomMutation.mutate(offer.id)}
+                                                disabled={openDealRoomMutation.isPending}
+                                            >
+                                                <Handshake className="w-3 h-3 mr-1" />
+                                                Комната сделки
+                                            </Button>
                                         )}
                                     </TableCell>
                                 </TableRow>

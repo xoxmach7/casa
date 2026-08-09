@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table"
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
 import {
+  auditActionLabel,
   comparabilityLabel,
   formatRange,
   formatTenge,
@@ -325,7 +326,7 @@ export default function ValuationDetailPage() {
                 )}
                 {valuation.history.map((entry) => (
                   <div key={entry.id} className="border-l-2 pl-3 text-sm">
-                    <p className="font-medium">{entry.action}</p>
+                    <p className="font-medium">{auditActionLabel(entry.action)}</p>
                     <p className="text-xs text-muted-foreground">
                       {new Date(entry.createdAt).toLocaleString("ru-RU")}
                       {entry.actor ? ` · ${entry.actor.firstName} ${entry.actor.lastName}` : ""}

@@ -182,6 +182,38 @@ export function depositStatusLabel(status: string): string {
   return DEPOSIT_STATUS_LABELS[status] ?? status;
 }
 
+// Действия из AuditLog. Пишутся туда кодом бэкенда — здесь переводятся для
+// ленты истории, чтобы пользователь не читал CALCULATE_PRELIMINARY.
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  CREATE: 'Заявка создана',
+  CONFIRM: 'Оценка подтверждена',
+  CALCULATE_PRELIMINARY: 'Предварительный расчёт',
+  ADD_COMPARABLE: 'Добавлен аналог',
+  OPEN_DEAL_ROOM: 'Комната сделки открыта',
+  TRANSITION: 'Переход по стадии',
+  VERIFY_DEPOSIT_TRANSFER: 'Перевод задатка подтверждён',
+  CLOSE: 'Закрыто',
+};
+
+export function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+const RISK_CATEGORY_LABELS: Record<string, string> = {
+  legal: 'Юридический риск',
+  documents: 'Документы',
+  encumbrance: 'Обременение',
+  payment: 'Оплата',
+  mortgage: 'Ипотека',
+  seller: 'Продавец',
+  buyer: 'Покупатель',
+  timing: 'Сроки',
+};
+
+export function riskCategoryLabel(category: string): string {
+  return RISK_CATEGORY_LABELS[category] ?? category;
+}
+
 /** Человекочитаемые причины, по которым сервер отказывает в переходе. */
 const BLOCKER_LABELS: Record<string, string> = {
   invalid_transition: 'Такой переход не предусмотрен процессом',

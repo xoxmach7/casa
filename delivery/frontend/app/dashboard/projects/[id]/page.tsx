@@ -20,6 +20,7 @@ import {
   Percent,
   Loader2,
   Image as ImageIcon,
+  Grid3x3,
   X,
   ChevronLeft,
   ChevronRight,
@@ -698,6 +699,21 @@ export default function ProjectDetailsPage() {
             </TabsContent>
 
             <TabsContent value="apartments" className="mt-4 space-y-4">
+              <Card className="border-primary/40 bg-primary/5">
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+                  <div>
+                    <p className="font-medium">Шахматка и фиксация клиента</p>
+                    <p className="text-sm text-muted-foreground">
+                      Плитка, список или шахматка по этажам — закрепите клиента за квартирой
+                    </p>
+                  </div>
+                  <Button onClick={() => router.push(`/dashboard/projects/${project.id}/apartments`)}>
+                    <Grid3x3 className="mr-2 h-4 w-4" />
+                    Открыть шахматку
+                  </Button>
+                </CardContent>
+              </Card>
+
               <div className="flex gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -758,11 +774,10 @@ export default function ProjectDetailsPage() {
               </div>
               <div className="pt-2 space-y-2">
                 <Button className="w-full bg-green-600 hover:bg-green-700" size="lg" onClick={() => {
-                  // Переход на шахматку данного проекта
-                  router.push(`/dashboard/chess?projectId=${project.id}`)
+                  router.push(`/dashboard/projects/${project.id}/apartments`)
                 }}>
-                  <Home className="mr-2 h-4 w-4" />
-                  Забронировать квартиру
+                  <Grid3x3 className="mr-2 h-4 w-4" />
+                  Шахматка квартир
                 </Button>
                 {project.developerPhone && (
                   <Button 

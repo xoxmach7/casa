@@ -340,19 +340,19 @@ export default function MortgagePage() {
           {/* Filters */}
           <Card>
             <CardContent className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Поиск программ..." 
-                    className="pl-8"
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Поиск программ..."
+                    className="pl-9 h-9 w-56 rounded-full"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                
+
                 <Select value={bankFilter} onValueChange={setBankFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger size="sm" className="rounded-full">
                     <SelectValue placeholder="Банк" />
                   </SelectTrigger>
                   <SelectContent>
@@ -364,7 +364,7 @@ export default function MortgagePage() {
                 </Select>
 
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger size="sm" className="rounded-full">
                     <SelectValue placeholder="Тип программы" />
                   </SelectTrigger>
                   <SelectContent>
@@ -376,7 +376,7 @@ export default function MortgagePage() {
                 </Select>
 
                 <Select value={housingFilter} onValueChange={setHousingFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger size="sm" className="rounded-full">
                     <SelectValue placeholder="Тип жилья" />
                   </SelectTrigger>
                   <SelectContent>

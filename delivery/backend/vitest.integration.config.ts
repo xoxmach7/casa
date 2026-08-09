@@ -1,14 +1,9 @@
 import { defineConfig } from 'vitest/config';
+import { INTEGRATION_TEST_FILES } from './vitest.files';
 
-// The suites that require a running API server (BASE_URL / PORT) and a
-// migrated + seeded database. Kept out of the default `npm test` run so a
+// Integration + security suites. Kept out of the default `npm test` run so a
 // missing server reads as "not run here", not as a red test suite — but they
 // are mandatory in CI, where the workflow boots the server first.
-export const INTEGRATION_TEST_FILES = [
-  'src/__tests__/api.test.ts',
-  'src/__tests__/security.test.ts',
-];
-
 export default defineConfig({
   test: {
     testTimeout: 30000,

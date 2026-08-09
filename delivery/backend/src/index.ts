@@ -96,6 +96,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(auditMiddleware);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// Which commit is actually serving traffic. Railway injects this at build
+// time; locally it's undefined. The deploy workflow polls /health until this
+// matches the commit it just gated, so "deployed" is an observed fact rather
+// than a guess about how long Railway takes.
+const DEPLOYED_COMMIT = process.env.RAILWAY_GIT_COMMIT_SHA || null;
+
 // Health check
 app.get('/health', async (_req, res) => {
   try {
@@ -106,12 +112,14 @@ app.get('/health', async (_req, res) => {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       db: 'connected',
+      commit: DEPLOYED_COMMIT,
     });
   } catch {
     res.status(503).json({
       status: 'error',
       timestamp: new Date().toISOString(),
       db: 'disconnected',
+      commit: DEPLOYED_COMMIT,
     });
   }
 });

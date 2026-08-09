@@ -1,0 +1,85 @@
+name: Production deploy check
+
+# Railway builds master itself (GitHub integration). This workflow is the other
+# half of the pipeline: it only starts once CI is green, waits until production
+# actually reports the gated commit, and then smoke-tests the live surfaces.
+#
+# The hard gate lives in Railway: each service → Settings → Deploy → "Wait for
+# CI" must be ON, so Railway refuses to build a commit whose checks failed.
+# See docs/CI-CD.md.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Wait for rollout, then smoke-test production
+    runs-on: ubuntu-latest
+    # Never smoke-test a red build. workflow_dispatch has no source run, so it
+    # is allowed through for manual re-checks of whatever is live right now.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+
+    env:
+      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+      PROD_API_URL: ${{ vars.PROD_API_URL }}
+      PROD_CRM_URL: ${{ vars.PROD_CRM_URL }}
+      PROD_SITE_URL: ${{ vars.PROD_SITE_URL }}
+
+    steps:
+      - name: Check configuration
+        id: config
+        run: |
+          if [ -z "$PROD_API_URL" ]; then
+            echo "PROD_API_URL repository variable is not set — nothing to smoke-test."
+            echo "See docs/CI-CD.md for the one-time setup."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for the gated commit to reach production
+        if: steps.config.outputs.configured == 'true' && env.EXPECTED_SHA != ''
+        run: |
+          echo "Waiting for $EXPECTED_SHA on $PROD_API_URL/health"
+          for i in $(seq 1 60); do
+            body=$(curl -sf --max-time 10 "$PROD_API_URL/health" || true)
+            live=$(echo "$body" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            if [ "$live" = "$EXPECTED_SHA" ]; then
+              echo "Live after $((i * 15))s: $live"
+              exit 0
+            fi
+            echo "attempt $i — live commit: ${live:-unknown}"
+            sleep 15
+          done
+          echo "::warning::Production still does not report $EXPECTED_SHA after 15 minutes."
+          echo "::warning::Either the rollout is slow, or Railway did not pick up this commit."
+          exit 1
+
+      - name: Smoke-test the API
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          health=$(curl -sf --max-time 15 "$PROD_API_URL/health")
+          echo "$health"
+          echo "$health" | grep -q '"status":"ok"' || { echo "API health is not ok"; exit 1; }
+          echo "$health" | grep -q '"db":"connected"' || { echo "API cannot reach the database"; exit 1; }
+
+          # An unauthenticated protected route must still be refused — catches a
+          # deploy that accidentally ships with auth disabled.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$PROD_API_URL/api/clients")
+          [ "$code" = "401" ] || { echo "GET /api/clients returned $code, expected 401"; exit 1; }
+
+      - name: Smoke-test the CRM
+        if: steps.config.outputs.configured == 'true' && env.PROD_CRM_URL != ''
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$PROD_CRM_URL/login")
+          [ "$code" = "200" ] || { echo "CRM /login returned $code"; exit 1; }
+
+      - name: Smoke-test the public site
+        if: steps.config.outputs.configured == 'true' && env.PROD_SITE_URL != ''
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$PROD_SITE_URL/")
+          [ "$code" = "200" ] || { echo "Public site returned $code"; exit 1; }

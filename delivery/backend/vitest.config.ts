@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { INTEGRATION_TEST_FILES } from './vitest.integration.config';
+import { INTEGRATION_TEST_FILES } from './vitest.files';
 
 // Default suite = unit/route tests only. They mock Prisma and never touch the
 // network, so they run anywhere (dev laptop, CI, pre-commit) with no services.

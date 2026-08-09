@@ -228,8 +228,10 @@ describe('Role-Based Access Control', () => {
     expect(res.status).toBe(401);
   });
 
+  // Legacy /properties was dropped in migration 20260802180000_remove_legacy_property;
+  // CrmProperty is the only property surface now.
   it('unauthenticated cannot access properties', async () => {
-    const res = await rawFetch(`${BASE}/properties`);
+    const res = await rawFetch(`${BASE}/crm-properties`);
     expect(res.status).toBe(401);
   });
 });

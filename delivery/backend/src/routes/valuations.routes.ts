@@ -9,8 +9,9 @@
 // вопросы»); эти два эндпоинта сейчас сознательно сосуществуют до
 // продуктового решения по /otsenka.
 //
-// Роли: до введения выделенных ролей Coordinator/Operator/Analyst из спеки
-// (нет в текущем UserRole) все действия здесь ограничены ADMIN.
+// Роли: ANALYST собирает аналоги и считает, COORDINATOR принимает решение
+// (confirm), ADMIN может всё. Раньше весь роутер был под ADMIN — то есть
+// работать в модуле было некому.
 // =========================================
 
 import { Router, Request, Response } from 'express';
@@ -25,7 +26,16 @@ import {
 } from '../lib/valuation-pipeline.service';
 
 export const valuationsRouter = Router();
-valuationsRouter.use(authenticate, requireRole('ADMIN'));
+
+// Кто видит очередь оценки.
+const READ_ROLES = ['ADMIN', 'COORDINATOR', 'ANALYST'] as const;
+// Кто ведёт работу по заявке: заводит, считает, собирает аналоги.
+const WORK_ROLES = ['ADMIN', 'COORDINATOR', 'ANALYST'] as const;
+// Кто ставит финальное решение. Аналитик считает, но не решает — раздел
+// "Acceptance criteria" 02_CASA_Valuation_Spec.
+const DECIDE_ROLES = ['ADMIN', 'COORDINATOR'] as const;
+
+valuationsRouter.use(authenticate, requireRole(...READ_ROLES));
 
 // Пилот — только Алматы (см. 06_CASA_Release_QA_Plan config key pilot.city_id);
 // пока нет справочника городов, используем константу.
@@ -35,8 +45,96 @@ function actorMeta(req: Request) {
   return { actorUserId: req.user?.userId, actorRole: req.user?.role };
 }
 
+// GET /api/valuations — очередь оценки.
+// Без этого эндпоинта модуль был write-only: заявку можно было создать, но
+// нигде не увидеть.
+valuationsRouter.get('/', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const query = z
+      .object({
+        status: z.string().optional(),
+        propertyId: z.string().optional(),
+        page: z.coerce.number().int().min(1).default(1),
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+      })
+      .parse(req.query);
+
+    const where: any = {};
+    if (query.status) where.status = query.status;
+    if (query.propertyId) where.propertyId = query.propertyId;
+
+    const [total, valuations] = await Promise.all([
+      prisma.valuation.count({ where }),
+      prisma.valuation.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        include: {
+          property: {
+            select: { id: true, residentialComplex: true, district: true, rooms: true, area: true, address: true },
+          },
+          // Только актуальная версия — список не должен тащить всю историю.
+          versions: { orderBy: { versionNumber: 'desc' }, take: 1 },
+        },
+      }),
+    ]);
+
+    res.json({
+      data: valuations,
+      meta: { total, page: query.page, limit: query.limit, pages: Math.ceil(total / query.limit) },
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'validation_error', fields: error.flatten() } });
+      return;
+    }
+    console.error('List valuations error:', error);
+    res.status(500).json({ error: { code: 'internal_error', message: 'Ошибка получения списка оценок' } });
+  }
+});
+
+// GET /api/valuations/:id — карточка оценки со всей историей версий,
+// аналогами и рыночным эталоном, на котором считали.
+valuationsRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const valuation = await prisma.valuation.findUnique({
+      where: { id: req.params.id },
+      include: {
+        property: true,
+        versions: {
+          orderBy: { versionNumber: 'desc' },
+          include: {
+            comparables: { orderBy: { createdAt: 'asc' } },
+            marketReference: true,
+            reviewer: { select: { id: true, firstName: true, lastName: true, email: true } },
+          },
+        },
+      },
+    });
+    if (!valuation) {
+      res.status(404).json({ error: { code: 'not_found', message: 'Оценка не найдена' } });
+      return;
+    }
+
+    // Кто и что делал с заявкой — читается из append-only AuditLog, отдельной
+    // таблицы событий у Valuation нет.
+    const history = await prisma.auditLog.findMany({
+      where: { entityType: 'Valuation', entityId: valuation.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: { actor: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    });
+
+    res.json({ data: { ...valuation, history } });
+  } catch (error) {
+    console.error('Get valuation error:', error);
+    res.status(500).json({ error: { code: 'internal_error', message: 'Ошибка получения оценки' } });
+  }
+});
+
 // POST /api/valuations — создать заявку на оценку объекта
-valuationsRouter.post('/', async (req: Request, res: Response): Promise<void> => {
+valuationsRouter.post('/', requireRole(...WORK_ROLES), async (req: Request, res: Response): Promise<void> => {
   try {
     const { propertyId } = z.object({ propertyId: z.string().min(1) }).parse(req.body);
 
@@ -70,7 +168,7 @@ valuationsRouter.post('/', async (req: Request, res: Response): Promise<void> =>
 });
 
 // POST /api/valuations/:id/calculate-preliminary
-valuationsRouter.post('/:id/calculate-preliminary', async (req: Request, res: Response): Promise<void> => {
+valuationsRouter.post('/:id/calculate-preliminary', requireRole(...WORK_ROLES), async (req: Request, res: Response): Promise<void> => {
   try {
     const valuation = await prisma.valuation.findUnique({
       where: { id: req.params.id },
@@ -168,7 +266,7 @@ const addComparableSchema = z.object({
 
 // POST /api/valuations/:id/comparables — добавить аналог к текущей (ещё не
 // подтверждённой) версии оценки.
-valuationsRouter.post('/:id/comparables', async (req: Request, res: Response): Promise<void> => {
+valuationsRouter.post('/:id/comparables', requireRole(...WORK_ROLES), async (req: Request, res: Response): Promise<void> => {
   try {
     const body = addComparableSchema.parse(req.body);
 
@@ -258,7 +356,7 @@ const confirmSchema = z.object({
 });
 
 // POST /api/valuations/:id/confirm
-valuationsRouter.post('/:id/confirm', async (req: Request, res: Response): Promise<void> => {
+valuationsRouter.post('/:id/confirm', requireRole(...DECIDE_ROLES), async (req: Request, res: Response): Promise<void> => {
   try {
     const body = confirmSchema.parse(req.body);
 

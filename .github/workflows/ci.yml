@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: delivery/backend/package-lock.json
 
@@ -110,7 +110,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: delivery/frontend/package-lock.json
 
@@ -141,12 +141,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: casa40-main/package-lock.json
 
+      # lovable-tagger pins vite <8 while @vitejs/plugin-react@6 wants vite 8.
+      # The app builds fine on the resolved tree; strict peer resolution is the
+      # only thing that objects.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Typecheck
         run: npx tsc --noEmit

@@ -27,10 +27,11 @@ vi.mock('../lib/audit-log.service', () => ({
 vi.mock('../lib/prisma', () => ({
   prisma: {
     crmProperty: { findUnique: vi.fn() },
-    valuation: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    valuation: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
     valuationVersion: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     marketReference: { findFirst: vi.fn() },
     comparable: { create: vi.fn(), findUnique: vi.fn() },
+    auditLog: { findMany: vi.fn() },
     $transaction: vi.fn((ops: any[]) => Promise.all(ops)),
   },
 }));
@@ -48,20 +49,138 @@ function buildApp() {
 describe('valuations.routes — access control', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    currentUser = { userId: 'broker_1', role: 'BROKER' };
   });
 
-  it('403s a non-admin on every endpoint', async () => {
+  it('403s a broker on every endpoint', async () => {
+    currentUser = { userId: 'broker_1', role: 'BROKER' };
     const app = buildApp();
+    const list = await request(app).get('/api/valuations');
     const create = await request(app).post('/api/valuations').send({ propertyId: 'p1' });
     const calc = await request(app).post('/api/valuations/v1/calculate-preliminary');
     const comparable = await request(app).post('/api/valuations/v1/comparables').send({});
     const confirm = await request(app).post('/api/valuations/v1/confirm').send({});
 
+    expect(list.status).toBe(403);
     expect(create.status).toBe(403);
-    expect(calc.status).toBe(403);
     expect(comparable.status).toBe(403);
+    expect(calc.status).toBe(403);
     expect(confirm.status).toBe(403);
+  });
+
+  it('lets an analyst do the work but not sign off the result', async () => {
+    currentUser = { userId: 'analyst_1', role: 'ANALYST' };
+    (prisma.crmProperty.findUnique as any).mockResolvedValue(null);
+    (prisma.valuation.count as any).mockResolvedValue(0);
+    (prisma.valuation.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+
+    expect((await request(app).get('/api/valuations')).status).toBe(200);
+    // 404, not 403 — the analyst passed the guard and the handler ran.
+    expect((await request(app).post('/api/valuations').send({ propertyId: 'missing' })).status).toBe(404);
+
+    const confirm = await request(app).post('/api/valuations/v1/confirm').send({});
+    expect(confirm.status).toBe(403);
+    expect(prisma.valuationVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('lets a coordinator sign off the result', async () => {
+    currentUser = { userId: 'coord_1', role: 'COORDINATOR' };
+    (prisma.valuation.findUnique as any).mockResolvedValue(null);
+
+    const app = buildApp();
+    const confirm = await request(app).post('/api/valuations/v1/confirm').send({
+      confirmedLow: 1, confirmedHigh: 2, urgentLow: 1, urgentHigh: 2,
+      recommendedLaunchPrice: 2, maxLaunchPrice: 3,
+      liquidity: 'HIGH', confidence: 'HIGH', decision: 'ACCEPTED',
+      reviewerReason: 'проверено по трём прямым аналогам', expectedVersion: 1,
+    });
+    // Passes the role guard, fails on the missing valuation instead.
+    expect(confirm.status).toBe(404);
+  });
+});
+
+describe('GET /api/valuations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'coord_1', role: 'COORDINATOR' };
+  });
+
+  it('returns the queue newest-first with only the latest version per request', async () => {
+    (prisma.valuation.count as any).mockResolvedValue(2);
+    (prisma.valuation.findMany as any).mockResolvedValue([
+      { id: 'val_2', status: 'PRELIMINARY_READY', versions: [{ versionNumber: 1 }] },
+      { id: 'val_1', status: 'ACCEPTED', versions: [{ versionNumber: 3 }] },
+    ]);
+
+    const app = buildApp();
+    const res = await request(app).get('/api/valuations');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(prisma.valuation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: { updatedAt: 'desc' },
+        include: expect.objectContaining({
+          versions: { orderBy: { versionNumber: 'desc' }, take: 1 },
+        }),
+      })
+    );
+  });
+
+  it('filters by status', async () => {
+    (prisma.valuation.count as any).mockResolvedValue(0);
+    (prisma.valuation.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    await request(app).get('/api/valuations?status=MANUAL_REVIEW_REQUIRED');
+
+    expect(prisma.valuation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'MANUAL_REVIEW_REQUIRED' } })
+    );
+  });
+
+  it('400s on a limit above the cap rather than dumping the table', async () => {
+    const app = buildApp();
+    const res = await request(app).get('/api/valuations?limit=1000');
+    expect(res.status).toBe(400);
+    expect(prisma.valuation.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/valuations/:id', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'coord_1', role: 'COORDINATOR' };
+  });
+
+  it('404s an unknown valuation', async () => {
+    (prisma.valuation.findUnique as any).mockResolvedValue(null);
+    const app = buildApp();
+    expect((await request(app).get('/api/valuations/nope')).status).toBe(404);
+  });
+
+  it('returns every version with its comparables plus the audit trail', async () => {
+    (prisma.valuation.findUnique as any).mockResolvedValue({
+      id: 'val_1',
+      status: 'ACCEPTED',
+      versions: [
+        { versionNumber: 2, comparables: [{ id: 'c1' }, { id: 'c2' }], isImmutable: true },
+        { versionNumber: 1, comparables: [], isImmutable: true },
+      ],
+    });
+    (prisma.auditLog.findMany as any).mockResolvedValue([{ id: 'log_1', action: 'CONFIRM' }]);
+
+    const app = buildApp();
+    const res = await request(app).get('/api/valuations/val_1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.versions).toHaveLength(2);
+    expect(res.body.data.versions[0].comparables).toHaveLength(2);
+    expect(res.body.data.history).toEqual([{ id: 'log_1', action: 'CONFIRM' }]);
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { entityType: 'Valuation', entityId: 'val_1' } })
+    );
   });
 });
 

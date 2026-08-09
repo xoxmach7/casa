@@ -4,8 +4,8 @@
 // строго для вторички, открывается первым формальным офером. См. gap-audit
 // и schema.prisma комментарий над SecondaryDeal.
 //
-// Роли: до введения выделенного Coordinator/Legal reviewer/CEO из спеки все
-// действия ограничены ADMIN (как и в valuations.routes.ts).
+// Роли: комнату ведёт COORDINATOR (ADMIN может всё). ANALYST видит сделку,
+// но не двигает её — переходы, задаток и бронь ему закрыты.
 // =========================================
 
 import { Router, Request, Response } from 'express';
@@ -14,6 +14,7 @@ import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { recordAuditLog } from '../lib/audit-log.service';
 import {
+  availableDealRoomTransitions,
   canTransitionDealRoom,
   canSetGreen2,
   canDraftDeposit,
@@ -23,15 +24,113 @@ import {
 } from '../lib/deal-room.service';
 
 export const dealRoomRouter = Router();
-dealRoomRouter.use(authenticate, requireRole('ADMIN'));
+
+const READ_ROLES = ['ADMIN', 'COORDINATOR', 'ANALYST'] as const;
+const COORDINATE_ROLES = ['ADMIN', 'COORDINATOR'] as const;
+
+dealRoomRouter.use(authenticate, requireRole(...READ_ROLES));
 
 function actorMeta(req: Request) {
   return { actorUserId: req.user?.userId, actorRole: req.user?.role };
 }
 
+// GET /api/deal-room — доска сделок вторички.
+// Без этого эндпоинта модуль был write-only: комнату можно было открыть и
+// двигать по стадиям, но нигде не увидеть.
+dealRoomRouter.get('/', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const query = z
+      .object({
+        stage: z.string().optional(),
+        trafficLight: z.enum(['RED', 'YELLOW', 'GREEN_1', 'GREEN_2']).optional(),
+        propertyId: z.string().optional(),
+        buyerId: z.string().optional(),
+        // По умолчанию доска показывает работу в процессе, а не архив.
+        includeClosed: z.coerce.boolean().default(false),
+        page: z.coerce.number().int().min(1).default(1),
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+      })
+      .parse(req.query);
+
+    const where: any = {};
+    if (query.stage) where.stage = query.stage;
+    if (query.trafficLight) where.trafficLight = query.trafficLight;
+    if (query.propertyId) where.propertyId = query.propertyId;
+    if (query.buyerId) where.buyerId = query.buyerId;
+    if (!query.includeClosed && !query.stage) where.stage = { notIn: ['SOLD', 'FAILED'] };
+
+    const [total, deals] = await Promise.all([
+      prisma.secondaryDeal.count({ where }),
+      prisma.secondaryDeal.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        include: {
+          property: { select: { id: true, residentialComplex: true, district: true, address: true, rooms: true, area: true } },
+          buyer: { select: { id: true, firstName: true, lastName: true, phone: true } },
+          coordinator: { select: { id: true, firstName: true, lastName: true } },
+          precheck: { select: { completenessPercent: true, hasBlockingRisk: true } },
+          deposit: { select: { status: true, amount: true } },
+        },
+      }),
+    ]);
+
+    res.json({
+      data: deals,
+      meta: { total, page: query.page, limit: query.limit, pages: Math.ceil(total / query.limit) },
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'validation_error', fields: error.flatten() } });
+      return;
+    }
+    console.error('List deal rooms error:', error);
+    res.status(500).json({ error: { code: 'internal_error', message: 'Ошибка получения списка сделок' } });
+  }
+});
+
+// GET /api/deal-room/:id — карточка сделки: pre-check, задаток, бронь, риски,
+// доступные переходы и история действий.
+dealRoomRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const deal = await prisma.secondaryDeal.findUnique({
+      where: { id: req.params.id },
+      include: {
+        property: true,
+        buyer: true,
+        offer: true,
+        coordinator: { select: { id: true, firstName: true, lastName: true, email: true } },
+        precheck: true,
+        deposit: true,
+        booking: true,
+        risks: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+    if (!deal) {
+      res.status(404).json({ error: { code: 'not_found', message: 'Сделка не найдена' } });
+      return;
+    }
+
+    const history = await prisma.auditLog.findMany({
+      where: { entityType: 'SecondaryDeal', entityId: deal.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: { actor: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    });
+
+    const availableStages = availableDealRoomTransitions(deal.stage as DealRoomStage);
+
+    res.json({ data: { ...deal, history }, meta: { version: deal.version, availableStages } });
+  } catch (error) {
+    console.error('Get deal room error:', error);
+    res.status(500).json({ error: { code: 'internal_error', message: 'Ошибка получения сделки' } });
+  }
+});
+
 // POST /api/deal-room — открыть комнату сделки по первому формальному оферу.
 // Идемпотентно: ровно один активный SecondaryDeal на property+buyer.
-dealRoomRouter.post('/', async (req: Request, res: Response): Promise<void> => {
+dealRoomRouter.post('/', requireRole(...COORDINATE_ROLES), async (req: Request, res: Response): Promise<void> => {
   try {
     const { offerId } = z.object({ offerId: z.string().min(1) }).parse(req.body);
 
@@ -112,7 +211,7 @@ const transitionSchema = z.object({
 });
 
 // POST /api/deal-room/:id/transition
-dealRoomRouter.post('/:id/transition', async (req: Request, res: Response): Promise<void> => {
+dealRoomRouter.post('/:id/transition', requireRole(...COORDINATE_ROLES), async (req: Request, res: Response): Promise<void> => {
   try {
     const body = transitionSchema.parse(req.body);
     const targetStage = body.targetStage as DealRoomStage;
@@ -233,7 +332,7 @@ const verifyTransferSchema = z.object({
 });
 
 // POST /api/deal-room/:id/deposit/verify-transfer
-dealRoomRouter.post('/:id/deposit/verify-transfer', async (req: Request, res: Response): Promise<void> => {
+dealRoomRouter.post('/:id/deposit/verify-transfer', requireRole(...COORDINATE_ROLES), async (req: Request, res: Response): Promise<void> => {
   try {
     const body = verifyTransferSchema.parse(req.body);
 

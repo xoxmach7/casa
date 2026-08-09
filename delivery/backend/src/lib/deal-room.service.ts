@@ -58,6 +58,13 @@ export function isTerminalDealRoomStage(stage: DealRoomStage): boolean {
   return ALLOWED_DEAL_ROOM_TRANSITIONS[stage].length === 0;
 }
 
+// Отдаётся в карточке сделки, чтобы UI не дублировал стейт-машину и не
+// предлагал переход, который сервер всё равно отклонит. Гварды Green/задатка
+// проверяются отдельно при самом переходе — здесь только форма графа.
+export function availableDealRoomTransitions(from: DealRoomStage): DealRoomStage[] {
+  return ALLOWED_DEAL_ROOM_TRANSITIONS[from];
+}
+
 export interface GuardResult {
   allowed: boolean;
   blockers: string[];

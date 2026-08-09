@@ -51,6 +51,33 @@ clientPropertyInterestsRouter.get('/', async (req: Request, res: Response): Prom
   }
 });
 
+// GET /api/client-property-interests/:id
+clientPropertyInterestsRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const interest = await prisma.clientPropertyInterest.findUnique({
+      where: { id: req.params.id },
+      include: {
+        property: true,
+        buyer: true,
+        broker: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+    if (!interest) {
+      res.status(404).json({ error: 'Интерес не найден' });
+      return;
+    }
+    if (RESTRICTED_ROLES.includes(req.user?.role || '') && interest.brokerId !== req.user!.userId) {
+      res.status(403).json({ error: 'Доступ запрещен' });
+      return;
+    }
+
+    res.json(interest);
+  } catch (error) {
+    console.error('Get client property interest error:', error);
+    res.status(500).json({ error: 'Ошибка получения интереса к объекту' });
+  }
+});
+
 // POST /api/client-property-interests
 clientPropertyInterestsRouter.post('/', async (req: Request, res: Response): Promise<void> => {
   try {

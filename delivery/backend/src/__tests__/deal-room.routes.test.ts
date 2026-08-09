@@ -27,10 +27,18 @@ vi.mock('../lib/audit-log.service', () => ({
 vi.mock('../lib/prisma', () => ({
   prisma: {
     offer: { findUnique: vi.fn() },
-    secondaryDeal: { findFirst: vi.fn(), create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    secondaryDeal: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      update: vi.fn(),
+    },
     dealPrecheck: { create: vi.fn() },
     dealDeposit: { create: vi.fn(), update: vi.fn() },
     dealBooking: { create: vi.fn() },
+    auditLog: { findMany: vi.fn() },
   },
 }));
 
@@ -47,13 +55,142 @@ function buildApp() {
 describe('deal-room.routes — access control', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    currentUser = { userId: 'broker_1', role: 'BROKER' };
   });
 
-  it('403s a non-admin', async () => {
+  it('403s a broker on every route — the secondary-market contour is not theirs', async () => {
+    currentUser = { userId: 'broker_1', role: 'BROKER' };
     const app = buildApp();
-    const res = await request(app).post('/api/deal-room').send({ offerId: 'o1' });
-    expect(res.status).toBe(403);
+    expect((await request(app).get('/api/deal-room')).status).toBe(403);
+    expect((await request(app).post('/api/deal-room').send({ offerId: 'o1' })).status).toBe(403);
+  });
+
+  it('lets an analyst read the board but not move a deal', async () => {
+    currentUser = { userId: 'analyst_1', role: 'ANALYST' };
+    (prisma.secondaryDeal.count as any).mockResolvedValue(0);
+    (prisma.secondaryDeal.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    expect((await request(app).get('/api/deal-room')).status).toBe(200);
+
+    const transition = await request(app)
+      .post('/api/deal-room/d1/transition')
+      .send({ targetStage: 'GREEN_2', expectedVersion: 1 });
+    expect(transition.status).toBe(403);
+    expect(prisma.secondaryDeal.update).not.toHaveBeenCalled();
+  });
+
+  it('lets a coordinator open and move a deal', async () => {
+    currentUser = { userId: 'coord_1', role: 'COORDINATOR' };
+    (prisma.offer.findUnique as any).mockResolvedValue(null);
+
+    const app = buildApp();
+    // 404, not 403 — the role passed the guard and the handler ran.
+    expect((await request(app).post('/api/deal-room').send({ offerId: 'missing' })).status).toBe(404);
+  });
+});
+
+describe('GET /api/deal-room', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'coord_1', role: 'COORDINATOR' };
+  });
+
+  it('hides closed deals by default so the board shows work in progress', async () => {
+    (prisma.secondaryDeal.count as any).mockResolvedValue(0);
+    (prisma.secondaryDeal.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    const res = await request(app).get('/api/deal-room');
+
+    expect(res.status).toBe(200);
+    expect(prisma.secondaryDeal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { stage: { notIn: ['SOLD', 'FAILED'] } } })
+    );
+  });
+
+  it('includes closed deals when asked', async () => {
+    (prisma.secondaryDeal.count as any).mockResolvedValue(0);
+    (prisma.secondaryDeal.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    await request(app).get('/api/deal-room?includeClosed=true');
+
+    expect(prisma.secondaryDeal.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+  });
+
+  it('filters by an explicit stage instead of the default exclusion', async () => {
+    (prisma.secondaryDeal.count as any).mockResolvedValue(1);
+    (prisma.secondaryDeal.findMany as any).mockResolvedValue([{ id: 'd1', stage: 'SOLD' }]);
+
+    const app = buildApp();
+    const res = await request(app).get('/api/deal-room?stage=SOLD');
+
+    expect(prisma.secondaryDeal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { stage: 'SOLD' } })
+    );
+    expect(res.body.data).toHaveLength(1);
+  });
+
+  it('paginates and reports the total', async () => {
+    (prisma.secondaryDeal.count as any).mockResolvedValue(45);
+    (prisma.secondaryDeal.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    const res = await request(app).get('/api/deal-room?page=3&limit=20');
+
+    expect(res.body.meta).toEqual({ total: 45, page: 3, limit: 20, pages: 3 });
+    expect(prisma.secondaryDeal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 40, take: 20 })
+    );
+  });
+
+  it('400s on a limit above the cap rather than dumping the table', async () => {
+    const app = buildApp();
+    const res = await request(app).get('/api/deal-room?limit=5000');
+    expect(res.status).toBe(400);
+    expect(prisma.secondaryDeal.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/deal-room/:id', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'coord_1', role: 'COORDINATOR' };
+  });
+
+  it('404s an unknown deal', async () => {
+    (prisma.secondaryDeal.findUnique as any).mockResolvedValue(null);
+    const app = buildApp();
+    expect((await request(app).get('/api/deal-room/nope')).status).toBe(404);
+  });
+
+  it('returns the deal with its history and the transitions the server would accept', async () => {
+    (prisma.secondaryDeal.findUnique as any).mockResolvedValue({
+      id: 'd1',
+      stage: 'GREEN_1',
+      version: 4,
+      risks: [],
+    });
+    (prisma.auditLog.findMany as any).mockResolvedValue([{ id: 'log_1', action: 'TRANSITION' }]);
+
+    const app = buildApp();
+    const res = await request(app).get('/api/deal-room/d1');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.history).toHaveLength(1);
+    expect(res.body.meta.version).toBe(4);
+    // From GREEN_1 the only forward move is GREEN_2 — never straight to booking.
+    expect(res.body.meta.availableStages).toEqual(['GREEN_2', 'FAILED']);
+  });
+
+  it('offers no transitions out of a terminal stage', async () => {
+    (prisma.secondaryDeal.findUnique as any).mockResolvedValue({ id: 'd2', stage: 'SOLD', version: 9, risks: [] });
+    (prisma.auditLog.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    const res = await request(app).get('/api/deal-room/d2');
+
+    expect(res.body.meta.availableStages).toEqual([]);
   });
 });
 

@@ -541,6 +541,12 @@ enum UserRole {
   DEVELOPER
   REALTOR
   AGENCY
+  // Роли контура вторички из CASA Developer Handoff v2.0. До их появления
+  // модули оценки и Deal Room были зажаты под ADMIN, то есть работать в них
+  // было некому. COORDINATOR ведёт сделку и подтверждает оценку; ANALYST
+  // собирает аналоги и считает, но решения не принимает.
+  COORDINATOR
+  ANALYST
 }
 
 enum ClientStatus {

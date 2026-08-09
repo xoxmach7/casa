@@ -281,20 +281,20 @@ export default function ProjectsCatalogPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Поиск ЖК..." 
-                className="pl-8" 
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Поиск ЖК..."
+                className="pl-9 h-9 w-56 rounded-full"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
             <Select value={district} onValueChange={setDistrict}>
-              <SelectTrigger>
+              <SelectTrigger size="sm" className="rounded-full">
                 <SelectValue placeholder="Район" />
               </SelectTrigger>
               <SelectContent>
@@ -308,7 +308,7 @@ export default function ProjectsCatalogPage() {
             </Select>
 
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger>
+              <SelectTrigger size="sm" className="rounded-full">
                 <SelectValue placeholder="Статус строительства" />
               </SelectTrigger>
               <SelectContent>
@@ -320,7 +320,7 @@ export default function ProjectsCatalogPage() {
             </Select>
 
             <Select value={housingClass} onValueChange={setHousingClass}>
-              <SelectTrigger>
+              <SelectTrigger size="sm" className="rounded-full">
                 <SelectValue placeholder="Класс жилья" />
               </SelectTrigger>
               <SelectContent>
@@ -331,42 +331,37 @@ export default function ProjectsCatalogPage() {
                 <SelectItem value="премиум">Премиум</SelectItem>
               </SelectContent>
             </Select>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAllFilters(!showAllFilters)}
+              className="rounded-full text-muted-foreground"
+            >
+              <Filter className="mr-1.5 h-3.5 w-3.5" />
+              {showAllFilters ? "Скрыть фильтры" : "Больше фильтров"}
+            </Button>
           </div>
 
-          {/* Extended Filters */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setShowAllFilters(!showAllFilters)}
-            className="text-muted-foreground"
-          >
-            <Filter className="mr-2 h-4 w-4" />
-            {showAllFilters ? "Скрыть фильтры" : "Больше фильтров"}
-          </Button>
-
           {showAllFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2 border-t">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Цена от (млн ₸)</label>
-                <Input 
-                  type="number" 
-                  placeholder="от" 
-                  value={minPrice}
-                  onChange={(e) => setMinPrice(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Цена до (млн ₸)</label>
-                <Input 
-                  type="number" 
-                  placeholder="до"
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(e.target.value)}
-                />
-              </div>
+            <div className="flex flex-wrap items-center gap-2 pt-3 border-t">
+              <Input
+                type="number"
+                placeholder="Цена от, млн ₸"
+                className="h-9 w-36 rounded-full"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+              />
+              <Input
+                type="number"
+                placeholder="Цена до, млн ₸"
+                className="h-9 w-36 rounded-full"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+              />
 
               <Select value={rooms} onValueChange={setRooms}>
-                <SelectTrigger>
+                <SelectTrigger size="sm" className="rounded-full">
                   <SelectValue placeholder="Комнатность" />
                 </SelectTrigger>
                 <SelectContent>
@@ -379,7 +374,7 @@ export default function ProjectsCatalogPage() {
               </Select>
 
               <Select value={mortgageProgram} onValueChange={setMortgageProgram}>
-                <SelectTrigger>
+                <SelectTrigger size="sm" className="rounded-full">
                   <SelectValue placeholder="Ипотека" />
                 </SelectTrigger>
                 <SelectContent>
@@ -504,7 +499,7 @@ export default function ProjectsCatalogPage() {
                           router.push(`/dashboard/projects/${project.id}?book=true`)
                         }}
                       >
-                        Забронировать
+                        Зафиксировать
                       </Button>
                       {canManageProjects && (
                         <DropdownMenu>

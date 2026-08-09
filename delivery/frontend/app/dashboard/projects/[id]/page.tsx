@@ -11,12 +11,9 @@ import {
   Calendar,
   Building2,
   ArrowLeft,
-  CheckCircle2,
   Search,
   Play,
   Calculator,
-  Users,
-  Home,
   Percent,
   Loader2,
   Image as ImageIcon,
@@ -26,9 +23,7 @@ import {
   ChevronRight,
   Maximize2,
   Video,
-  Gift,
   Tag,
-  Sparkles,
   BadgePercent,
   Landmark
 } from "lucide-react"
@@ -183,83 +178,15 @@ export default function ProjectDetailsPage() {
         </div>
       </div>
 
-      {/* Quick Promo Banner - показывается если есть бонусы или акции */}
-      {(project.bonus || project.promotions) && (
+      {/* Promo banner — только акция для покупателя; бонус брокера пока скрыт (см. PR) */}
+      {project.promotions && (
         <div className="flex flex-wrap gap-3">
-          {project.bonus && (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25 animate-pulse-subtle">
-              <Sparkles className="h-4 w-4" />
-              <span className="font-medium text-sm">🎁 Бонус: {project.bonus.length > 50 ? project.bonus.slice(0, 50) + '...' : project.bonus}</span>
-            </div>
-          )}
-          {project.promotions && (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/25">
-              <Tag className="h-4 w-4" />
-              <span className="font-medium text-sm">🏷️ Акция: {project.promotions.length > 50 ? project.promotions.slice(0, 50) + '...' : project.promotions}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg shadow-green-500/25">
+            <Tag className="h-4 w-4" />
+            <span className="font-medium text-sm">🏷️ Акция: {project.promotions.length > 50 ? project.promotions.slice(0, 50) + '...' : project.promotions}</span>
+          </div>
         </div>
       )}
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Home className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{project.apartments.length}</p>
-                <p className="text-xs text-muted-foreground">Всего квартир</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500/10">
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{project.apartments.filter(a => a.status === "AVAILABLE").length}</p>
-                <p className="text-xs text-muted-foreground">Свободных</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <Calculator className="h-5 w-5 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {project.apartments.filter(a => a.status === "AVAILABLE").length > 0 
-                    ? formatPrice(Math.min(...project.apartments.filter(a => a.status === "AVAILABLE").map(a => a.price)))
-                    : "—"}
-                </p>
-                <p className="text-xs text-muted-foreground">Мин. цена</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-500/10">
-                <Users className="h-5 w-5 text-orange-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{project.apartments.filter(a => a.status === "RESERVED").length}</p>
-                <p className="text-xs text-muted-foreground">В бронях</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
@@ -476,35 +403,9 @@ export default function ProjectDetailsPage() {
                 </CardContent>
               </Card>
 
-              {/* Бонусы и Акции - яркие баннеры */}
-              {(project.bonus || project.promotions) && (
+              {/* Акция для покупателя — бонус брокера пока скрыт (см. PR) */}
+              {project.promotions && (
                 <div className="grid gap-4 md:grid-cols-2">
-                  {project.bonus && (
-                    <Card className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/30 overflow-hidden relative">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full -mr-16 -mt-16" />
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="p-2 rounded-lg bg-amber-500/20">
-                            <Gift className="h-5 w-5 text-amber-600" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-lg text-amber-700 dark:text-amber-400">
-                              🎁 Бонус для брокера
-                            </CardTitle>
-                            <CardDescription className="text-amber-600/70">
-                              От застройщика
-                            </CardDescription>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-amber-800 dark:text-amber-200 font-medium whitespace-pre-line">
-                          {project.bonus}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  )}
-
                   {project.promotions && (
                     <Card className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-green-500/30 overflow-hidden relative">
                       <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-full -mr-16 -mt-16" />
@@ -771,6 +672,30 @@ export default function ProjectDetailsPage() {
               <div className="flex justify-between py-2 border-b">
                 <span className="text-muted-foreground">Застройщик</span>
                 <span className="font-medium">{project.developerName || "Не указан"}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Всего квартир</span>
+                <span className="font-medium">{project.apartments.length}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Свободно</span>
+                <span className="font-medium text-green-600">
+                  {project.apartments.filter(a => a.status === "AVAILABLE").length}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Мин. цена</span>
+                <span className="font-medium">
+                  {project.apartments.filter(a => a.status === "AVAILABLE").length > 0
+                    ? formatPrice(Math.min(...project.apartments.filter(a => a.status === "AVAILABLE").map(a => a.price)))
+                    : "—"}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">В бронях</span>
+                <span className="font-medium text-orange-600">
+                  {project.apartments.filter(a => a.status === "RESERVED").length}
+                </span>
               </div>
               <div className="pt-2 space-y-2">
                 <Button className="w-full bg-green-600 hover:bg-green-700" size="lg" onClick={() => {

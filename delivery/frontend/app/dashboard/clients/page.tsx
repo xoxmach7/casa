@@ -43,6 +43,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
 import { getStatusColor, getClientTypeColor } from "@/lib/design-tokens"
 import { API_URL } from "@/lib/config"
 
@@ -65,6 +76,7 @@ interface Client {
 
 export default function ClientsPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -73,6 +85,8 @@ export default function ClientsPage() {
   const [cityFilter, setCityFilter] = useState("ALL")
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [deleteClientId, setDeleteClientId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetchClients()
@@ -118,6 +132,33 @@ export default function ClientsPage() {
   const getWhatsAppLink = (phone: string) => {
     const cleanPhone = phone.replace(/\D/g, "")
     return `https://wa.me/${cleanPhone}`
+  }
+
+  const handleDeleteClient = async () => {
+    if (!deleteClientId) return
+    setDeleting(true)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`${API_URL}/clients/${deleteClientId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.error || "Не удалось удалить клиента")
+      }
+      toast({ title: "Клиент удалён" })
+      fetchClients()
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: error instanceof Error ? error.message : "Не удалось удалить клиента",
+        variant: "destructive",
+      })
+    } finally {
+      setDeleting(false)
+      setDeleteClientId(null)
+    }
   }
 
   return (
@@ -342,7 +383,10 @@ export default function ClientsPage() {
                               Создать бронь
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => setDeleteClientId(client.id)}
+                            >
                               Удалить
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -381,6 +425,23 @@ export default function ClientsPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!deleteClientId} onOpenChange={(open) => !open && setDeleteClientId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить клиента?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить. Клиент будет удалён из базы.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteClient} disabled={deleting} className="bg-red-600 hover:bg-red-700">
+              {deleting ? "Удаление..." : "Удалить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

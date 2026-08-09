@@ -103,14 +103,23 @@ const menuItems: MenuSection[] = [
     url: "/dashboard/mortgage",
     roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
   },
-  // 4. Подборки для клиентов (квартиры из новостроек)
+  // 4. Клиенты брокера (покупатели — Client, отдельная сущность от Seller
+  // ниже) — раньше не было пункта меню вообще, страница была недостижима.
+  {
+    title: "Клиенты",
+    icon: Users,
+    url: "/dashboard/clients",
+    roles: ["BROKER"],
+  },
+  // 5. Подборки для клиентов (квартиры из новостроек)
   {
     title: "Мои подборки",
     icon: LayoutList,
     url: "/dashboard/selections",
     roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
   },
-  // 5. Клиенты (Sellers List)
+  // 6. Клиенты (Sellers List) — для агентств/риелторов/застройщиков это
+  // означает продавцов недвижимости, отдельная сущность Seller.
   {
     title: "Клиенты",
     icon: Users,

@@ -10,12 +10,12 @@ import {
   LayoutGrid,
   List,
   Map as MapIcon,
-  Calendar,
   Loader2,
   Edit,
   Trash2,
   MoreHorizontal
 } from "lucide-react"
+import { Crane } from "@/components/icons/crane"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -491,16 +491,6 @@ export default function ProjectsCatalogPage() {
                       >
                         Подробнее
                       </Button>
-                      <Button
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          router.push(`/dashboard/projects/${project.id}?book=true`)
-                        }}
-                      >
-                        Зафиксировать
-                      </Button>
                       {canManageProjects && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -560,26 +550,6 @@ export default function ProjectsCatalogPage() {
                 )}
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                {/* Status badge */}
-                <div className="absolute top-3 right-3">
-                  {getStatusBadge(project.buildingStatus)}
-                </div>
-                {/* Class badge */}
-                {project.class && (
-                  <div className="absolute top-3 left-3">
-                    <Badge variant="secondary" className="bg-white/90 dark:bg-black/70 backdrop-blur-sm text-xs font-semibold shadow-sm">
-                      {project.class}
-                    </Badge>
-                  </div>
-                )}
-                {/* Price overlay */}
-                {project.apartmentStats?.minPrice && (
-                  <div className="absolute bottom-3 left-3">
-                    <span className="bg-white/95 dark:bg-black/80 backdrop-blur-sm text-sm font-bold px-3 py-1.5 rounded-lg shadow-sm text-[#2E7D5E]">
-                      от {(project.apartmentStats.minPrice / 1000000).toFixed(1)} млн ₸
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* Content */}
@@ -592,11 +562,27 @@ export default function ProjectsCatalogPage() {
                   <span className="truncate">{project.district ? `${project.district}, ` : ""}{project.address}</span>
                 </p>
 
+                {/* Класс, статус и цена — под изображением, вместе с остальной
+                    информацией о ЖК, а не наложенными поверх фотографии. */}
+                <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                  {project.class && (
+                    <Badge variant="secondary" className="text-xs font-semibold">
+                      {project.class}
+                    </Badge>
+                  )}
+                  {getStatusBadge(project.buildingStatus)}
+                  {project.apartmentStats?.minPrice ? (
+                    <span className="ml-auto text-sm font-bold text-[#2E7D5E] tabular-nums">
+                      от {(project.apartmentStats.minPrice / 1000000).toFixed(1)} млн ₸
+                    </span>
+                  ) : null}
+                </div>
+
                 {/* Info row */}
                 <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4 mt-auto">
                   {project.deliveryDate && (
                     <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
+                      <Crane className="h-3.5 w-3.5" />
                       {new Date(project.deliveryDate).toLocaleDateString("ru-RU", {
                         year: "numeric",
                         month: "short",
@@ -617,16 +603,6 @@ export default function ProjectsCatalogPage() {
                     }}
                   >
                     Подробнее
-                  </Button>
-                  <Button
-                    className="flex-1 bg-[#2E7D5E] hover:bg-[#256B4F] text-white"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      router.push(`/dashboard/projects/${project.id}?book=true`)
-                    }}
-                  >
-                    Зафиксировать
                   </Button>
                   {canManageProjects && (
                     <DropdownMenu>

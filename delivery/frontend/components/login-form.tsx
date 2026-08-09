@@ -58,8 +58,9 @@ export function LoginForm({
       localStorage.setItem("token", data.token)
       localStorage.setItem("user", JSON.stringify(data.user))
 
-      // Перенаправить на dashboard
-      router.push("/dashboard")
+      // Рабочий экран после входа — «Сделки (CRM)», первый пункт меню.
+      // Сводка на /dashboard остаётся доступной, но точкой входа не является.
+      router.push("/dashboard/crm")
     } catch (err) {
       setError("Не удалось подключиться к серверу")
     } finally {

@@ -155,7 +155,9 @@ export default function ProjectDetailsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        {/* Всегда ведёт в каталог новостроек, а не в историю браузера:
+            router.back() мог выкинуть на логин или вообще за пределы CRM. */}
+        <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard/projects')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>

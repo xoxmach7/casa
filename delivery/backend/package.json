@@ -14,8 +14,10 @@
     "db:seed": "tsx src/prisma/seed.ts",
     "db:seed:production": "tsx src/prisma/seed.production.ts",
     "db:seed:almaty": "tsx prisma/seed-almaty.ts",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "keywords": [
     "casa",

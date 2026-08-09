@@ -121,17 +121,20 @@ app.get('/health', async (_req, res) => {
 // Global API rate limiter — 200 requests per minute per IP
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: process.env.NODE_ENV === 'test' ? 100_000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.method === 'OPTIONS',
 });
 app.use('/api', globalLimiter);
 
-// Strict limiter for login — 20 attempts per 15 min (relaxed in dev for testing)
+// Strict limiter for login — 20 attempts per 15 min. Relaxed for dev and for
+// the CI integration run, where ~123 tests log in repeatedly against one
+// server and would otherwise trip the limiter and fail for the wrong reason.
+const RELAXED_LIMITS = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'development' ? 100 : 20,
+  max: RELAXED_LIMITS ? 1000 : 20,
   message: { error: 'Слишком много попыток входа. Попробуйте через 15 минут.' },
   standardHeaders: true,
   legacyHeaders: false,

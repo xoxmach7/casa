@@ -5,6 +5,20 @@ import { authenticate, requireRole } from '../middleware/auth.middleware';
 
 const usersAdminRouter = Router();
 
+// Роли, которые админ может назначить. Держать в синхроне с enum UserRole в
+// schema.prisma — иначе роль существует в базе, но выдать её некому.
+const ASSIGNABLE_ROLES = [
+  'BROKER',
+  'DEVELOPER',
+  'ADMIN',
+  'AGENCY',
+  'REALTOR',
+  // Контур вторички: COORDINATOR ведёт сделку и подтверждает оценку,
+  // ANALYST собирает аналоги и считает, но решения не принимает.
+  'COORDINATOR',
+  'ANALYST',
+];
+
 // Все routes требуют ADMIN роли
 usersAdminRouter.use(authenticate);
 usersAdminRouter.use(requireRole('ADMIN'));
@@ -103,7 +117,7 @@ usersAdminRouter.post('/', async (req: Request, res: Response): Promise<void> =>
     }
 
     // Проверка допустимых ролей
-    if (!['BROKER', 'DEVELOPER', 'ADMIN', 'AGENCY', 'REALTOR'].includes(role)) {
+    if (!ASSIGNABLE_ROLES.includes(role)) {
       res.status(400).json({ error: 'Недопустимая роль' });
       return;
     }
@@ -203,7 +217,7 @@ usersAdminRouter.put('/:id', async (req: Request, res: Response): Promise<void> 
     }
 
     // Проверка роли
-    if (role && !['BROKER', 'DEVELOPER', 'ADMIN', 'AGENCY', 'REALTOR'].includes(role)) {
+    if (role && !ASSIGNABLE_ROLES.includes(role)) {
       res.status(400).json({ error: 'Недопустимая роль' });
       return;
     }

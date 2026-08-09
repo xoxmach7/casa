@@ -227,6 +227,9 @@ export default function NewUserPage() {
                     <SelectItem value="DEVELOPER">Девелопер</SelectItem>
                     <SelectItem value="AGENCY">Агентство</SelectItem>
                     <SelectItem value="REALTOR">Риелтор</SelectItem>
+                    {/* Контур вторички — доступ к комнате сделки и оценке */}
+                    <SelectItem value="COORDINATOR">Координатор сделок (вторичка)</SelectItem>
+                    <SelectItem value="ANALYST">Аналитик оценки (вторичка)</SelectItem>
                     <SelectItem value="ADMIN">Администратор</SelectItem>
                   </SelectContent>
                 </Select>

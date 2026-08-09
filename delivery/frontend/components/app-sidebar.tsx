@@ -370,6 +370,8 @@ export function AppSidebar() {
               {user.role === "DEVELOPER" && "Застройщик"}
               {user.role === "REALTOR" && "Риелтор"}
               {user.role === "AGENCY" && "Агентство"}
+              {user.role === "COORDINATOR" && "Координатор сделок"}
+              {user.role === "ANALYST" && "Аналитик оценки"}
             </p>
           </div>
           <Button

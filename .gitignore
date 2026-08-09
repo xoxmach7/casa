@@ -6,3 +6,7 @@ node_modules
 .claude/scheduled_tasks.lock
 tsconfig.tsbuildinfo
 .superpowers/
+
+# Next 16 регенерирует их при каждом `next dev` — не наши файлы, версионировать нечего
+AGENTS.md
+CLAUDE.md

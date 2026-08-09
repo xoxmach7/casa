@@ -1,27 +1,55 @@
-FROM node:20-slim
+# Продакшен-образ бэкенда: собирается TypeScript, запускается скомпилированный
+# JS. Раньше здесь стоял `npx tsx src/index.ts` — «чтобы ошибка сборки не
+# уронила деплой». Теперь typecheck и сборка выполняются в CI на каждый пуш
+# (.github/workflows/ci.yml), поэтому до образа сломанный TypeScript не
+# доезжает, и тащить в прод dev-раннер больше незачем.
+
+# ---- сборка ----
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Устанавливаем OpenSSL для Prisma и утилиты для healthcheck
-RUN apt-get update -y && apt-get install -y openssl wget curl && rm -rf /var/lib/apt/lists/*
+# OpenSSL нужен Prisma для генерации клиента
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
-# Копируем файлы зависимостей
 COPY package*.json ./
 COPY prisma ./prisma/
-
-# Устанавливаем зависимости
 RUN npm ci
 
-# Копируем исходный код
 COPY . .
-
-# Генерируем клиент Prisma
 RUN npx prisma generate
+RUN npm run build
 
-# ВАЖНО: Мы используем tsx для запуска в продакшене, 
-# чтобы избежать ошибок сборки (TypeScript errors) на сервере.
-# Это менее эффективно чем компиляция, но гарантирует запуск.
+# ---- рантайм ----
+FROM node:22-slim AS runtime
+
+WORKDIR /app
+
+# curl оставлен для ручной диагностики контейнера (healthcheck Railway ходит
+# снаружи, но проверить /health изнутри бывает нужно)
+RUN apt-get update -y && apt-get install -y openssl curl && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
+
+# Только прод-зависимости: tsx, typescript и прочий dev-инструментарий в
+# рантайм не едут.
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Схема нужна для `prisma migrate deploy`, если его запускают вручную.
+COPY prisma ./prisma/
+
+# Сгенерированный клиент Prisma переносим из сборочного слоя: сам генератор
+# (пакет `prisma`) — dev-зависимость и в рантайме отсутствует.
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/dist ./dist
+
+# Пути к загрузкам считаются от __dirname и совпадают для src/ и dist/:
+# и /app/src/routes/../../uploads, и /app/dist/routes/../../uploads — это
+# /app/uploads, куда Railway монтирует том.
+#
+# Сиды тоже скомпилированы: `node dist/prisma/seed.js` вместо `npm run db:seed`.
+
 EXPOSE 3001
 
-CMD ["npx", "tsx", "src/index.ts"]
+CMD ["node", "dist/index.js"]

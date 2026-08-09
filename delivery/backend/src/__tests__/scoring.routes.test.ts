@@ -11,7 +11,7 @@ vi.mock('../middleware/auth.middleware', () => ({
 
 vi.mock('../lib/prisma', () => ({
   prisma: {
-    client: { findUnique: vi.fn() },
+    client: { findUnique: vi.fn(), update: vi.fn() },
     clientScoring: { create: vi.fn(), findMany: vi.fn() },
     mortgageProgram: { findMany: vi.fn() },
     apartment: { findMany: vi.fn() },
@@ -91,6 +91,46 @@ describe('POST /api/scoring', () => {
     expect(res.body.extraction).toEqual(
       expect.objectContaining({ creditHistoryDetected: true, pensionDetected: true })
     );
+  });
+
+  it('uses a broker-entered monthlyIncome over the client profile value, and saves it back to the client', async () => {
+    (prisma.client.findUnique as any).mockResolvedValue({ id: 'client_1', brokerId: 'broker_1', monthlyIncome: 200000 });
+    (prisma.clientScoring.create as any).mockResolvedValue({ id: 'scoring_1', scoreValue: 80 });
+    (prisma.mortgageProgram.findMany as any).mockResolvedValue([]);
+    (prisma.apartment.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/scoring')
+      .field('clientId', 'client_1')
+      .field('monthlyIncome', '600000')
+      .attach('pensionFile', Buffer.from('%PDF-1.4 fake'), 'pension.pdf');
+
+    expect(res.status).toBe(201);
+    expect(res.body.resolvedMonthlyIncome).toBe(600000);
+    expect(res.body.incomeSource).toBe('MANUAL');
+    expect(prisma.client.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'client_1' }, data: { monthlyIncome: 600000 } })
+    );
+  });
+
+  it('estimates income from ЕНПФ pension contributions when the client has none on file', async () => {
+    (prisma.client.findUnique as any).mockResolvedValue({ id: 'client_1', brokerId: 'broker_1', monthlyIncome: null });
+    (prisma.clientScoring.create as any).mockResolvedValue({ id: 'scoring_1', scoreValue: 50 });
+    (prisma.mortgageProgram.findMany as any).mockResolvedValue([]);
+    (prisma.apartment.findMany as any).mockResolvedValue([]);
+
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/scoring')
+      .field('clientId', 'client_1')
+      .attach('pensionFile', Buffer.from('%PDF-1.4 fake'), 'pension.pdf');
+
+    // mocked extractAvgMonthlyPension returns averageAmount: 50_000 → estimated income = 50_000 / 0.1
+    expect(res.status).toBe(201);
+    expect(res.body.resolvedMonthlyIncome).toBe(500000);
+    expect(res.body.incomeSource).toBe('ESTIMATED_FROM_PENSION');
+    expect(prisma.client.update).not.toHaveBeenCalled();
   });
 
   it('400s when no clientId is provided', async () => {

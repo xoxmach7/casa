@@ -47,6 +47,8 @@ interface ExtractionSummary {
   debtEntriesFound: number
 }
 
+type IncomeSource = "MANUAL" | "CLIENT_PROFILE" | "ESTIMATED_FROM_PENSION" | "NONE"
+
 interface ScoringResponse {
   scoreValue: number
   approvalLikelihood: "HIGH" | "MEDIUM" | "LOW" | "INSUFFICIENT_DATA"
@@ -60,6 +62,15 @@ interface ScoringResponse {
   matchedPrograms: MatchedProgram[]
   suitableApartments: SuitableApartment[]
   extraction: ExtractionSummary
+  resolvedMonthlyIncome: number
+  incomeSource: IncomeSource
+}
+
+const INCOME_SOURCE_LABELS: Record<IncomeSource, string> = {
+  MANUAL: "указан вручную",
+  CLIENT_PROFILE: "из карточки клиента",
+  ESTIMATED_FROM_PENSION: "оценка по отчислениям ЕНПФ, уточните вручную для точности",
+  NONE: "не определён",
 }
 
 const SUITABILITY_LABELS: Record<ProgramSuitability, { text: string; className: string }> = {
@@ -143,6 +154,7 @@ export function ScoringPanel() {
   const [creditHistoryFile, setCreditHistoryFile] = useState<File | null>(null)
   const [pensionFile, setPensionFile] = useState<File | null>(null)
   const [downPayment, setDownPayment] = useState("")
+  const [monthlyIncome, setMonthlyIncome] = useState("")
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -172,6 +184,7 @@ export function ScoringPanel() {
       const formData = new FormData()
       formData.append("clientId", selectedClient.id)
       formData.append("downPayment", String(Number(downPayment) || 0))
+      if (Number(monthlyIncome) > 0) formData.append("monthlyIncome", String(Number(monthlyIncome)))
       if (creditHistoryFile) formData.append("creditHistoryFile", creditHistoryFile)
       if (pensionFile) formData.append("pensionFile", pensionFile)
 
@@ -214,10 +227,7 @@ export function ScoringPanel() {
           {selectedClient ? (
             <div className="rounded-lg border px-3 py-2 text-sm">
               Клиент: <span className="font-medium">{selectedClient.firstName} {selectedClient.lastName}</span>
-              <span className="block text-muted-foreground">
-                Доход: {selectedClient.monthlyIncome ? formatPrice(selectedClient.monthlyIncome) : "не указан"}
-              </span>
-              <Button size="sm" variant="ghost" className="h-auto p-0 text-xs" onClick={() => setSelectedClient(null)}>
+              <Button size="sm" variant="ghost" className="ml-2 h-auto p-0 text-xs" onClick={() => setSelectedClient(null)}>
                 изменить
               </Button>
             </div>
@@ -227,7 +237,10 @@ export function ScoringPanel() {
                 {clientResults.map((c) => (
                   <button
                     key={c.id}
-                    onClick={() => setSelectedClient(c)}
+                    onClick={() => {
+                      setSelectedClient(c)
+                      setMonthlyIncome(c.monthlyIncome ? String(c.monthlyIncome) : "")
+                    }}
                     className="w-full rounded border px-3 py-1.5 text-left text-sm hover:border-primary transition-colors"
                   >
                     {c.firstName} {c.lastName} · {c.phone}
@@ -236,6 +249,20 @@ export function ScoringPanel() {
               </div>
             )
           )}
+
+          <div>
+            <label className="text-sm text-muted-foreground">Ежемесячный доход клиента (₸)</label>
+            <p className="text-xs text-muted-foreground mb-1">
+              Если не указан — система оценит доход по отчислениям в выписке ЕНПФ (~10% от зарплаты).
+            </p>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Оценим по выписке ЕНПФ, если не указано"
+              value={monthlyIncome}
+              onChange={(e) => setMonthlyIncome(e.target.value)}
+            />
+          </div>
 
           <FileSlot
             label="Справка о кредитной истории (КИ)"
@@ -289,6 +316,11 @@ export function ScoringPanel() {
                   {approvalLabel(result.approvalLikelihood).text}
                 </Badge>
               </div>
+
+              <p className="text-sm text-muted-foreground">
+                Доход в расчёте: <span className="font-medium text-foreground">{formatPrice(result.resolvedMonthlyIncome)}</span>
+                {" "}({INCOME_SOURCE_LABELS[result.incomeSource]})
+              </p>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-lg border p-3">

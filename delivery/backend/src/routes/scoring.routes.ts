@@ -10,7 +10,9 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
-import { computeScoring, matchPrograms } from '../lib/scoring.service';
+import { computeScoring, matchPrograms, estimateIncomeFromPension } from '../lib/scoring.service';
+
+type IncomeSource = 'MANUAL' | 'CLIENT_PROFILE' | 'ESTIMATED_FROM_PENSION' | 'NONE';
 import {
     extractTextFromPdf,
     extractCreditHistoryStatus,
@@ -103,7 +105,26 @@ scoringRouter.post(
             const avgMonthlyPension = pension.averageAmount;
             const existingMonthlyDebt = debt.totalAmount;
 
-            const monthlyIncome = client.monthlyIncome ? Number(client.monthlyIncome) : 0;
+            // Доход: сначала то, что брокер ввёл вручную в этот расчёт (и тогда
+            // сохраняем его в карточку клиента на будущее), иначе — то, что уже
+            // есть в карточке клиента, иначе — грубая оценка по отчислениям ЕНПФ.
+            const manualIncome = Number(req.body.monthlyIncome) || 0;
+            let monthlyIncome = 0;
+            let incomeSource: IncomeSource = 'NONE';
+
+            if (manualIncome > 0) {
+                monthlyIncome = manualIncome;
+                incomeSource = 'MANUAL';
+                if (Number(client.monthlyIncome ?? 0) !== manualIncome) {
+                    await prisma.client.update({ where: { id: clientId }, data: { monthlyIncome: manualIncome } });
+                }
+            } else if (client.monthlyIncome) {
+                monthlyIncome = Number(client.monthlyIncome);
+                incomeSource = 'CLIENT_PROFILE';
+            } else if (avgMonthlyPension > 0) {
+                monthlyIncome = estimateIncomeFromPension(avgMonthlyPension);
+                incomeSource = 'ESTIMATED_FROM_PENSION';
+            }
 
             const result = computeScoring({
                 monthlyIncome,
@@ -164,6 +185,8 @@ scoringRouter.post(
 
             res.status(201).json({
                 ...scoring,
+                resolvedMonthlyIncome: monthlyIncome,
+                incomeSource,
                 matchedPrograms,
                 suitableApartments,
                 extraction: {

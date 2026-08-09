@@ -36,6 +36,14 @@ const EXPECTED_PENSION_RATIO = 0.1;
 const MAX_HEALTHY_DTI = 0.4;
 const MAX_DEBT_SERVICE_RATIO = 0.5;
 
+// Fallback when neither the broker nor the client profile supplied an
+// income: ЕНПФ contributions are ~10% of official salary, so a monthly
+// pension figure can be inverted into a rough income estimate.
+export function estimateIncomeFromPension(avgMonthlyPension: number): number {
+  if (avgMonthlyPension <= 0) return 0;
+  return Math.round(avgMonthlyPension / EXPECTED_PENSION_RATIO);
+}
+
 function creditHistoryPoints(status: CreditHistoryStatus): number {
   switch (status) {
     case 'GOOD':

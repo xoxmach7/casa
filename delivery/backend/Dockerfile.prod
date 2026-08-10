@@ -31,17 +31,20 @@ RUN apt-get update -y && apt-get install -y openssl curl && rm -rf /var/lib/apt/
 
 ENV NODE_ENV=production
 
-# Только прод-зависимости: tsx, typescript и прочий dev-инструментарий в
-# рантайм не едут.
+# Схема и миграции копируются ДО npm ci: во-первых, `prisma generate` ниже
+# требует schema.prisma, во-вторых, миграции нужны в рантайме — контейнер
+# накатывает их сам при старте (см. CMD).
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-# Схема нужна для `prisma migrate deploy`, если его запускают вручную.
 COPY prisma ./prisma/
 
-# Сгенерированный клиент Prisma переносим из сборочного слоя: сам генератор
-# (пакет `prisma`) — dev-зависимость и в рантайме отсутствует.
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Только прод-зависимости: tsx, vitest и прочий dev-инструментарий в рантайм
+# не едут. CLI `prisma` — намеренное исключение, он переехал в dependencies:
+# без него контейнер не сможет выполнить `migrate deploy` на старте. Вместе с
+# ним приезжает typescript (~23 МБ) — это его optional peer, npm ставит такие
+# автоматически; выключать это `--omit=optional` не стоит, под раздачу попадут
+# и нужные пакеты.
+RUN npm ci --omit=dev && npx prisma generate && npm cache clean --force
+
 COPY --from=builder /app/dist ./dist
 
 # Пути к загрузкам считаются от __dirname и совпадают для src/ и dist/:
@@ -52,4 +55,14 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+# Миграции накатываются автоматически при старте, до того как поднимется HTTP.
+# Раньше их накатывали руками, и это уже один раз выстрелило: код с ролью
+# COORDINATOR уехал в прод, а enum в базе про неё не знал.
+#
+# Падение миграции роняет контейнер намеренно. Сервер на несовместимой схеме
+# отвечает 500 на случайных запросах и пишет мусор в базу — это хуже, чем
+# честно не подняться и остаться на предыдущем деплое.
+#
+# Параллельный запуск нескольких реплик безопасен: `migrate deploy` берёт
+# advisory lock в самой базе, вторая реплика дожидается первую.
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/index.js"]

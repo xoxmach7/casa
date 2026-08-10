@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Home, Bookmark, Calculator } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { AddToSelectionDialog } from '@/components/apartments/AddToSelectionDialog';
+import type { ApartmentCardData } from '@/components/apartments/ApartmentCard';
 
 export interface ApartmentDetail {
   id: string;
@@ -47,7 +49,8 @@ const STATUS_BADGE: Record<ApartmentDetail['status'], string> = {
 
 export function ApartmentDetailPanel({ apartment, onFixate, children }: ApartmentDetailPanelProps) {
   const router = useRouter();
-  const { toast } = useToast();
+  // Квартира, для которой открыт диалог «В подборку» (null = закрыт).
+  const [selectionApartment, setSelectionApartment] = useState<ApartmentCardData | null>(null);
 
   if (!apartment) {
     return (
@@ -103,7 +106,16 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
           <Button
             variant="outline"
             onClick={() =>
-              toast({ title: 'Добавлено в подборку', description: `Квартира №${apartment.number}` })
+              setSelectionApartment({
+                id: apartment.id,
+                number: apartment.number,
+                floor: apartment.floor,
+                rooms: apartment.rooms,
+                area: parseFloat(apartment.area) || 0,
+                price: parseFloat(apartment.price) || 0,
+                status: apartment.status,
+                layoutImage: apartment.layoutImage,
+              })
             }
           >
             <Bookmark className="mr-2 h-4 w-4" />
@@ -120,6 +132,11 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
 
         {children}
       </CardContent>
+
+      <AddToSelectionDialog
+        apartment={selectionApartment}
+        onClose={() => setSelectionApartment(null)}
+      />
     </Card>
   );
 }

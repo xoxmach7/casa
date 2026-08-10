@@ -40,6 +40,11 @@ function CatalogCard() {
   );
 }
 
+// Цифры в мокапе сходятся между собой, и это важно: их читают потенциальные
+// клиенты. 52 100 000 стоимость, взнос 20% = 10 420 000, кредит 41 680 000,
+// 7% годовых на 20 лет -> аннуитет 323 145/мес, всего выплат 77 554 800.
+// Считано формулой annuityMonthlyPayment из scoring.service.ts. Меняете одно
+// число - пересчитайте остальные.
 function MortgageCard() {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -81,21 +86,21 @@ function MortgageCard() {
         <div className="flex flex-col justify-between rounded-xl bg-[#f3f6fd] p-3">
           <div>
             <p className="text-[9px] text-slate-500">Ежемесячный платёж</p>
-            <p className="mt-1 text-lg font-bold text-[#141f3a]">217 084 ₸</p>
+            <p className="mt-1 text-lg font-bold text-[#141f3a]">323 145 ₸</p>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div>
               <p className="text-[8px] text-slate-400">Сумма кредита</p>
-              <p className="text-[10px] font-semibold text-slate-600">28 000 000 ₸</p>
+              <p className="text-[10px] font-semibold text-slate-600">41 680 000 ₸</p>
             </div>
             <div>
               <p className="text-[8px] text-slate-400">Ставка</p>
-              <p className="text-[10px] font-semibold text-slate-600">24 100 ₸</p>
+              <p className="text-[10px] font-semibold text-slate-600">7% годовых</p>
             </div>
           </div>
           <div className="mt-3">
             <p className="text-[8px] text-slate-400">Общая сумма выплат</p>
-            <p className="text-[10px] font-semibold text-slate-600">52 100 088 ₸</p>
+            <p className="text-[10px] font-semibold text-slate-600">77 554 800 ₸</p>
           </div>
           <button
             type="button"

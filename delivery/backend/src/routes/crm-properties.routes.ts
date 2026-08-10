@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { validate } from '../middleware/validation.middleware';
 import { prisma } from '../lib/prisma';
 import {
@@ -41,6 +42,7 @@ export const crmPropertiesRouter = Router();
 
 // Apply auth middleware to all routes
 crmPropertiesRouter.use(authenticate);
+crmPropertiesRouter.use(blockCrmWrites);
 
 // =========================================
 // HELPER: Run full property calculation

@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { prisma } from '../lib/prisma';
 
 export const clientsRouter = Router();
 clientsRouter.use(authenticate);
+clientsRouter.use(blockCrmWrites);
 
 // Validation schemas
 const createClientSchema = z.object({

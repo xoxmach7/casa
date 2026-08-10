@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { prisma } from '../lib/prisma';
 import { DealStage, DealStatus } from '@prisma/client';
 
 export const dealsRouter = Router();
 dealsRouter.use(authenticate);
+dealsRouter.use(blockCrmWrites);
 
 // Validation schemas
 const createDealSchema = z.object({

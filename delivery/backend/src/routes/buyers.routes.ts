@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { validate } from '../middleware/validation.middleware';
 import { prisma } from '../lib/prisma';
 import { deepSeekService } from '../services/deepseek.service';
@@ -18,6 +19,7 @@ import { canTransitionShow, toCanonicalShowStatus } from '../lib/showing.service
 export const buyersRouter = Router();
 
 buyersRouter.use(authenticate);
+buyersRouter.use(blockCrmWrites);
 
 // ------------------------------------------
 // BUYERS CRUD

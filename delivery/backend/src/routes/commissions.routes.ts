@@ -8,11 +8,13 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { validate } from '../middleware/validation.middleware';
 import { prisma } from '../lib/prisma';
 
 export const commissionsRouter = Router();
 commissionsRouter.use(authenticate);
+commissionsRouter.use(blockCrmWrites);
 
 const RESTRICTED_ROLES = ['BROKER', 'REALTOR', 'AGENCY', 'DEVELOPER'];
 

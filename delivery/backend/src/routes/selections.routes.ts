@@ -7,11 +7,13 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { validate } from '../middleware/validation.middleware';
 import { prisma } from '../lib/prisma';
 
 export const selectionsRouter = Router();
 selectionsRouter.use(authenticate);
+selectionsRouter.use(blockCrmWrites);
 
 const RESTRICTED_ROLES = ['BROKER', 'REALTOR', 'AGENCY', 'DEVELOPER'];
 

@@ -7,11 +7,13 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { prisma } from '../lib/prisma';
 import { recordAuditLog } from '../lib/audit-log.service';
 
 export const clientPropertyInterestsRouter = Router();
 clientPropertyInterestsRouter.use(authenticate);
+clientPropertyInterestsRouter.use(blockCrmWrites);
 
 const RESTRICTED_ROLES = ['BROKER', 'REALTOR', 'AGENCY'];
 

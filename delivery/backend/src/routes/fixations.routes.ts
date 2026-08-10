@@ -9,12 +9,14 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
+import { blockCrmWrites } from '../lib/access';
 import { validate } from '../middleware/validation.middleware';
 import { prisma } from '../lib/prisma';
 import { canTransition, FixationStatus } from '../lib/fixation.service';
 
 export const fixationsRouter = Router();
 fixationsRouter.use(authenticate);
+fixationsRouter.use(blockCrmWrites);
 
 const RESTRICTED_ROLES = ['BROKER', 'REALTOR', 'AGENCY'];
 const FIXATION_STATUSES = [

@@ -175,7 +175,7 @@ export function HomePage() {
             {/* Quick Actions */}
             <div className="flex flex-wrap gap-2">
                 <Link href="/dashboard/crm">
-                    <Button size="sm" className="gap-2 bg-[#2E7D5E] hover:bg-[#256B4E] text-white shadow-sm">
+                    <Button size="sm" className="gap-2 bg-[#15325B] hover:bg-[#256B4E] text-white shadow-sm">
                         <Home className="h-3.5 w-3.5" />Добавить объект
                     </Button>
                 </Link>
@@ -197,8 +197,8 @@ export function HomePage() {
                     title={user?.role === "DEVELOPER" ? "Проектов" : "Активные сделки"}
                     value={data?.kpi.activeDeals || 0}
                     icon={Briefcase}
-                    accentColor="bg-[#2E7D5E]/10 text-[#2E7D5E]"
-                    iconBg="bg-[#2E7D5E]/10"
+                    accentColor="bg-[#15325B]/10 text-[#15325B]"
+                    iconBg="bg-[#15325B]/10"
                 />
                 <KpiCard
                     title={user?.role === "DEVELOPER" ? "Квартир" : "Прогноз комиссии"}
@@ -262,7 +262,7 @@ export function HomePage() {
                             <div className="space-y-3">
                                 {data?.actionItems.length === 0 ? (
                                     <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                                        <CheckCircle2 className="h-4 w-4 text-[#2E7D5E]" />
+                                        <CheckCircle2 className="h-4 w-4 text-[#15325B]" />
                                         Нет критических задач
                                     </div>
                                 ) : (
@@ -305,7 +305,7 @@ export function HomePage() {
                             <div className="space-y-4">
                                 {data?.activity.map((item, i) => (
                                     <div key={i} className="flex gap-3">
-                                        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#2E7D5E] shrink-0 ring-2 ring-[#2E7D5E]/20" />
+                                        <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[#15325B] shrink-0 ring-2 ring-[#15325B]/20" />
                                         <div className="space-y-0.5 min-w-0">
                                             <p className="text-sm font-medium text-foreground leading-tight truncate">{item.title}</p>
                                             <p className="text-xs text-muted-foreground truncate">{item.description}</p>
@@ -326,7 +326,7 @@ export function HomePage() {
                 <Card className="border-border/40 shadow-sm">
                     <CardHeader className="pb-3">
                         <CardTitle className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                            <Users className="h-4 w-4 text-[#2E7D5E]" />
+                            <Users className="h-4 w-4 text-[#15325B]" />
                             Показатели брокеров
                         </CardTitle>
                     </CardHeader>
@@ -350,23 +350,23 @@ export function HomePage() {
                                             <td className="py-3 font-medium text-foreground">{broker.name}</td>
                                             <td className="text-center py-3 text-muted-foreground">{broker.totalProperties}</td>
                                             <td className="text-center py-3">
-                                                <Badge variant="outline" className="text-[10px] bg-[#2E7D5E]/10 text-[#2E7D5E] border-[#2E7D5E]/20">
+                                                <Badge variant="outline" className="text-[10px] bg-[#15325B]/10 text-[#15325B] border-[#15325B]/20">
                                                     {broker.activeProperties}
                                                 </Badge>
                                             </td>
                                             <td className="text-center py-3 text-muted-foreground">{broker.completedDeals}</td>
                                             <td className="text-center py-3">
-                                                <Badge className="text-[10px] bg-[#2E7D5E] text-white">
+                                                <Badge className="text-[10px] bg-[#15325B] text-white">
                                                     {broker.soldDeals}
                                                 </Badge>
                                             </td>
-                                            <td className="text-right py-3 font-medium text-[#2E7D5E]">
+                                            <td className="text-right py-3 font-medium text-[#15325B]">
                                                 {broker.commissionForecast.toLocaleString('ru-RU')} ₸
                                             </td>
                                             <td className="text-center py-3">
                                                 <span className={cn(
                                                     "text-xs font-medium",
-                                                    broker.conversionRate >= 20 ? 'text-[#2E7D5E]' : 'text-muted-foreground'
+                                                    broker.conversionRate >= 20 ? 'text-[#15325B]' : 'text-muted-foreground'
                                                 )}>
                                                     {broker.conversionRate.toFixed(1)}%
                                                 </span>
@@ -401,7 +401,7 @@ function KpiCard({ title, value, icon: Icon, accentColor, iconBg }: any) {
 
 function getBarColor(stage: string) {
     switch (stage) {
-        case 'deal': return '#2E7D5E';
+        case 'deal': return '#15325B';
         case 'shows': return '#FFD700';
         case 'leads': return '#3A9D73';
         default: return '#94a3b8';
@@ -411,10 +411,10 @@ function getBarColor(stage: string) {
 const FUNNEL_COLORS: Record<string, { bg: string; border: string; text: string; bar: string; icon: string }> = {
     created:      { bg: 'bg-slate-50',   border: 'border-slate-200', text: 'text-slate-700',   bar: '#94a3b8', icon: '📋' },
     preparation:  { bg: 'bg-amber-50',   border: 'border-amber-200', text: 'text-amber-700',   bar: '#D4A843', icon: '🔧' },
-    leads:        { bg: 'bg-blue-50',    border: 'border-blue-200',  text: 'text-[#2E7D5E]',   bar: '#3A9D73', icon: '👥' },
+    leads:        { bg: 'bg-blue-50',    border: 'border-blue-200',  text: 'text-[#15325B]',   bar: '#3A9D73', icon: '👥' },
     shows:        { bg: 'bg-yellow-50',  border: 'border-yellow-200',text: 'text-[#B8960F]',   bar: '#FFD700', icon: '👁' },
-    deal:         { bg: 'bg-emerald-50', border: 'border-emerald-200',text: 'text-[#2E7D5E]',  bar: '#2E7D5E', icon: '🤝' },
-    sold:         { bg: 'bg-green-50',   border: 'border-green-300', text: 'text-green-700',    bar: '#1B5E40', icon: '✅' },
+    deal:         { bg: 'bg-emerald-50', border: 'border-emerald-200',text: 'text-[#15325B]',  bar: '#15325B', icon: '🤝' },
+    sold:         { bg: 'bg-green-50',   border: 'border-green-300', text: 'text-green-700',    bar: '#0F2544', icon: '✅' },
     cancelled:    { bg: 'bg-red-50',     border: 'border-red-200',   text: 'text-red-600',      bar: '#ef4444', icon: '❌' },
 };
 
@@ -455,7 +455,7 @@ function FunnelVisualization({ data }: { data: Array<{ name: string; stage: stri
                     ))}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <span className="inline-block h-2 w-2 rounded-full bg-[#2E7D5E]" /> Этапы воронки
+                    <span className="inline-block h-2 w-2 rounded-full bg-[#15325B]" /> Этапы воронки
                 </div>
             </div>
 
@@ -478,7 +478,7 @@ function FunnelVisualization({ data }: { data: Array<{ name: string; stage: stri
                                 "flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold shrink-0",
                                 item.stage === 'cancelled'
                                     ? "bg-red-100 text-red-600"
-                                    : "bg-[#2E7D5E]/10 text-[#2E7D5E]"
+                                    : "bg-[#15325B]/10 text-[#15325B]"
                             )}>
                                 {item.stage === 'cancelled' ? '×' : index + 1}
                             </div>
@@ -514,7 +514,7 @@ function FunnelVisualization({ data }: { data: Array<{ name: string; stage: stri
                         {/* Connector arrow */}
                         {index < data.length - 1 && data[index + 1]?.stage !== 'cancelled' && item.stage !== 'cancelled' && (
                             <div className="flex justify-center -my-0.5 relative z-10">
-                                <ChevronDown className="h-4 w-4 text-[#2E7D5E]/30" />
+                                <ChevronDown className="h-4 w-4 text-[#15325B]/30" />
                             </div>
                         )}
                     </div>

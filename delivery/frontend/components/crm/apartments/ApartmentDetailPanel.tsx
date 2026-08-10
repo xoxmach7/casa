@@ -1,9 +1,11 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Home } from 'lucide-react';
+import { Home, Bookmark, Calculator } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export interface ApartmentDetail {
   id: string;
@@ -33,7 +35,7 @@ function formatPrice(price: string) {
 
 const STATUS_LABEL: Record<ApartmentDetail['status'], string> = {
   AVAILABLE: 'Доступно',
-  RESERVED: 'Забронировано',
+  RESERVED: 'Фиксация',
   SOLD: 'Продано',
 };
 
@@ -44,6 +46,9 @@ const STATUS_BADGE: Record<ApartmentDetail['status'], string> = {
 };
 
 export function ApartmentDetailPanel({ apartment, onFixate, children }: ApartmentDetailPanelProps) {
+  const router = useRouter();
+  const { toast } = useToast();
+
   if (!apartment) {
     return (
       <Card className="h-full">
@@ -93,6 +98,25 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
             Фиксировать клиента
           </Button>
         )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              toast({ title: 'Добавлено в подборку', description: `Квартира №${apartment.number}` })
+            }
+          >
+            <Bookmark className="mr-2 h-4 w-4" />
+            В подборку
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/dashboard/mortgage?price=${encodeURIComponent(apartment.price)}`)}
+          >
+            <Calculator className="mr-2 h-4 w-4" />
+            Рассчитать ипотеку
+          </Button>
+        </div>
 
         {children}
       </CardContent>

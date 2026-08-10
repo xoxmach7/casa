@@ -18,11 +18,11 @@ export default function Hero() {
       />
 
       <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
-        <h1 className="text-balance text-3xl font-medium leading-tight text-white/90 sm:text-4xl md:text-5xl">
-          CASA Pro —<br className="hidden sm:block" />{' '}
-          {typo('закрытая B2B-платформа для ')}
-          <span className="font-bold text-white">риелторов, ипотечных</span>{' '}
-          {typo('брокеров и застройщиков.')}
+        <h1 className="text-3xl font-medium leading-tight text-white/90 sm:text-4xl md:text-5xl">
+          CASA Pro — закрытая<br />
+          B2B-платформа для риелторов,<br />
+          ипотечных брокеров<br />
+          и застройщиков
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-base text-slate-300 sm:text-lg">

@@ -402,7 +402,7 @@ export default function MortgagePage() {
                         {program.bank}
                       </CardDescription>
                     </div>
-                    <Badge className={program.type === "Государственная" ? "bg-[#2E7D5E]" : "bg-[#D4A843]"}>
+                    <Badge className={program.type === "Государственная" ? "bg-[#15325B]" : "bg-[#D4A843]"}>
                       {program.rate}%
                     </Badge>
                   </div>

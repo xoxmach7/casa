@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Filter, Plus, Trash2, LayoutGrid, List, Table2 } from 'lucide-react';
+import { ArrowLeft, Filter, Plus, Trash2, List, Table2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
-import { ApartmentCardsView } from '@/components/crm/apartments/ApartmentCardsView';
 import { ApartmentListView } from '@/components/crm/apartments/ApartmentListView';
 import { ApartmentTableView } from '@/components/crm/apartments/ApartmentTableView';
 import { ApartmentDetailPanel, type ApartmentDetail } from '@/components/crm/apartments/ApartmentDetailPanel';
@@ -53,7 +52,7 @@ interface Building {
   name: string;
 }
 
-type ViewMode = 'cards' | 'list' | 'table';
+type ViewMode = 'list' | 'table';
 
 export default function ApartmentsGridPage() {
   const router = useRouter();
@@ -66,7 +65,8 @@ export default function ApartmentsGridPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [apartmentToDelete, setApartmentToDelete] = useState<Apartment | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // По умолчанию — шахматка: на неё ведёт кнопка «Шахматка квартир» (S6).
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [fixationFormOpen, setFixationFormOpen] = useState(false);
   const [activeFixationId, setActiveFixationId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -186,11 +186,11 @@ export default function ApartmentsGridPage() {
             </CardTitle>
             <div className="flex overflow-hidden rounded-md border">
               <button
-                onClick={() => setViewMode('cards')}
-                className={`p-2 ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : ''}`}
-                title="Карточки"
+                onClick={() => setViewMode('table')}
+                className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : ''}`}
+                title="Шахматка"
               >
-                <LayoutGrid className="h-4 w-4" />
+                <Table2 className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
@@ -199,20 +199,13 @@ export default function ApartmentsGridPage() {
               >
                 <List className="h-4 w-4" />
               </button>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : ''}`}
-                title="Шахматка"
-              >
-                <Table2 className="h-4 w-4" />
-              </button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="flex flex-wrap gap-2">
             <Select value={roomsFilter} onValueChange={setRoomsFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все комнаты</SelectItem>
                 <SelectItem value="1">1</SelectItem>
@@ -222,16 +215,16 @@ export default function ApartmentsGridPage() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все статусы</SelectItem>
                 <SelectItem value="AVAILABLE">Доступно</SelectItem>
-                <SelectItem value="RESERVED">Бронь</SelectItem>
+                <SelectItem value="RESERVED">Фиксация</SelectItem>
                 <SelectItem value="SOLD">Продано</SelectItem>
               </SelectContent>
             </Select>
             <Select value={floorFilter} onValueChange={setFloorFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все этажи</SelectItem>
                 {uniqueFloors.map((floor) => (
@@ -246,13 +239,6 @@ export default function ApartmentsGridPage() {
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <Card>
           <CardContent className="pt-6">
-            {viewMode === 'cards' && (
-              <ApartmentCardsView
-                apartments={filteredApartments}
-                selectedId={selectedApartment?.id ?? null}
-                onSelect={setSelectedApartment}
-              />
-            )}
             {viewMode === 'list' && (
               <ApartmentListView
                 apartments={filteredApartments}

@@ -338,7 +338,7 @@ export default function CoursesAdminPage() {
                 <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
                   Отмена
                 </Button>
-                <Button onClick={handleAssignCourse} className="bg-[#2E7D5E] hover:bg-[#256B4F] text-white">Назначить</Button>
+                <Button onClick={handleAssignCourse} className="bg-[#15325B] hover:bg-[#256B4F] text-white">Назначить</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -348,7 +348,7 @@ export default function CoursesAdminPage() {
             if (!open) resetCourseForm();
           }}>
             <DialogTrigger asChild>
-              <Button size="sm" className="bg-[#2E7D5E] hover:bg-[#256B4F] text-white shadow-sm">
+              <Button size="sm" className="bg-[#15325B] hover:bg-[#256B4F] text-white shadow-sm">
                 <Plus className="h-4 w-4 mr-2" />
                 Создать курс
               </Button>
@@ -439,7 +439,7 @@ export default function CoursesAdminPage() {
                 }}>
                   Отмена
                 </Button>
-                <Button onClick={editingCourse ? handleUpdateCourse : handleCreateCourse} className="bg-[#2E7D5E] hover:bg-[#256B4F] text-white">
+                <Button onClick={editingCourse ? handleUpdateCourse : handleCreateCourse} className="bg-[#15325B] hover:bg-[#256B4F] text-white">
                   {editingCourse ? "Сохранить" : "Создать"}
                 </Button>
               </DialogFooter>
@@ -453,12 +453,12 @@ export default function CoursesAdminPage() {
           <div className="col-span-full">
             <Card className="rounded-xl border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-16">
-                <div className="rounded-full bg-[#2E7D5E]/10 p-4 mb-4">
-                  <GraduationCap className="h-10 w-10 text-[#2E7D5E]" />
+                <div className="rounded-full bg-[#15325B]/10 p-4 mb-4">
+                  <GraduationCap className="h-10 w-10 text-[#15325B]" />
                 </div>
                 <p className="text-lg font-medium mb-1">Курсы не созданы</p>
                 <p className="text-sm text-muted-foreground mb-4">Создайте первый курс для обучения брокеров</p>
-                <Button className="bg-[#2E7D5E] hover:bg-[#256B4F] text-white" onClick={() => setCourseDialogOpen(true)}>
+                <Button className="bg-[#15325B] hover:bg-[#256B4F] text-white" onClick={() => setCourseDialogOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Создать первый курс
                 </Button>
@@ -471,8 +471,8 @@ export default function CoursesAdminPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="rounded-lg bg-[#2E7D5E]/10 p-2 shrink-0">
-                      <GraduationCap className="h-4 w-4 text-[#2E7D5E]" />
+                    <div className="rounded-lg bg-[#15325B]/10 p-2 shrink-0">
+                      <GraduationCap className="h-4 w-4 text-[#15325B]" />
                     </div>
                     <div className="min-w-0">
                       <CardTitle className="text-base leading-tight truncate">{course.title}</CardTitle>
@@ -481,7 +481,7 @@ export default function CoursesAdminPage() {
                   </div>
                   <Badge
                     variant={course.isActive ? "default" : "secondary"}
-                    className={course.isActive ? "bg-[#2E7D5E]/15 text-[#2E7D5E] hover:bg-[#2E7D5E]/20 border-0 shrink-0" : "shrink-0"}
+                    className={course.isActive ? "bg-[#15325B]/15 text-[#15325B] hover:bg-[#15325B]/20 border-0 shrink-0" : "shrink-0"}
                   >
                     {course.isActive ? "Активен" : "Неактивен"}
                   </Badge>

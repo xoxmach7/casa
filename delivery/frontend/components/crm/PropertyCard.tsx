@@ -220,7 +220,7 @@ export function PropertyCardBase({ property, style, setNodeRef, attributes, list
                         </div>
                     ) : (property.images && property.images.length > 0 && imgError) && (
                         <div className="mb-2 -mx-3 -mt-2 h-32 bg-[#F0FAF5] flex items-center justify-center border-b">
-                            <ImageOff className="h-8 w-8 text-[#2E7D5E]/30" />
+                            <ImageOff className="h-8 w-8 text-[#15325B]/30" />
                         </div>
                     )}
 
@@ -266,7 +266,7 @@ export function PropertyCardBase({ property, style, setNodeRef, attributes, list
                             {/* AI Button */}
                             {property.activeStrategy && (
                                 property.strategyExplanation ? (
-                                    <div className="text-[#2E7D5E] flex items-center px-1" title="Обоснование готово">
+                                    <div className="text-[#15325B] flex items-center px-1" title="Обоснование готово">
                                         <FileText className="h-4 w-4" />
                                     </div>
                                 ) : (
@@ -302,7 +302,7 @@ export function PropertyCardBase({ property, style, setNodeRef, attributes, list
                             <span className="opacity-70">Брокер:</span>
                             <div className="flex items-center gap-1 font-medium text-foreground">
                                 <Avatar className="h-4 w-4">
-                                    <AvatarFallback className="text-[8px] bg-[#2E7D5E]/10 text-[#2E7D5E]">
+                                    <AvatarFallback className="text-[8px] bg-[#15325B]/10 text-[#15325B]">
                                         {property.broker.firstName?.[0]}{property.broker.lastName?.[0]}
                                     </AvatarFallback>
                                 </Avatar>

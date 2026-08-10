@@ -50,7 +50,7 @@ export function ApartmentListView({ apartments, selectedId, onSelect }: Apartmen
             {apt.rooms}-комн {apt.area}м² · №{apt.number}
           </span>
           <span className={apt.status === 'AVAILABLE' ? 'font-medium' : `font-medium ${STATUS_DOT[apt.status]}`}>
-            {apt.status === 'AVAILABLE' ? formatPrice(apt.price) : apt.status === 'RESERVED' ? 'Бронь' : 'Продано'}
+            {apt.status === 'AVAILABLE' ? formatPrice(apt.price) : apt.status === 'RESERVED' ? 'Фиксация' : 'Продано'}
           </span>
         </button>
       ))}

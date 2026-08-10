@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
+import { CasaLogo } from './CasaLogo';
 
 const NAV_LINKS = [
   { href: '#about', label: 'О проекте' },
@@ -18,8 +18,8 @@ export default function LandingHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-100 bg-white">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="#top" className="flex items-center gap-2">
-          <Image src="/casa-logo.png" alt="CASA Pro" width={112} height={32} className="h-7 w-auto" priority />
+        <Link href="#top" className="flex items-center gap-2 text-[#141f3a]">
+          <CasaLogo className="h-8 w-auto" />
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">

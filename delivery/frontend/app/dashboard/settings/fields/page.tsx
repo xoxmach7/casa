@@ -92,7 +92,7 @@ export default function CustomFieldsPage() {
                 <Button onClick={() => {
                     setEditingField(null);
                     setEditorOpen(true);
-                }} className="bg-[#2E7D5E] hover:bg-[#256B4F] text-white shadow-sm">
+                }} className="bg-[#15325B] hover:bg-[#256B4F] text-white shadow-sm">
                     <Plus className="mr-2 h-4 w-4" />
                     Добавить поле
                 </Button>
@@ -153,7 +153,7 @@ export default function CustomFieldsPage() {
                                     <TableCell>
                                         <Badge
                                             variant={field.isActive ? "default" : "secondary"}
-                                            className={field.isActive ? "bg-[#2E7D5E]/15 text-[#2E7D5E] hover:bg-[#2E7D5E]/20 border-0" : ""}
+                                            className={field.isActive ? "bg-[#15325B]/15 text-[#15325B] hover:bg-[#15325B]/20 border-0" : ""}
                                         >
                                             {field.isActive ? "Активно" : "Скрыто"}
                                         </Badge>

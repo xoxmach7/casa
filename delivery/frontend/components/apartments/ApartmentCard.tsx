@@ -37,7 +37,7 @@ function StatusBadge({ status }: { status: ApartmentCardData["status"] }) {
     case "AVAILABLE":
       return <Badge className="bg-green-500">Свободна</Badge>
     case "RESERVED":
-      return <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">Бронь</Badge>
+      return <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">Фиксация</Badge>
     case "SOLD":
       return <Badge variant="secondary" className="bg-red-500/20 text-red-600">Продана</Badge>
     default:

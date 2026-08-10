@@ -87,7 +87,7 @@ export default function FunnelsPage() {
                         Настройте собственные воронки продаж и этапы сделок.
                     </p>
                 </div>
-                <Button onClick={handleCreate} className="bg-[#2E7D5E] hover:bg-[#256B4F] text-white shadow-sm">
+                <Button onClick={handleCreate} className="bg-[#15325B] hover:bg-[#256B4F] text-white shadow-sm">
                     <Plus className="mr-2 h-4 w-4" />
                     Создать воронку
                 </Button>
@@ -130,7 +130,7 @@ export default function FunnelsPage() {
                                     <h3 className="font-semibold text-base">{funnel.name}</h3>
                                     <Badge
                                         variant={funnel.isActive ? "default" : "secondary"}
-                                        className={`mt-1 text-[10px] ${funnel.isActive ? 'bg-[#2E7D5E]/10 text-[#2E7D5E] border-[#2E7D5E]/20' : ''}`}
+                                        className={`mt-1 text-[10px] ${funnel.isActive ? 'bg-[#15325B]/10 text-[#15325B] border-[#15325B]/20' : ''}`}
                                     >
                                         {funnel.isActive ? "Активна" : "Скрыта"}
                                     </Badge>
@@ -185,8 +185,8 @@ export default function FunnelsPage() {
                 </div>
             ) : (
                 <div className="rounded-xl border-2 border-dashed bg-muted/30 flex flex-col items-center justify-center py-16">
-                    <div className="h-12 w-12 rounded-full bg-[#2E7D5E]/10 flex items-center justify-center mb-4">
-                        <Plus className="h-6 w-6 text-[#2E7D5E]" />
+                    <div className="h-12 w-12 rounded-full bg-[#15325B]/10 flex items-center justify-center mb-4">
+                        <Plus className="h-6 w-6 text-[#15325B]" />
                     </div>
                     <p className="text-muted-foreground font-medium mb-1">Нет созданных воронок</p>
                     <p className="text-xs text-muted-foreground mb-4">Создайте первую воронку для управления сделками</p>

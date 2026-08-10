@@ -99,11 +99,11 @@ export function NotificationBell() {
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case "DEAL": return "bg-[#2E7D5E]"
+      case "DEAL": return "bg-[#15325B]"
       case "BONUS": return "bg-[#FFD700]"
       case "SYSTEM": return "bg-[#3A9D73]"
       case "CURATOR": return "bg-[#D4A843]"
-      case "TRAINING": return "bg-[#1B5E40]"
+      case "TRAINING": return "bg-[#0F2544]"
       default: return "bg-gray-500"
     }
   }

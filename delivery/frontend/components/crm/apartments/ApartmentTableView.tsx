@@ -29,8 +29,9 @@ interface ApartmentTableViewProps {
 
 const STATUS_STYLE: Record<Apartment['status'], string> = {
   AVAILABLE: 'bg-green-50 border-green-300 text-green-900 hover:bg-green-100',
-  RESERVED: 'bg-gray-100 border-gray-300 text-gray-500 opacity-70',
-  SOLD: 'bg-gray-200 border-gray-400 text-gray-400 opacity-50',
+  // Фиксация — жёлтым (S10). Продано — серым, тем самым, что раньше был у фиксации (S9).
+  RESERVED: 'bg-yellow-100 border-yellow-400 text-yellow-800 hover:bg-yellow-200',
+  SOLD: 'bg-gray-100 border-gray-300 text-gray-500 opacity-70',
 };
 
 function groupForTable(apartments: Apartment[]) {
@@ -118,6 +119,13 @@ export function ApartmentTableView({ apartments, buildings, selectedId, onSelect
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className="w-8 pr-2 pb-2 text-left align-bottom text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Этаж
+                </th>
+              </tr>
+            </thead>
             <tbody>
               {floors.map((floor) => (
                 <tr key={floor}>

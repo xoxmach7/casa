@@ -165,9 +165,6 @@ export default function ClientsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="icon" onClick={() => router.push('/dashboard/crm')} className="border-[#2E7D5E]/20 text-[#2E7D5E] hover:bg-[#2E7D5E]/5">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-          </Button>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Клиенты</h1>
             <p className="text-muted-foreground">
@@ -175,7 +172,7 @@ export default function ClientsPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => router.push("/dashboard/clients/new")} className="bg-[#2E7D5E] hover:bg-[#1B5E40] text-white">
+        <Button onClick={() => router.push("/dashboard/clients/new")} className="bg-[#15325B] hover:bg-[#0F2544] text-white">
           <Plus className="mr-2 h-4 w-4" />
           Добавить клиента
         </Button>
@@ -358,7 +355,7 @@ export default function ClientsPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-[#2E7D5E] hover:text-[#1B5E40] hover:bg-[#2E7D5E]/5"
+                          className="h-8 w-8 text-[#15325B] hover:text-[#0F2544] hover:bg-[#15325B]/5"
                           onClick={() => window.open(getWhatsAppLink(client.phone), '_blank')}
                         >
                           <MessageCircle className="h-4 w-4" />

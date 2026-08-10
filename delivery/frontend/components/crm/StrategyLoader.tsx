@@ -6,10 +6,10 @@ export function StrategyLoader() {
     const [step, setStep] = useState(0);
 
     const steps = [
-        { text: "Анализ рыночных данных...", icon: Search, color: "text-[#2E7D5E]" },
+        { text: "Анализ рыночных данных...", icon: Search, color: "text-[#15325B]" },
         { text: "Сравнение с конкурентами...", icon: TrendingUp, color: "text-[#D4A843]" },
         { text: "Формирование стратегии...", icon: Brain, color: "text-[#3A9D73]" },
-        { text: "Готово!", icon: CheckCircle2, color: "text-[#1B5E40]" }
+        { text: "Готово!", icon: CheckCircle2, color: "text-[#0F2544]" }
     ];
 
     useEffect(() => {
@@ -30,18 +30,18 @@ export function StrategyLoader() {
                 {/* Animated Icon Circle */}
                 <div className={cn(
                     "relative mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-xl ring-4 transition-all duration-500",
-                    step === 3 ? "ring-[#2E7D5E]/20 scale-110" : "ring-[#2E7D5E]/10 animate-pulse"
+                    step === 3 ? "ring-[#15325B]/20 scale-110" : "ring-[#15325B]/10 animate-pulse"
                 )}>
                     {/* Ping effect behind */}
                     {step < 3 && (
-                        <div className="absolute inset-0 rounded-full bg-[#2E7D5E]/20 opacity-20 animate-ping" />
+                        <div className="absolute inset-0 rounded-full bg-[#15325B]/20 opacity-20 animate-ping" />
                     )}
 
                     <Icon className={cn("h-10 w-10 transition-all duration-500", activeStep.color)} />
 
                     {/* Progress ring/spinner */}
                     {step < 3 && (
-                        <div className="absolute inset-0 rounded-full border-4 border-t-[#2E7D5E] border-r-transparent border-b-[#2E7D5E] border-l-transparent opacity-20 animate-spin" />
+                        <div className="absolute inset-0 rounded-full border-4 border-t-[#15325B] border-r-transparent border-b-[#15325B] border-l-transparent opacity-20 animate-spin" />
                     )}
                 </div>
 
@@ -61,8 +61,8 @@ export function StrategyLoader() {
                             key={i}
                             className={cn(
                                 "h-1.5 rounded-full transition-all duration-500",
-                                i === step ? "w-6 bg-[#2E7D5E]" :
-                                    i < step ? "w-1.5 bg-[#2E7D5E]/40" : "w-1.5 bg-gray-200"
+                                i === step ? "w-6 bg-[#15325B]" :
+                                    i < step ? "w-1.5 bg-[#15325B]/40" : "w-1.5 bg-gray-200"
                             )}
                         />
                     ))}

@@ -731,7 +731,7 @@ export default function ProfilePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-[#2E7D5E]">
+                <div className="text-3xl font-bold text-[#15325B]">
                   {(profile?.balance || 0).toLocaleString("ru-RU")} ₸
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
@@ -751,7 +751,7 @@ export default function ProfilePage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Всего получено:</span>
-                    <span className="font-medium text-[#2E7D5E]">
+                    <span className="font-medium text-[#15325B]">
                       +{payments.filter(p => p.type === 'income').reduce((sum, p) => sum + p.amount, 0).toLocaleString("ru-RU")} ₸
                     </span>
                   </div>
@@ -788,9 +788,9 @@ export default function ProfilePage() {
                       className="flex items-center justify-between p-3 rounded-lg border"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-full ${payment.type === 'income' ? 'bg-[#2E7D5E]/10' : 'bg-red-100'}`}>
+                        <div className={`p-2 rounded-full ${payment.type === 'income' ? 'bg-[#15325B]/10' : 'bg-red-100'}`}>
                           {payment.type === 'income' ? (
-                            <DollarSign className="h-4 w-4 text-[#2E7D5E]" />
+                            <DollarSign className="h-4 w-4 text-[#15325B]" />
                           ) : (
                             <CreditCard className="h-4 w-4 text-red-600" />
                           )}
@@ -802,7 +802,7 @@ export default function ProfilePage() {
                           </p>
                         </div>
                       </div>
-                      <div className={`font-medium ${payment.type === 'income' ? 'text-[#2E7D5E]' : 'text-red-600'}`}>
+                      <div className={`font-medium ${payment.type === 'income' ? 'text-[#15325B]' : 'text-red-600'}`}>
                         {payment.type === 'income' ? '+' : '-'}{payment.amount.toLocaleString("ru-RU")} ₸
                       </div>
                     </div>

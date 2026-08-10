@@ -16,6 +16,7 @@ import {
   MoreHorizontal
 } from "lucide-react"
 import { Crane } from "@/components/icons/crane"
+import { projectClassLabel } from "@/lib/project-class"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -464,7 +465,7 @@ export default function ProjectsCatalogPage() {
                     </div>
                   </TableCell>
                   <TableCell>{project.district || "—"}</TableCell>
-                  <TableCell>{project.class || "—"}</TableCell>
+                  <TableCell>{projectClassLabel(project.class) || "—"}</TableCell>
                   <TableCell>{getStatusBadge(project.buildingStatus)}</TableCell>
                   <TableCell>
                     {project.deliveryDate
@@ -567,12 +568,12 @@ export default function ProjectsCatalogPage() {
                 <div className="flex flex-wrap items-center gap-1.5 mb-3">
                   {project.class && (
                     <Badge variant="secondary" className="text-xs font-semibold">
-                      {project.class}
+                      {projectClassLabel(project.class)}
                     </Badge>
                   )}
                   {getStatusBadge(project.buildingStatus)}
                   {project.apartmentStats?.minPrice ? (
-                    <span className="ml-auto text-sm font-bold text-[#2E7D5E] tabular-nums">
+                    <span className="ml-auto text-sm font-bold text-[#15325B] tabular-nums">
                       от {(project.apartmentStats.minPrice / 1000000).toFixed(1)} млн ₸
                     </span>
                   ) : null}

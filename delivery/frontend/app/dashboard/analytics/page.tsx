@@ -164,8 +164,8 @@ export default function AnalyticsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Активные объекты</CardTitle>
-                <div className="h-8 w-8 rounded-lg bg-[#2E7D5E]/10 flex items-center justify-center">
-                  <Briefcase className="h-4 w-4 text-[#2E7D5E]" />
+                <div className="h-8 w-8 rounded-lg bg-[#15325B]/10 flex items-center justify-center">
+                  <Briefcase className="h-4 w-4 text-[#15325B]" />
                 </div>
               </CardHeader>
               <CardContent>
@@ -200,8 +200,8 @@ export default function AnalyticsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Конверсия</CardTitle>
-                <div className="h-8 w-8 rounded-lg bg-[#2E7D5E]/10 flex items-center justify-center">
-                  <Activity className="h-4 w-4 text-[#2E7D5E]" />
+                <div className="h-8 w-8 rounded-lg bg-[#15325B]/10 flex items-center justify-center">
+                  <Activity className="h-4 w-4 text-[#15325B]" />
                 </div>
               </CardHeader>
               <CardContent>
@@ -225,7 +225,7 @@ export default function AnalyticsPage() {
                       contentStyle={{ background: '#333', border: 'none', borderRadius: '4px', color: '#fff' }}
                       cursor={{ fill: 'transparent' }}
                     />
-                    <Bar dataKey="value" fill="#2E7D5E" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="value" fill="#15325B" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -335,7 +335,7 @@ export default function AnalyticsPage() {
                           <div className="text-xs text-muted-foreground">{deal.address}</div>
                         </td>
                         <td className="p-4 align-middle font-medium">{formatCurrency(deal.finalPrice)}</td>
-                        <td className="p-4 align-middle text-[#2E7D5E] font-medium">{formatCurrency(deal.commission)}</td>
+                        <td className="p-4 align-middle text-[#15325B] font-medium">{formatCurrency(deal.commission)}</td>
                         <td className="p-4 align-middle">{deal.seller}</td>
                         <td className="p-4 align-middle">{deal.buyer}</td>
                         <td className="p-4 align-middle">{deal.broker}</td>

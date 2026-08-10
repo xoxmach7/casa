@@ -42,7 +42,7 @@ const roleLabels = {
 };
 
 const roleColors = {
-  BROKER: 'bg-[#2E7D5E]',
+  BROKER: 'bg-[#15325B]',
   DEVELOPER: 'bg-[#D4A843]',
   ADMIN: 'bg-red-500',
 };

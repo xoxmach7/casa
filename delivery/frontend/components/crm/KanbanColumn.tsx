@@ -19,9 +19,9 @@ interface KanbanColumnProps {
 }
 
 const VARIANT_HEADER: Record<string, string> = {
-    blue: "bg-[#2E7D5E] text-white",
+    blue: "bg-[#15325B] text-white",
     pink: "bg-[#D4A843] text-white",
-    green: "bg-[#1B5E40] text-white",
+    green: "bg-[#0F2544] text-white",
     cyan: "bg-[#3A9D73] text-white",
     default: "bg-[#4A5568] text-white",
 };
@@ -84,8 +84,8 @@ export function KanbanColumn({ id, title, count = 0, description, children, vari
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
                 {isOver && (
-                    <div className="h-12 rounded-lg border-2 border-dashed border-[#2E7D5E]/40 bg-[#2E7D5E]/5 flex items-center justify-center animate-in fade-in">
-                        <span className="text-xs text-[#2E7D5E] font-medium">Отпустите здесь</span>
+                    <div className="h-12 rounded-lg border-2 border-dashed border-[#15325B]/40 bg-[#15325B]/5 flex items-center justify-center animate-in fade-in">
+                        <span className="text-xs text-[#15325B] font-medium">Отпустите здесь</span>
                     </div>
                 )}
                 {children}

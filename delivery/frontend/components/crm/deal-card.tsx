@@ -49,7 +49,7 @@ export function DealCard({ deal, onDelete }: DealCardProps) {
 
     // Helper to determine source icon
     const getSourceIcon = (source: string) => {
-        if (source === 'BOT_DISTRIBUTION') return <Bot className="h-3 w-3 text-[#2E7D5E]" />;
+        if (source === 'BOT_DISTRIBUTION') return <Bot className="h-3 w-3 text-[#15325B]" />;
         if (source === 'FORM_PERSONAL') return <Globe className="h-3 w-3 text-[#3A9D73]" />;
         return <UserPlus className="h-3 w-3 text-gray-500" />;
     };
@@ -96,7 +96,7 @@ export function DealCard({ deal, onDelete }: DealCardProps) {
                 <div className="space-y-1.5 pt-1">
                     {/* Broker (Admin View) */}
                     {(deal as any).broker && (
-                        <div className="flex items-center text-xs text-[#2E7D5E] bg-[#2E7D5E]/5 px-1.5 py-0.5 rounded w-fit gap-1.5 mb-1">
+                        <div className="flex items-center text-xs text-[#15325B] bg-[#15325B]/5 px-1.5 py-0.5 rounded w-fit gap-1.5 mb-1">
                             <span className="font-medium">{(deal as any).broker.firstName} {(deal as any).broker.lastName}</span>
                         </div>
                     )}

@@ -1,6 +1,6 @@
 # Аудит безопасности — весь проект
 
-> **Статус на 2026-08-10:** HIGH-1 и MEDIUM-2 исправлены и выкачены в прод (коммит `3009d2e`), проверено вживую. MEDIUM-3 и LOW — открыты.
+> **Статус на 2026-08-10:** HIGH-1, MEDIUM-2 и MEDIUM-3 исправлены и выкачены в прод (коммиты `3009d2e`, `7cd6769`), проверено вживую в браузере. Открыты только LOW-4/5/6.
 
 **Дата:** 2026-08-10
 **Область:** backend (Express + Prisma), CRM-фронт (Next.js), публичный сайт casa40 (Vite/React), инфраструктура (Docker, CI/CD, Railway), зависимости.
@@ -62,13 +62,17 @@ export function scopeToOwner(role: string, userId: string) {
 
 ---
 
-## MEDIUM-3. httpOnly-cookie обнулён хранением токена в localStorage
+## MEDIUM-3. ✅ ИСПРАВЛЕНО (7cd6769). httpOnly-cookie обнулён хранением токена в localStorage
 
 **Где:** `auth.routes.ts` ставит `httpOnly + secure + sameSite` cookie **и** возвращает токен в теле; фронт (`components/login-form.tsx`, `lib/api-client.ts`) берёт токен из тела и кладёт в `localStorage`, оттуда шлёт `Authorization: Bearer`.
 
 **Последствие:** защита httpOnly-cookie не работает — токен доступен из JS, то есть выгружаем любым XSS. Cookie висит «для галочки». Сейчас XSS-стоков не найдено (React экранирует, единственный `dangerouslySetInnerHTML` в CRM обёрнут в `DOMPurify.sanitize`), но при появлении любого XSS цена — сразу угон 7-дневного токена.
 
-**Как чинить:** выбрать одну модель. Рекомендую cookie-only: фронт ходит с `withCredentials`, токен из тела ответа убрать, из `localStorage` — тоже. Тогда httpOnly реально защищает.
+**Реализовано:** переход на cookie-only. Токен убран из тела ответа и из localStorage; сессия — в httpOnly-cookie `SameSite=None; Secure` (crm и API — разные сайты `*.up.railway.app`, иначе cookie не уходит). Фронт шлёт cookie через глобальный патч fetch (`lib/api-credentials`) и `withCredentials` у axios; роль читается из объекта `user`, logout зовёт `/auth/logout`.
+
+**CSRF, который открывает SameSite=None, закрыт** новым `csrfGuard` (backend): изменяющие методы с чужого Origin → 403; запросы без Origin (curl, сервер-сервер) и GET проходят; Bearer-путь в `authenticate` сохранён для обратной совместимости. Добавлено 3 теста барьера.
+
+Проверено в реальном браузере на проде под демо-брокером: cookie `httpOnly=true, sameSite=None, secure=true`, `localStorage.token=null`, экраны грузятся по cookie, `/auth/me`=200, logout гасит cookie (`/auth/me`=401). CSRF на проде: чужой Origin → 403, свой → проходит.
 
 ---
 

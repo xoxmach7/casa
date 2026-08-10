@@ -53,9 +53,18 @@ describe('detectDocumentExtension', () => {
     expect(detectDocumentExtension(buf)).toBe('.doc');
   });
 
-  it('detects a .docx by its zip local-file-header signature', () => {
-    const buf = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('rest of file')]);
+  it('detects a real .docx — zip signature plus the mandatory [Content_Types].xml part', () => {
+    const buf = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      Buffer.from('....[Content_Types].xml....word/document.xml'),
+    ]);
     expect(detectDocumentExtension(buf)).toBe('.docx');
+  });
+
+  it('rejects a plain zip renamed to .docx (no OOXML content-types part)', () => {
+    // Любой архив под видом docx: zip-сигнатура есть, но [Content_Types].xml нет.
+    const buf = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('just a normal archive')]);
+    expect(detectDocumentExtension(buf)).toBeNull();
   });
 
   it('rejects an HTML/script payload renamed to look like a PDF', () => {

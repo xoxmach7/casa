@@ -58,17 +58,19 @@ export function detectDocumentExtension(buffer: Buffer): SniffedDocumentExtensio
     return '.doc';
   }
 
-  // .docx is a zip (Office Open XML) — the zip local-file-header signature
-  // is the strongest check available without unzipping and inspecting
-  // [Content_Types].xml; sufficient here to rule out non-archive payloads
-  // (HTML/JS/exe) being stored with a .docx extension.
-  if (
+  // .docx — это zip (Office Open XML). Одной zip-сигнатуры мало: под неё
+  // подходит ЛЮБОЙ архив, переименованный в .docx (LOW-6 из аудита). Усиливаем
+  // без библиотек: каждый валидный OOXML-пакет обязан содержать часть
+  // `[Content_Types].xml`, а имена записей в zip хранятся открытым текстом,
+  // поэтому эти байты присутствуют в любом настоящем docx (независимо от
+  // порядка записей) и отсутствуют в произвольном zip.
+  const isZip =
     buffer.length >= 4 &&
     buffer[0] === 0x50 &&
     buffer[1] === 0x4b &&
     (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
-    (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08)
-  ) {
+    (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08);
+  if (isZip && buffer.includes(Buffer.from('[Content_Types].xml', 'latin1'))) {
     return '.docx';
   }
 

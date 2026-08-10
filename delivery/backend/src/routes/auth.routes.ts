@@ -22,15 +22,12 @@ const profileSchema = z.object({
 // POST /api/auth/login
 authRouter.post('/login', async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log('Login attempt for:', req.body.email);
     const { email, password } = loginSchema.parse(req.body);
 
-    console.log('Searching for user:', email);
     // Найти пользователя
     const user = await prisma.user.findUnique({
       where: { email },
     });
-    console.log('User found:', !!user);
 
     if (!user || !user.isActive) {
       res.status(401).json({ error: 'Неверные учетные данные' });
@@ -81,10 +78,9 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
       res.status(400).json({ error: 'Неверные данные', details: error.errors });
       return;
     }
-    res.status(500).json({
-      error: 'Ошибка сервера',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
+    // Наружу — только общий текст. Раньше здесь возвращался error.message, что
+    // могло протечь внутреннюю деталь клиенту (LOW-4). Детали — в лог выше.
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

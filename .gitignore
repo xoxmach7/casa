@@ -1,7 +1,12 @@
 .worktrees
 node_modules
 .next
-.env*.local
+# Секреты в любом .env, кроме шаблонов .env.example. Раньше игнорировался только
+# .env*.local, из-за чего голый .env / .env.production в корне мог случайно уйти
+# в гит (LOW-5 из security-аудита 2026-08-10).
+.env
+.env.*
+!.env.example
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 tsconfig.tsbuildinfo

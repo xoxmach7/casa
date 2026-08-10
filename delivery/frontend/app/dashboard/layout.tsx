@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { getToken, isTokenExpired } from "@/lib/auth-utils"
+import { hasStoredSession } from "@/lib/auth-utils"
 import { StrategyProvider } from "@/lib/strategy-context"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -57,10 +57,11 @@ export default function DashboardLayout({
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = getToken()
-    if (!token || isTokenExpired(token)) {
-      localStorage.removeItem("token")
-      localStorage.removeItem("user")
+    // Токен теперь в httpOnly-cookie, из JS его не прочитать. Быстрый локальный
+    // признак сессии — сохранённый профиль; если его нет, сразу на логин. Если
+    // же cookie на сервере уже невалидна, первый защищённый запрос вернёт 401 и
+    // перехватчик в api-client уведёт на /login.
+    if (!hasStoredSession()) {
       router.push("/login")
     } else {
       setLoading(false)

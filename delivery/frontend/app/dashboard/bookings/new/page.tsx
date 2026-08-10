@@ -100,7 +100,7 @@ export default function NewBookingPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem("token")
+      const token = (localStorage.getItem('user') ? '1' : null)
       
       const [clientsRes, projectsRes] = await Promise.all([
         fetch(`${API_URL}/clients?limit=100`, {
@@ -129,7 +129,7 @@ export default function NewBookingPage() {
 
   const fetchApartmentDetails = async (apartmentId: string) => {
     try {
-      const token = localStorage.getItem("token")
+      const token = (localStorage.getItem('user') ? '1' : null)
       const res = await fetch(`${API_URL}/apartments/${apartmentId}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -161,7 +161,7 @@ export default function NewBookingPage() {
     setSubmitting(true)
     
     try {
-      const token = localStorage.getItem("token")
+      const token = (localStorage.getItem('user') ? '1' : null)
       const res = await fetch(`${API_URL}/bookings`, {
         method: "POST",
         headers: {

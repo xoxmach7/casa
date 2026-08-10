@@ -60,7 +60,7 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(getApiUrl('/admin/users'), {
         headers: {
@@ -99,7 +99,7 @@ export default function UsersPage() {
     if (!deleteUserId) return;
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(getApiUrl(`/admin/users/${deleteUserId}`), {
         method: 'DELETE',

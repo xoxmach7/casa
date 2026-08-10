@@ -80,7 +80,7 @@ export default function DealDetailPage() {
   }, [currentUser])
 
   const fetchCurrentUser = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
     try {
       const res = await fetch(`${API_URL}/users/me`, {
@@ -96,7 +96,7 @@ export default function DealDetailPage() {
   }
 
   const fetchBrokers = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
     try {
       const res = await fetch(`${API_URL}/users?role=BROKER&limit=100`, {
@@ -112,7 +112,7 @@ export default function DealDetailPage() {
   }
 
   const fetchDeal = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
     try {
       const res = await fetch(`${API_URL}/deals/${dealId}`, {
@@ -134,7 +134,7 @@ export default function DealDetailPage() {
   }
 
   const handleStatusChange = async (newStatus: string) => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token || !deal) return
 
     setUpdating(true)
@@ -164,7 +164,7 @@ export default function DealDetailPage() {
   }
 
   const handleBrokerChange = async (brokerId: string) => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token || !deal) return
 
     setUpdating(true)
@@ -503,7 +503,7 @@ export default function DealDetailPage() {
             />
             <Button
               onClick={async () => {
-                const token = localStorage.getItem("token");
+                const token = (localStorage.getItem('user') ? '1' : null);
                 if (!token) return;
 
                 setUpdating(true);

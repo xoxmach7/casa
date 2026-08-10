@@ -99,7 +99,7 @@ export default function ProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -121,7 +121,7 @@ export default function ProfilePage() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       // Fetch deals, clients, bookings in parallel
       const [dealsRes, clientsRes, bookingsRes] = await Promise.all([
@@ -188,7 +188,7 @@ export default function ProfilePage() {
 
   const fetchCourses = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses/my`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -203,7 +203,7 @@ export default function ProfilePage() {
 
   const fetchPayments = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/payments/my`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -218,7 +218,7 @@ export default function ProfilePage() {
 
   const handleEditProfile = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/auth/profile`, {
         method: "PUT",
         headers: {
@@ -258,7 +258,7 @@ export default function ProfilePage() {
     }
 
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/auth/change-password`, {
         method: "PUT",
         headers: {
@@ -286,7 +286,7 @@ export default function ProfilePage() {
 
   const handleCourseToggle = async (courseId: number, completed: boolean) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses/${courseId}/complete`, {
         method: "PUT",
         headers: {

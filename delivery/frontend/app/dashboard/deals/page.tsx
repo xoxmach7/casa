@@ -67,7 +67,7 @@ export default function DealsPage() {
   }, [page, statusFilter])
 
   const fetchDeals = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {

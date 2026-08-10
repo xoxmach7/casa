@@ -98,7 +98,7 @@ export default function CalendarPage() {
             const start = startOfMonth(currentDate).toISOString();
             const end = endOfMonth(currentDate).toISOString();
 
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const res = await fetch(getApiUrl(`/events?start=${start}&end=${end}`), {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -181,7 +181,7 @@ export default function CalendarPage() {
                 location: form.location,
             };
 
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const url = editingEvent
                 ? getApiUrl(`/events/${editingEvent.id}`)
                 : getApiUrl('/events');
@@ -215,7 +215,7 @@ export default function CalendarPage() {
 
         setSaving(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const res = await fetch(getApiUrl(`/events/${editingEvent.id}`), {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }

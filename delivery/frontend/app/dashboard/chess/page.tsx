@@ -47,7 +47,7 @@ export default function ChessboardSelectPage() {
 
   const fetchProjects = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const response = await fetch(
         getApiUrl('/projects'),
         {

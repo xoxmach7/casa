@@ -52,7 +52,7 @@ export default function EditUserPage() {
 
     const fetchUser = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const response = await fetch(getApiUrl(`/admin/users/${id}/full`), {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -85,7 +85,7 @@ export default function EditUserPage() {
         setSubmitting(true);
 
         try {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
 
             const response = await fetch(getApiUrl(`/admin/users/${id}`), {
                 method: 'PUT',
@@ -131,7 +131,7 @@ export default function EditUserPage() {
 
         setResettingPassword(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const response = await fetch(getApiUrl(`/admin/users/${id}/reset-password`), {
                 method: 'POST',
                 headers: {

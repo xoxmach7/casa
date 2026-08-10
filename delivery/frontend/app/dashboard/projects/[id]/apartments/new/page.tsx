@@ -53,7 +53,7 @@ export default function NewApartmentPage() {
     if (!file) return;
 
     setUploadingLayout(true);
-    const token = localStorage.getItem('token');
+    const token = (localStorage.getItem('user') ? '1' : null);
 
     try {
       const formDataUpload = new FormData();
@@ -90,7 +90,7 @@ export default function NewApartmentPage() {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = (localStorage.getItem('user') ? '1' : null);
     fetch(`${API_URL}/buildings?projectId=${params.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -102,7 +102,7 @@ export default function NewApartmentPage() {
   const handleCreateBuilding = async () => {
     if (!newBuildingName.trim()) return;
     setCreatingBuilding(true);
-    const token = localStorage.getItem('token');
+    const token = (localStorage.getItem('user') ? '1' : null);
     try {
       const res = await fetch(`${API_URL}/buildings`, {
         method: 'POST',
@@ -128,7 +128,7 @@ export default function NewApartmentPage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       
       const response = await fetch(`${API_URL}/apartments`, {
         method: 'POST',

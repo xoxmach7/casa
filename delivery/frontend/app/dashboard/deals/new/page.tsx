@@ -53,7 +53,7 @@ export default function NewDealPage() {
   }, [propertyId])
 
   const fetchProperty = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token || !propertyId) return
 
     try {
@@ -79,7 +79,7 @@ export default function NewDealPage() {
     e.preventDefault()
     setLoading(true)
 
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {

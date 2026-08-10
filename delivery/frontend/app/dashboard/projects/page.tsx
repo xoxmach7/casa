@@ -119,7 +119,7 @@ export default function ProjectsCatalogPage() {
   }, [district, status, housingClass, minPrice, maxPrice, rooms, mortgageProgram])
 
   const fetchProjects = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {
@@ -166,7 +166,7 @@ export default function ProjectsCatalogPage() {
     if (!deleteProjectId) return
     
     try {
-      const token = localStorage.getItem('token')
+      const token = (localStorage.getItem('user') ? '1' : null)
       const response = await fetch(`${API_URL}/projects/${deleteProjectId}`, {
         method: 'DELETE',
         headers: {

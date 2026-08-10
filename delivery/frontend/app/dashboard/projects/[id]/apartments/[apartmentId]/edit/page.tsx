@@ -81,7 +81,7 @@ export default function EditApartmentPage() {
   }, []);
 
   const fetchBuildings = async () => {
-    const token = localStorage.getItem('token');
+    const token = (localStorage.getItem('user') ? '1' : null);
     try {
       const res = await fetch(getApiUrl(`/buildings?projectId=${params.id}`), {
         headers: { Authorization: `Bearer ${token}` },
@@ -95,7 +95,7 @@ export default function EditApartmentPage() {
   const handleCreateBuilding = async () => {
     if (!newBuildingName.trim()) return;
     setCreatingBuilding(true);
-    const token = localStorage.getItem('token');
+    const token = (localStorage.getItem('user') ? '1' : null);
     try {
       const res = await fetch(getApiUrl('/buildings'), {
         method: 'POST',
@@ -117,7 +117,7 @@ export default function EditApartmentPage() {
 
   const fetchApartment = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(
         getApiUrl(`/apartments/${params.apartmentId}`),
@@ -160,7 +160,7 @@ export default function EditApartmentPage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(
         getApiUrl(`/apartments/${params.apartmentId}`),
@@ -210,7 +210,7 @@ export default function EditApartmentPage() {
     setDeleting(true);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(
         getApiUrl(`/apartments/${params.apartmentId}`),

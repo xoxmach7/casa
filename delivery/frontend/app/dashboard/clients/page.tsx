@@ -93,7 +93,7 @@ export default function ClientsPage() {
   }, [page, statusFilter, typeFilter, cityFilter])
 
   const fetchClients = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {
@@ -138,7 +138,7 @@ export default function ClientsPage() {
     if (!deleteClientId) return
     setDeleting(true)
     try {
-      const token = localStorage.getItem("token")
+      const token = (localStorage.getItem('user') ? '1' : null)
       const response = await fetch(`${API_URL}/clients/${deleteClientId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },

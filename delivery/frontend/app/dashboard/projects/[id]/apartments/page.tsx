@@ -86,7 +86,7 @@ export default function ApartmentsGridPage() {
 
   const fetchAll = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const headers = { Authorization: `Bearer ${token}` };
 
       const [projectRes, apartmentsRes, buildingsRes] = await Promise.all([
@@ -120,7 +120,7 @@ export default function ApartmentsGridPage() {
 
     setDeleting(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const response = await fetch(getApiUrl(`/apartments/${apartmentToDelete.id}`), {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },

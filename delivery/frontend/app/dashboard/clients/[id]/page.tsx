@@ -152,7 +152,7 @@ export default function ClientDetailPage() {
 
   const fetchClient = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const response = await fetch(`${API_URL}/clients/${params.id}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -176,7 +176,7 @@ export default function ClientDetailPage() {
   const handleDelete = async () => {
     try {
       setDeleting(true);
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       
       const response = await fetch(`${API_URL}/clients/${params.id}`, {
         method: 'DELETE',
@@ -201,7 +201,7 @@ export default function ClientDetailPage() {
   // Fetch available properties for linking (secondary-market CrmProperty)
   const fetchAvailableProperties = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const response = await fetch(`${API_URL}/crm-properties?limit=100`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -223,7 +223,7 @@ export default function ClientDetailPage() {
 
     setLinking(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const response = await fetch(`${API_URL}/clients/${params.id}/link-property`, {
         method: 'POST',
         headers: {
@@ -252,7 +252,7 @@ export default function ClientDetailPage() {
   // Unlink property from client
   const handleUnlinkProperty = async (propertyId: string, role: 'seller' | 'buyer') => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const response = await fetch(`${API_URL}/clients/${params.id}/unlink-property`, {
         method: 'DELETE',
         headers: {

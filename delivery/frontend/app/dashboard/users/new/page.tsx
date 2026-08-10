@@ -44,7 +44,7 @@ export default function NewUserPage() {
   useEffect(() => {
     const fetchAgencies = async () => {
       try {
-        const token = localStorage.getItem('token');
+        const token = (localStorage.getItem('user') ? '1' : null);
         const res = await fetch(getApiUrl('/admin/users?role=AGENCY'), {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -83,7 +83,7 @@ export default function NewUserPage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(getApiUrl('/admin/users'), {
         method: 'POST',

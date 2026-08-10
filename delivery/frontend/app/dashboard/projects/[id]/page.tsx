@@ -115,7 +115,7 @@ export default function ProjectDetailsPage() {
   }, [])
 
   const fetchProjectDetails = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {

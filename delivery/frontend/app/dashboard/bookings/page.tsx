@@ -97,7 +97,7 @@ export default function BookingsPage() {
   const fetchBookings = async () => {
     try {
       console.log('Fetching bookings with filter:', statusFilter);
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const params = new URLSearchParams();
       
       if (statusFilter !== 'all') params.append('status', statusFilter);
@@ -128,7 +128,7 @@ export default function BookingsPage() {
 
     try {
       setProcessing(true);
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       
       let url = `${API_URL}/bookings/${selectedBooking.id}`;
       let method = 'PUT';

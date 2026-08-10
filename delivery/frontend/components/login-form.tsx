@@ -54,8 +54,9 @@ export function LoginForm({
         return
       }
 
-      // Сохранить токен
-      localStorage.setItem("token", data.token)
+      // Токен НЕ сохраняем: сессия пришла в httpOnly-cookie (её выставил сервер
+      // в ответе на этот запрос). В localStorage кладём только профиль — он не
+      // секрет и нужен для UI и роут-гарда.
       localStorage.setItem("user", JSON.stringify(data.user))
 
       // Рабочий экран после входа — «Сделки (CRM)», первый пункт меню.

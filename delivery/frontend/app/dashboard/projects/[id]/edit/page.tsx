@@ -61,7 +61,7 @@ export default function EditProjectPage() {
 
   const fetchProject = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(
         getApiUrl(`/projects/${params.id}`),
@@ -111,7 +111,7 @@ export default function EditProjectPage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(
         getApiUrl(`/projects/${params.id}`),

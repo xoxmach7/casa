@@ -50,7 +50,7 @@ export default function NewClientPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(getApiUrl('/clients'), {
         method: 'POST',

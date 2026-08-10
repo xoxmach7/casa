@@ -83,7 +83,7 @@ export default function BrokerDetailPage({ params }: { params: Promise<{ id: str
 
   const fetchBroker = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/admin/users/${id}/full`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -115,7 +115,7 @@ export default function BrokerDetailPage({ params }: { params: Promise<{ id: str
 
   const fetchAllCourses = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -130,7 +130,7 @@ export default function BrokerDetailPage({ params }: { params: Promise<{ id: str
 
   const handleSaveCurator = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/admin/users/${id}/curator`, {
         method: "PUT",
         headers: {
@@ -155,7 +155,7 @@ export default function BrokerDetailPage({ params }: { params: Promise<{ id: str
     if (!selectedCourseId) return;
     
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses/assign`, {
         method: "POST",
         headers: {
@@ -184,7 +184,7 @@ export default function BrokerDetailPage({ params }: { params: Promise<{ id: str
 
   const handleUnassignCourse = async (courseId: string) => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses/assign/${id}/${courseId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -208,7 +208,7 @@ export default function BrokerDetailPage({ params }: { params: Promise<{ id: str
     }
     
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/payments`, {
         method: "POST",
         headers: {

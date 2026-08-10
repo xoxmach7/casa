@@ -20,7 +20,12 @@ async function login(email: string, password: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const data = await res.json().catch(() => null) as any;
+  const data = (await res.json().catch(() => null)) as any;
+  // Токен теперь в httpOnly-cookie, а не в теле (MEDIUM-3). Достаём его из
+  // Set-Cookie и кладём в data.token, чтобы тесты (использующие Bearer-путь,
+  // сохранённый в authenticate) продолжали работать.
+  const token = (res.headers.get('set-cookie') || '').match(/token=([^;]+)/)?.[1];
+  if (data && token) data.token = token;
   return { status: res.status, data, headers: res.headers };
 }
 
@@ -301,6 +306,42 @@ describe('IDOR Protection', () => {
       role: 'ADMIN',
     });
     expect([403, 404]).toContain(res.status);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 6b. CSRF PROTECTION (Origin-based)
+// ═══════════════════════════════════════════════════════════
+// Cookie-авторизация (MEDIUM-3) открыла бы CSRF, если бы не проверка Origin
+// на изменяющих запросах. Барьер: чужой Origin на POST/PUT/PATCH/DELETE → 403.
+describe('CSRF Protection', () => {
+  it('blocks a mutating request from a foreign Origin', async () => {
+    const res = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example.com' },
+      body: JSON.stringify({ email: 'admin@casa.kz', password: 'admin123' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('does not touch safe (GET) requests regardless of Origin', async () => {
+    const res = await fetch(`http://localhost:${PORT}/health`, {
+      headers: { Origin: 'https://evil.example.com' },
+    });
+    // GET состояние не меняет — csrfGuard его пропускает.
+    expect(res.status).toBe(200);
+  });
+
+  it('allows a mutating request with no Origin (server-to-server / curl)', async () => {
+    // Отсутствие Origin означает не-браузерного клиента; cookie туда
+    // кросс-сайтово не уходит, поэтому CSRF невозможен — пропускаем.
+    const res = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@casa.kz', password: 'wrong-on-purpose' }),
+    });
+    // 400/401 — дошли до обработчика логина (не 403 от csrfGuard).
+    expect([400, 401, 429]).toContain(res.status);
   });
 });
 

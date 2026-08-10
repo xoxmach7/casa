@@ -36,20 +36,24 @@ describe('LoginForm', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/crm'));
   });
 
-  it('stores the token and user so the next request is authenticated', async () => {
+  it('stores only the user profile — the session lives in the httpOnly cookie', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ token: 'jwt-token', user: { id: 'u1', role: 'BROKER' } }),
+        // Сервер больше не кладёт токен в тело: он приходит httpOnly-cookie.
+        json: async () => ({ user: { id: 'u1', role: 'BROKER' } }),
       })
     );
 
     render(<LoginForm />);
     await submitLogin();
 
-    await waitFor(() => expect(localStorage.getItem('token')).toBe('jwt-token'));
-    expect(JSON.parse(localStorage.getItem('user')!)).toMatchObject({ id: 'u1', role: 'BROKER' });
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem('user')!)).toMatchObject({ id: 'u1', role: 'BROKER' })
+    );
+    // Токен в JS-хранилище не попадает — его нельзя украсть через XSS.
+    expect(localStorage.getItem('token')).toBeNull();
   });
 
   it('shows the server error and stays put on bad credentials', async () => {
@@ -63,7 +67,7 @@ describe('LoginForm', () => {
 
     expect(await screen.findByText('Неверный email или пароль')).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
-    expect(localStorage.getItem('token')).toBeNull();
+    expect(localStorage.getItem('user')).toBeNull();
   });
 
   it('reports an unreachable backend instead of failing silently', async () => {

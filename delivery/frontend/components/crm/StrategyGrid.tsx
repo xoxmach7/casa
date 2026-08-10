@@ -52,7 +52,7 @@ export function StrategyGrid({ selectedStrategy, onSelect, readOnly = false }: S
 
     // Check user role
     useEffect(() => {
-        const token = localStorage.getItem("token");
+        const token = (localStorage.getItem('user') ? '1' : null);
         if (!token) return;
         fetch(`${API_URL}/users/me`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -64,7 +64,7 @@ export function StrategyGrid({ selectedStrategy, onSelect, readOnly = false }: S
 
     // Load overrides (admin only)
     useEffect(() => {
-        const token = localStorage.getItem("token");
+        const token = (localStorage.getItem('user') ? '1' : null);
         if (!token) return;
         try {
             const userData = localStorage.getItem("user");
@@ -119,7 +119,7 @@ export function StrategyGrid({ selectedStrategy, onSelect, readOnly = false }: S
         if (!dialogKey || !editData) return;
         setSaving(true);
         const newOverrides = { ...overrides, [dialogKey]: editData };
-        const token = localStorage.getItem("token");
+        const token = (localStorage.getItem('user') ? '1' : null);
         try {
             const res = await fetch(`${API_URL}/admin/settings`, {
                 method: "POST",

@@ -36,21 +36,17 @@ export function StrategyProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) { setLoaded(true); return; }
-
-    // Only admins can access /admin/settings
+    // Настройки читает только ADMIN. Роль берём из сохранённого профиля (токена
+    // в JS больше нет — он в httpOnly-cookie). Нет профиля или не админ — выходим.
+    let user: { role?: string } | null = null;
     try {
       const userData = localStorage.getItem("user");
-      if (userData) {
-        const user = JSON.parse(userData);
-        if (user.role !== "ADMIN") { setLoaded(true); return; }
-      }
+      user = userData ? JSON.parse(userData) : null;
     } catch {}
+    if (!user || user.role !== "ADMIN") { setLoaded(true); return; }
 
-    fetch(`${API_URL}/admin/settings`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    // Авторизация — cookie (credentials добавляет патч из lib/api-credentials).
+    fetch(`${API_URL}/admin/settings`)
       .then((r) => (r.ok ? r.json() : []))
       .then((settings: { key: string; value: string }[]) => {
         const found = settings.find((s) => s.key === "strategy_overrides");

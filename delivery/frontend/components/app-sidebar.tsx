@@ -53,6 +53,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { NotificationBell } from "@/components/notification-bell"
 import { cn } from "@/lib/utils"
+import { clearAuthAndRedirect } from "@/lib/auth-utils"
 
 // Menu structure according to Casa PRO v1 ТЗ (5 main sections for broker)
 interface MenuItem {
@@ -209,10 +210,10 @@ export function AppSidebar() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("token")
-    localStorage.removeItem("user")
+    // Гасим серверную httpOnly-cookie (POST /auth/logout), чистим локальный
+    // профиль и уходим на логин — всё внутри clearAuthAndRedirect.
     localStorage.removeItem("openMenus")
-    router.push("/login")
+    clearAuthAndRedirect()
   }
 
   const getUserInitials = () => {

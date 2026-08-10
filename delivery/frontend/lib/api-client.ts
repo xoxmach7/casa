@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getToken, isTokenExpired, clearAuthAndRedirect } from './auth-utils';
+import { clearAuthAndRedirect } from './auth-utils';
 
 // Единственный источник правды для базового URL
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -13,39 +13,22 @@ export const getApiUrl = (path: string): string => {
   return `${API_URL}/${cleanPath}`;
 };
 
+// Авторизацию несёт httpOnly-cookie, а не заголовок (см.
+// docs/SECURITY-AUDIT-2026-08-10.md, MEDIUM-3). Функция оставлена ради десятков
+// вызовов `fetch(url, { headers: getAuthHeaders() })`: пустой объект безвреден,
+// а cookie к этим запросам добавляет глобальный патч из lib/api-credentials.
 export const getAuthHeaders = (): Record<string, string> => {
-  const token = getToken();
-  if (!token) return {};
-  if (isTokenExpired(token)) {
-    clearAuthAndRedirect();
-    return {};
-  }
-  return { Authorization: `Bearer ${token}` };
+  return {};
 };
 
-// Axios instance
+// Axios instance — с cookie (withCredentials), заголовок с токеном больше не шлём.
 const api = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
-// Request interceptor — токен + проверка expiry
-api.interceptors.request.use(
-  (config) => {
-    const token = getToken();
-    if (token) {
-      if (isTokenExpired(token)) {
-        clearAuthAndRedirect();
-        return Promise.reject(new axios.Cancel('Token expired'));
-      }
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor — 401 = сессия истекла на сервере
+// Response interceptor — 401 значит сессия истекла/невалидна на сервере.
 api.interceptors.response.use(
   (response) => response,
   (error) => {

@@ -115,7 +115,7 @@ export default function NewProjectPage() {
 
   async function onSubmit(values: FormValues) {
     setLoading(true)
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
 
     try {
       const response = await fetch(`${API_URL}/projects`, {

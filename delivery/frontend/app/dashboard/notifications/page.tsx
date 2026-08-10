@@ -30,7 +30,7 @@ export default function NotificationsPage() {
   }, [page])
 
   const fetchNotifications = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     setLoading(true)
@@ -53,7 +53,7 @@ export default function NotificationsPage() {
   }
 
   const markAsRead = async (id: string) => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {
@@ -68,7 +68,7 @@ export default function NotificationsPage() {
   }
 
   const markAllAsRead = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {
@@ -83,7 +83,7 @@ export default function NotificationsPage() {
   }
 
   const deleteNotification = async (id: string) => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {

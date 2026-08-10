@@ -62,7 +62,7 @@ export default function BookApartmentPage() {
 
   const fetchData = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       // Получаем квартиру
       const aptRes = await fetch(
@@ -102,7 +102,7 @@ export default function BookApartmentPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       // Рассчитываем время истечения
       const expiresAt = new Date();

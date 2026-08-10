@@ -89,7 +89,7 @@ export function FileUpload({
     setProgress(0)
 
     try {
-      const token = localStorage.getItem("token")
+      const token = (localStorage.getItem('user') ? '1' : null)
       const formData = new FormData()
 
       if (multiple && selectedFiles.length > 1) {

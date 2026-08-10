@@ -81,7 +81,7 @@ export default function AnalyticsPage() {
 
   const fetchAnalytics = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(getApiUrl('/analytics/dashboard'), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -136,7 +136,7 @@ export default function AnalyticsPage() {
         <h2 className="text-3xl font-bold tracking-tight">Аналитика</h2>
         <div className="flex items-center space-x-2">
           <Button variant="outline" size="sm" onClick={async () => {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const res = await fetch(`${API_URL.replace('/api','')}/api/export/analytics?format=xlsx`, {
               headers: { Authorization: `Bearer ${token}` },
             });

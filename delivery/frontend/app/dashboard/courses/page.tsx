@@ -77,7 +77,7 @@ export default function CoursesAdminPage() {
 
   const fetchCourses = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -94,7 +94,7 @@ export default function CoursesAdminPage() {
 
   const fetchBrokers = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/admin/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -114,7 +114,7 @@ export default function CoursesAdminPage() {
     }
 
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses`, {
         method: "POST",
         headers: {
@@ -141,7 +141,7 @@ export default function CoursesAdminPage() {
     if (!editingCourse || !courseForm.title) return;
 
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses/${editingCourse.id}`, {
         method: "PUT",
         headers: {
@@ -169,7 +169,7 @@ export default function CoursesAdminPage() {
     if (!confirm("Удалить курс?")) return;
 
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses/${courseId}`, {
         method: "PUT",
         headers: {
@@ -195,7 +195,7 @@ export default function CoursesAdminPage() {
     }
 
     try {
-      const token = localStorage.getItem("token");
+      const token = (localStorage.getItem('user') ? '1' : null);
       const res = await fetch(`${API_URL}/courses/assign`, {
         method: "POST",
         headers: {

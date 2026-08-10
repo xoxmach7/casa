@@ -65,6 +65,7 @@ import { subscriptionsRouter } from './routes/subscriptions.routes';
 import { mortgageApplicationsRouter } from './routes/mortgage-applications.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { auditMiddleware } from './middleware/audit.middleware';
+import { csrfGuard } from './middleware/csrf.middleware';
 import { prisma } from './lib/prisma';
 import { initializeBucket } from './lib/minio';
 
@@ -93,6 +94,9 @@ app.use(helmet({
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// CSRF-барьер для cookie-авторизации: режет изменяющие запросы с чужого Origin
+// (см. middleware/csrf.middleware.ts). Стоит после cookieParser и до роутов.
+app.use('/api', csrfGuard(allowedOrigins));
 app.use(auditMiddleware);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 

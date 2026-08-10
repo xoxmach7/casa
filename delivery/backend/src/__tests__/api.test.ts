@@ -4,6 +4,11 @@ const PORT = process.env.PORT || '3002';
 const BASE = `http://localhost:${PORT}/api`;
 
 // Helper: login and get token (with retry on rate limit)
+//
+// Сессия теперь приходит httpOnly-cookie, а не в теле ответа (MEDIUM-3).
+// Достаём JWT из Set-Cookie и дальше используем его как Bearer — этот путь в
+// authenticate сохранён (cookie в приоритете, иначе заголовок), поэтому
+// остальные хелперы не меняются.
 async function login(email: string, password: string): Promise<{ token: string; user: any }> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch(`${BASE}/auth/login`, {
@@ -16,7 +21,10 @@ async function login(email: string, password: string): Promise<{ token: string; 
       continue;
     }
     if (!res.ok) throw new Error(`Login failed for ${email}: ${res.status}`);
-    return res.json() as Promise<{ token: string; user: any }>;
+    const setCookie = res.headers.get('set-cookie') || '';
+    const token = setCookie.match(/token=([^;]+)/)?.[1] || '';
+    const user = (await res.json() as any).user;
+    return { token, user };
   }
   throw new Error(`Login rate-limited for ${email} after retries`);
 }
@@ -93,7 +101,8 @@ describe('Auth', () => {
     const res = await post('/auth/login', '', { email: 'admin@casa.kz', password: 'admin123' });
     expect([200, 429]).toContain(res.status);
     if (res.status === 200) {
-      expect(res.data.token).toBeDefined();
+      // Токен в теле больше не возвращается — он в httpOnly-cookie (MEDIUM-3).
+      expect(res.data.token).toBeUndefined();
       expect(res.data.user.role).toBe('ADMIN');
     }
   });

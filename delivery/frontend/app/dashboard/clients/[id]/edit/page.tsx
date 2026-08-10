@@ -62,7 +62,7 @@ export default function EditClientPage() {
 
   const fetchClient = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
       const response = await fetch(getApiUrl(`/clients/${params.id}`), {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -105,7 +105,7 @@ export default function EditClientPage() {
     setError('');
 
     try {
-      const token = localStorage.getItem('token');
+      const token = (localStorage.getItem('user') ? '1' : null);
 
       const response = await fetch(getApiUrl(`/clients/${params.id}`), {
         method: 'PUT',

@@ -137,7 +137,7 @@ export default function MortgagePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token = localStorage.getItem("token")
+        const token = (localStorage.getItem('user') ? '1' : null)
 
         // Загружаем ипотечные программы из БД
         try {
@@ -189,7 +189,7 @@ export default function MortgagePage() {
 
     setSavingCalculation(true)
     try {
-      const token = localStorage.getItem("token")
+      const token = (localStorage.getItem('user') ? '1' : null)
       const program = mortgagePrograms.find(p => p.rate === selectedRate)
       const hasApartment = selectedApartmentId && selectedApartmentId !== "none"
       const apartment = hasApartment ? apartments.find(a => a.id === selectedApartmentId) : null

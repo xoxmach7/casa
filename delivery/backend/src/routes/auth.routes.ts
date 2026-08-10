@@ -54,18 +54,25 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
     // Отправить данные пользователя без пароля
     const { password: _, ...userWithoutPassword } = user;
 
-    // Set httpOnly cookie
+    // Сессия живёт ТОЛЬКО в httpOnly-cookie — из JS её не прочитать, поэтому
+    // XSS не может украсть токен (см. docs/SECURITY-AUDIT-2026-08-10.md, M-3).
+    // SameSite=None обязателен: фронт (crm) и API — разные сайты (*.up.railway.app),
+    // и без None браузер cookie на API не пошлёт. None требует Secure, поэтому
+    // secure=true в проде; в dev (localhost, http) — lax/secure=false. CSRF,
+    // который открывает None, закрыт csrfGuard по Origin.
     const isProduction = process.env.NODE_ENV === 'production';
     res.cookie('token', token, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? 'strict' : 'lax',
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/',
     });
 
+    // Токен в теле НЕ возвращаем: единственный его дом — cookie выше. Фронт
+    // берёт личность из объекта user (роль/имя — не секрет) и полагается на
+    // cookie для авторизации запросов.
     res.json({
-      token, // kept for backward compatibility during migration
       user: userWithoutPassword,
     });
   } catch (error) {
@@ -220,7 +227,15 @@ authRouter.put('/change-password', auth, async (req: Request, res: Response) => 
 
 // POST /api/auth/logout - выход
 authRouter.post('/logout', (_req: Request, res: Response) => {
-  res.clearCookie('token', { path: '/' });
+  // Атрибуты обязаны совпадать с теми, что при установке, иначе браузер не
+  // сматчит и не удалит кросс-сайтовую cookie.
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    path: '/',
+  });
   res.json({ message: 'Вы вышли из системы' });
 });
 

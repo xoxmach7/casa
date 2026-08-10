@@ -87,7 +87,7 @@ export default function AgencyTeamPage() {
     useEffect(() => {
         const fetchTeam = async () => {
             try {
-                const token = localStorage.getItem('token');
+                const token = (localStorage.getItem('user') ? '1' : null);
                 const res = await fetch(getApiUrl('/agency/team'), {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -119,7 +119,7 @@ export default function AgencyTeamPage() {
 
         setInviting(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const res = await fetch(getApiUrl('/agency/team'), {
                 method: 'POST',
                 headers: {
@@ -166,7 +166,7 @@ export default function AgencyTeamPage() {
         if (!editingMember) return;
         setInviting(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const res = await fetch(getApiUrl(`/agency/team/${editingMember.id}`), {
                 method: 'PUT',
                 headers: {
@@ -193,7 +193,7 @@ export default function AgencyTeamPage() {
         if (!deletingMember) return;
         setInviting(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = (localStorage.getItem('user') ? '1' : null);
             const res = await fetch(getApiUrl(`/agency/team/${deletingMember.id}`), {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }

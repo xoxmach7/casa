@@ -34,7 +34,7 @@ export function NotificationBell() {
   }, [])
 
   const fetchNotifications = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {
@@ -53,7 +53,7 @@ export function NotificationBell() {
   }
 
   const markAsRead = async (id: string) => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {
@@ -68,7 +68,7 @@ export function NotificationBell() {
   }
 
   const markAllAsRead = async () => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {
@@ -83,7 +83,7 @@ export function NotificationBell() {
   }
 
   const deleteNotification = async (id: string) => {
-    const token = localStorage.getItem("token")
+    const token = (localStorage.getItem('user') ? '1' : null)
     if (!token) return
 
     try {

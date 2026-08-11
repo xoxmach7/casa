@@ -23,6 +23,7 @@ import {
   Upload,
   CreditCard,
   ArrowRight,
+  Star,
   ClipboardCheck,
   Search,
   Inbox,
@@ -50,6 +51,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { NotificationBell } from "@/components/notification-bell"
 import { cn } from "@/lib/utils"
 import { clearAuthAndRedirect } from "@/lib/auth-utils"
@@ -118,6 +120,13 @@ const menuItems: MenuSection[] = [
     title: "Мои подборки",
     icon: LayoutList,
     url: "/dashboard/selections",
+    roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
+  },
+  // 5b. Личное избранное — быстрые закладки на квартиры без привязки к клиенту
+  {
+    title: "Избранное",
+    icon: Star,
+    url: "/dashboard/favorites",
     roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
   },
   // 6. Клиенты (Sellers List) — для агентств/риелторов/застройщиков это
@@ -215,6 +224,10 @@ export function AppSidebar() {
     clearAuthAndRedirect()
   }
 
+  const getUserInitials = () => {
+    if (!user.firstName || !user.lastName) return "U"
+    return `${user.firstName[0]}${user.lastName[0]}`
+  }
 
   // Get visible menu items based on user role
   const getVisibleItems = () => {
@@ -351,6 +364,11 @@ export function AppSidebar() {
       {/* Footer — User info + Logout */}
       <SidebarFooter className="border-t border-sidebar-border p-4">
         <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent/50 p-2.5">
+          <Avatar className="h-8 w-8 shrink-0 ring-2 ring-[#2f5fdb]">
+            <AvatarFallback className="bg-[#2f5fdb] text-[10px] font-bold text-white">
+              {getUserInitials()}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex-1 min-w-0">
             <p className="truncate text-[13px] font-semibold text-sidebar-foreground">
               {user.firstName} {user.lastName}

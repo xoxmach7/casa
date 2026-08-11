@@ -121,7 +121,7 @@ export function ApartmentTableView({ apartments, buildings, selectedId, onSelect
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr>
-                <th className="w-8 pr-2 pb-2 text-left align-bottom text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <th className="w-10 pb-2 text-center align-bottom text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   Этаж
                 </th>
               </tr>
@@ -129,7 +129,7 @@ export function ApartmentTableView({ apartments, buildings, selectedId, onSelect
             <tbody>
               {floors.map((floor) => (
                 <tr key={floor}>
-                  <td className="w-8 pr-2 align-middle font-semibold">{floor}</td>
+                  <td className="w-10 pr-2 text-center align-middle font-semibold">{floor}</td>
                   {Array.from({ length: columns }).map((_, col) => {
                     const apt = byFloor.get(floor)?.[col];
                     if (!apt) return <td key={col} className="p-1" />;

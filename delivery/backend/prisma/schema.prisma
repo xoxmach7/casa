@@ -62,6 +62,7 @@ model User {
   ownedDealRisks       DealRisk[]
   authoredMortgageRules  MortgageRuleVersion[] @relation("MortgageRuleAuthor")
   approvedMortgageRules  MortgageRuleVersion[] @relation("MortgageRuleApprover")
+  favorites              Favorite[]
 
   @@map("users")
 }
@@ -294,6 +295,7 @@ model Apartment {
   mortgageCalculations MortgageCalculation[]
   selectionApartments  SelectionApartment[]
   fixations            Fixation[]
+  favorites            Favorite[]
 
   @@unique([projectId, number])
   @@index([projectId])
@@ -533,6 +535,22 @@ model SelectionApartment {
   @@index([selectionId])
   @@index([apartmentId])
   @@map("selection_apartments")
+}
+
+// Личное «быстрое избранное» брокера: закладка на квартиру без привязки к
+// клиенту (в отличие от Selection, которая всегда принадлежит клиенту).
+model Favorite {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  apartmentId String   @map("apartment_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, apartmentId])
+  @@index([userId])
+  @@map("favorites")
 }
 
 enum UserRole {

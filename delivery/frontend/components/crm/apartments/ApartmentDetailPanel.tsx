@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Home, Bookmark, Calculator } from 'lucide-react';
+import { Home, Bookmark, Calculator, Star } from 'lucide-react';
 import { AddToSelectionDialog } from '@/components/apartments/AddToSelectionDialog';
 import type { ApartmentCardData } from '@/components/apartments/ApartmentCard';
+import { getApiUrl, getAuthHeaders } from '@/lib/api-client';
 
 export interface ApartmentDetail {
   id: string;
@@ -51,6 +52,42 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
   const router = useRouter();
   // Квартира, для которой открыт диалог «В подборку» (null = закрыт).
   const [selectionApartment, setSelectionApartment] = useState<ApartmentCardData | null>(null);
+  // Личное избранное (без клиента): в нём ли выбранная квартира.
+  const [isFavorite, setIsFavorite] = useState(false);
+  const apartmentId = apartment?.id ?? null;
+
+  useEffect(() => {
+    if (!apartmentId) return;
+    let cancelled = false;
+    fetch(getApiUrl('favorites'), { headers: getAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: { apartmentId: string }[]) => {
+        if (!cancelled) setIsFavorite(list.some((f) => f.apartmentId === apartmentId));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [apartmentId]);
+
+  async function toggleFavorite() {
+    if (!apartmentId) return;
+    const next = !isFavorite;
+    setIsFavorite(next); // оптимистично
+    try {
+      if (next) {
+        await fetch(getApiUrl('favorites'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+          body: JSON.stringify({ apartmentId }),
+        });
+      } else {
+        await fetch(getApiUrl(`favorites/${apartmentId}`), { method: 'DELETE', headers: getAuthHeaders() });
+      }
+    } catch {
+      setIsFavorite(!next); // откат при ошибке
+    }
+  }
 
   if (!apartment) {
     return (
@@ -66,10 +103,23 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
   return (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle>Квартира №{apartment.number}</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          {apartment.rooms}-комнатная, {apartment.floor} этаж
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle>Квартира №{apartment.number}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {apartment.rooms}-комнатная, {apartment.floor} этаж
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            title={isFavorite ? 'Убрать из избранного' : 'В избранное'}
+            onClick={toggleFavorite}
+          >
+            <Star className={isFavorite ? 'h-5 w-5 fill-[#f0b429] text-[#f0b429]' : 'h-5 w-5 text-muted-foreground'} />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {apartment.layoutImage && (

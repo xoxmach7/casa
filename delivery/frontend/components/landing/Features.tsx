@@ -16,7 +16,7 @@ const BROKER_ITEMS = [
 
 function FeatureCard({ title, items }: { title: string; items: string[] }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-[#f8fafc] p-7 sm:p-8">
+    <div className="rounded-2xl bg-[#f8fafc] p-7 sm:p-8">
       <h3 className="text-lg font-bold text-[#141f3a]">{typo(title)}</h3>
       <ul className="mt-5 space-y-4">
         {items.map((item) => (

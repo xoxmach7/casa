@@ -90,22 +90,44 @@ const menuItems: MenuSection[] = [
     title: "Сделки (CRM)",
     icon: Briefcase,
     url: "/dashboard/crm",
-    roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
+    roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
   },
   // 2. Новостройки - единая ссылка на каталог (фильтры уже внутри),
-  // шахматка открывается из карточки конкретного ЖК.
+  // шахматка открывается из карточки конкретного ЖК. Для застройщика это его
+  // собственные ЖК — у него отдельные пункты «Мои ЖК»/«Добавить ЖК» ниже.
   {
     title: "Новостройки",
     icon: Building2,
     url: "/dashboard/projects",
-    roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
+    roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
+  },
+  // 2b. Кабинет застройщика (роль DEVELOPER): урезанное меню — только свои ЖК,
+  // добавление ЖК и профиль компании. Остальные разделы (CRM/Ипотека/Клиенты)
+  // застройщику не показываем.
+  {
+    title: "Мои ЖК",
+    icon: Building2,
+    url: "/dashboard/projects",
+    roles: ["DEVELOPER"],
+  },
+  {
+    title: "Добавить ЖК",
+    icon: Building,
+    url: "/dashboard/projects/new",
+    roles: ["DEVELOPER"],
+  },
+  {
+    title: "Профиль компании",
+    icon: Briefcase,
+    url: "/dashboard/developer/profile",
+    roles: ["DEVELOPER"],
   },
   // 3. Ипотека - единая ссылка, калькулятор/заявки/программы — вкладки внутри страницы
   {
     title: "Ипотека",
     icon: Calculator,
     url: "/dashboard/mortgage",
-    roles: ["ADMIN", "BROKER", "DEVELOPER", "REALTOR", "AGENCY"],
+    roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
   },
   // 4. Клиенты брокера (покупатели — Client, отдельная сущность от Seller
   // ниже) — раньше не было пункта меню вообще, страница была недостижима.
@@ -135,7 +157,7 @@ const menuItems: MenuSection[] = [
     title: "Клиенты",
     icon: Users,
     url: "/dashboard/sellers",
-    roles: ["AGENCY", "REALTOR", "DEVELOPER"],
+    roles: ["AGENCY", "REALTOR"],
   },
   // Команда (Agency only)
   {
@@ -173,6 +195,7 @@ const adminMenuItem: MenuSection = {
     { title: "Глобальный поиск", url: "/dashboard/admin/search", icon: Search },
     { title: "Модерация каталога", url: "/dashboard/admin/moderation", icon: ClipboardCheck },
     { title: "Заявки с лендинга", url: "/dashboard/admin/landing-leads", icon: Inbox },
+    { title: "Застройщики", url: "/dashboard/admin/developers", icon: Building2 },
     { title: "Курсы", url: "/dashboard/courses", icon: GraduationCap },
     { title: "Все проекты", url: "/dashboard/admin/projects", icon: Building2 },
     { title: "Настройки AI", url: "/dashboard/admin/settings", icon: Settings },

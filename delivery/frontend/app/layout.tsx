@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ReactQueryProvider } from "@/components/providers/QueryProvider";
 
 const geistSans = Geist({
@@ -35,6 +36,9 @@ export default function RootLayout({
         <ReactQueryProvider>
           {children}
           <Toaster />
+          {/* Sonner был нигде не смонтирован — десятки страниц звали toast из
+              'sonner' вхолостую. Монтируем один раз здесь. */}
+          <SonnerToaster richColors position="top-right" />
         </ReactQueryProvider>
       </body>
     </html>

@@ -101,19 +101,17 @@ uploadRouter.post('/multiple', upload.array('files', 10), async (req: Request, r
       return;
     }
 
+    const fs = await import('fs/promises');
     const uploadedFiles = await Promise.all(
       req.files.map(async (file) => {
         const category = getFileCategory(file.mimetype);
         const ext = path.extname(file.originalname);
         const fileName = `${category}/${uuidv4()}${ext}`;
 
-        await minioClient!.putObject(
-          MINIO_BUCKET,
-          fileName,
-          file.buffer,
-          file.size,
-          { 'Content-Type': file.mimetype }
-        );
+        // Local storage (MinIO disabled) — зеркалит POST /single.
+        const uploadDir = path.join(__dirname, '../../uploads', category);
+        await fs.mkdir(uploadDir, { recursive: true });
+        await fs.writeFile(path.join(uploadDir, path.basename(fileName)), file.buffer);
 
         return {
           fileName,
@@ -121,7 +119,7 @@ uploadRouter.post('/multiple', upload.array('files', 10), async (req: Request, r
           mimeType: file.mimetype,
           size: file.size,
           category,
-          url: getPublicUrl(fileName),
+          url: `/uploads/${fileName}`,
         };
       })
     );
@@ -136,12 +134,21 @@ uploadRouter.post('/multiple', upload.array('files', 10), async (req: Request, r
   }
 });
 
-// DELETE /api/upload/:fileName - Delete a file
+// DELETE /api/upload/:fileName - Delete a file (local storage; MinIO disabled)
 uploadRouter.delete('/:fileName(*)', async (req: Request, res: Response): Promise<void> => {
   try {
     const { fileName } = req.params;
 
-    await minioClient!.removeObject(MINIO_BUCKET, fileName);
+    // Защита от выхода за пределы uploads (path traversal).
+    const uploadsRoot = path.resolve(__dirname, '../../uploads');
+    const target = path.resolve(uploadsRoot, fileName);
+    if (!target.startsWith(uploadsRoot + path.sep)) {
+      res.status(400).json({ error: 'Некорректное имя файла' });
+      return;
+    }
+
+    const fs = await import('fs/promises');
+    await fs.unlink(target).catch(() => { /* уже удалён — ок */ });
 
     res.json({
       success: true,

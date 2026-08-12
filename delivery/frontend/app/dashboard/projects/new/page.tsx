@@ -61,6 +61,9 @@ const formSchema = z.object({
   bonus: z.string().optional(),
   promotions: z.string().optional(),
   videoUrl: z.string().optional(),
+  // Тумблер публичной витрины (casa40). Брокеры в CRM видят ЖК независимо от
+  // этого флага; он управляет только показом на публичном сайте.
+  isPublished: z.boolean().optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -93,6 +96,7 @@ export default function NewProjectPage() {
       bonus: "",
       promotions: "",
       videoUrl: "",
+      isPublished: true,
     },
   })
 
@@ -553,6 +557,28 @@ export default function NewProjectPage() {
                       Опишите текущие акции и специальные условия для покупателей
                     </FormDescription>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <FormField
+                control={form.control}
+                name="isPublished"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start gap-3 space-y-0">
+                    <FormControl>
+                      <Checkbox checked={field.value ?? true} onCheckedChange={field.onChange} />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Опубликовать на публичном сайте</FormLabel>
+                      <FormDescription>
+                        Брокеры в CRM видят ЖК в любом случае. Галочка управляет показом на публичном сайте для покупателей.
+                      </FormDescription>
+                    </div>
                   </FormItem>
                 )}
               />

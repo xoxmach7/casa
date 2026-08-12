@@ -59,9 +59,9 @@ export function LoginForm({
       // секрет и нужен для UI и роут-гарда.
       localStorage.setItem("user", JSON.stringify(data.user))
 
-      // Рабочий экран после входа — «Сделки (CRM)», первый пункт меню.
-      // Сводка на /dashboard остаётся доступной, но точкой входа не является.
-      router.push("/dashboard/crm")
+      // Застройщик попадает в свой кабинет («Мои ЖК»), остальные — на рабочий
+      // экран «Сделки (CRM)». Сводка на /dashboard остаётся доступной.
+      router.push(data.user?.role === "DEVELOPER" ? "/dashboard/projects" : "/dashboard/crm")
     } catch (err) {
       setError("Не удалось подключиться к серверу")
     } finally {
@@ -129,6 +129,12 @@ export function LoginForm({
 
         </CardContent>
       </Card>
+      <p className="text-center text-sm text-muted-foreground">
+        Вы застройщик?{" "}
+        <a href="/zastroishchikam" className="font-medium text-primary underline-offset-4 hover:underline">
+          Разместить свои ЖК
+        </a>
+      </p>
     </div>
   )
 }

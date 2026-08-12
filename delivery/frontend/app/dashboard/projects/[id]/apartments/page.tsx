@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Filter, Plus, Trash2, List, Table2 } from 'lucide-react';
+import { ArrowLeft, Filter, Plus, Trash2, List, Table2, Download, Upload, Grid3x3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -27,8 +27,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { getApiUrl } from '@/lib/api-config';
+import { getApiUrl, getAuthHeaders } from '@/lib/api-client';
 import { ApartmentListView } from '@/components/crm/apartments/ApartmentListView';
 import { ApartmentTableView } from '@/components/crm/apartments/ApartmentTableView';
 import { ApartmentDetailPanel, type ApartmentDetail } from '@/components/crm/apartments/ApartmentDetailPanel';
@@ -79,6 +97,22 @@ export default function ApartmentsGridPage() {
   const [roomsFilter, setRoomsFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [floorFilter, setFloorFilter] = useState('all');
+
+  // --- Быстрый ввод фонда: шаблон / импорт .xlsx / генератор дома («шахматка») ---
+  const projectId = String(params.id);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [genOpen, setGenOpen] = useState(false);
+  const [genFloors, setGenFloors] = useState('9');
+  const [genPerFloor, setGenPerFloor] = useState('4');
+  const [genRooms, setGenRooms] = useState('1');
+  const [genArea, setGenArea] = useState('40');
+  const [genPrice, setGenPrice] = useState('20000000');
+  const [genStartNumber, setGenStartNumber] = useState('1');
+  const [genPreview, setGenPreview] = useState<
+    Array<{ number: string; floor: number; rooms: number; area: number; price: number }>
+  >([]);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -149,6 +183,116 @@ export default function ApartmentsGridPage() {
     setFixationFormOpen(true);
   };
 
+  // 1) Скачать пустой .xlsx-шаблон фонда. Cookie уйдёт браузером автоматически.
+  const handleDownloadTemplate = () => {
+    window.location.href = getApiUrl('/apartments/import-template');
+  };
+
+  // 2) Загрузить заполненный .xlsx: multipart file + projectId.
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('projectId', projectId);
+      const res = await fetch(getApiUrl('/apartments/import-xlsx'), {
+        method: 'POST',
+        body: fd,
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка импорта');
+      toast({ title: 'Импорт завершён', description: data.message });
+      if (Array.isArray(data.errors) && data.errors.length > 0) {
+        toast({
+          title: `Ошибки в строках (${data.errors.length})`,
+          description: data.errors.slice(0, 3).join('; '),
+          variant: 'destructive',
+        });
+      }
+      fetchAll();
+    } catch (error: any) {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // 3) Генератор дома: строим сквозную сетку floors × perFloor.
+  const buildGrid = () => {
+    const floors = Number(genFloors);
+    const perFloor = Number(genPerFloor);
+    const rooms = Number(genRooms);
+    const area = Number(genArea);
+    const price = Number(genPrice);
+    const start = Number(genStartNumber) || 1;
+    if (!floors || !perFloor || floors < 1 || perFloor < 1) {
+      toast({
+        title: 'Ошибка',
+        description: 'Укажите количество этажей и квартир на этаже',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const grid: Array<{ number: string; floor: number; rooms: number; area: number; price: number }> = [];
+    let counter = start;
+    for (let f = 1; f <= floors; f++) {
+      for (let p = 0; p < perFloor; p++) {
+        grid.push({ number: String(counter), floor: f, rooms, area, price });
+        counter++;
+      }
+    }
+    setGenPreview(grid);
+  };
+
+  // Поячейковое редактирование превью до создания.
+  const updatePreviewCell = (
+    idx: number,
+    field: 'number' | 'floor' | 'rooms' | 'area' | 'price',
+    value: string,
+  ) => {
+    setGenPreview((prev) =>
+      prev.map((row, i) => {
+        if (i !== idx) return row;
+        if (field === 'number') return { ...row, number: value };
+        return { ...row, [field]: Number(value) };
+      }),
+    );
+  };
+
+  const handleBulkCreate = async () => {
+    if (genPreview.length === 0) return;
+    setCreating(true);
+    try {
+      const apartments = genPreview.map((a) => ({
+        number: String(a.number),
+        floor: Number(a.floor),
+        rooms: Number(a.rooms),
+        area: Number(a.area),
+        price: Number(a.price),
+        status: 'AVAILABLE',
+      }));
+      const res = await fetch(getApiUrl('/apartments/bulk'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ projectId, apartments }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка создания квартир');
+      toast({ title: 'Готово', description: data.message });
+      setGenOpen(false);
+      setGenPreview([]);
+      fetchAll();
+    } catch (error: any) {
+      toast({ title: 'Ошибка', description: error.message, variant: 'destructive' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
@@ -176,6 +320,40 @@ export default function ApartmentsGridPage() {
           </Button>
         )}
       </div>
+
+      {canAddApartment && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-2 py-4">
+            <span className="mr-1 text-sm font-medium text-muted-foreground">
+              Быстрый ввод фонда:
+            </span>
+            <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+              <Download className="mr-2 h-4 w-4" />
+              Скачать шаблон
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={importing}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {importing ? 'Загрузка...' : 'Загрузить Excel'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setGenOpen(true)}>
+              <Grid3x3 className="mr-2 h-4 w-4" />
+              Сгенерировать дом
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -301,6 +479,162 @@ export default function ApartmentsGridPage() {
           }}
         />
       )}
+
+      <Dialog open={genOpen} onOpenChange={setGenOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Сгенерировать дом (шахматка)</DialogTitle>
+            <DialogDescription>
+              Задайте параметры дома — сетка квартир построится автоматически.
+              Значения можно поправить перед созданием.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label htmlFor="gen-floors">Этажей</Label>
+              <Input
+                id="gen-floors"
+                type="number"
+                min={1}
+                value={genFloors}
+                onChange={(e) => setGenFloors(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gen-perfloor">Квартир на этаже</Label>
+              <Input
+                id="gen-perfloor"
+                type="number"
+                min={1}
+                value={genPerFloor}
+                onChange={(e) => setGenPerFloor(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gen-start">Начальный номер</Label>
+              <Input
+                id="gen-start"
+                type="number"
+                min={1}
+                value={genStartNumber}
+                onChange={(e) => setGenStartNumber(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gen-rooms">Комнат (по умолч.)</Label>
+              <Input
+                id="gen-rooms"
+                type="number"
+                min={0}
+                value={genRooms}
+                onChange={(e) => setGenRooms(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gen-area">Площадь, м² (по умолч.)</Label>
+              <Input
+                id="gen-area"
+                type="number"
+                min={0}
+                value={genArea}
+                onChange={(e) => setGenArea(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gen-price">Цена (по умолч.)</Label>
+              <Input
+                id="gen-price"
+                type="number"
+                min={0}
+                value={genPrice}
+                onChange={(e) => setGenPrice(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={buildGrid}>
+              Сгенерировать сетку
+            </Button>
+            {genPreview.length > 0 && (
+              <span className="text-sm text-muted-foreground">
+                Квартир в превью: {genPreview.length}
+              </span>
+            )}
+          </div>
+
+          {genPreview.length > 0 && (
+            <div className="max-h-72 overflow-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>№</TableHead>
+                    <TableHead>Этаж</TableHead>
+                    <TableHead>Комн.</TableHead>
+                    <TableHead>Площадь</TableHead>
+                    <TableHead>Цена</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {genPreview.map((row, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-20"
+                          value={row.number}
+                          onChange={(e) => updatePreviewCell(idx, 'number', e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-16"
+                          type="number"
+                          value={row.floor}
+                          onChange={(e) => updatePreviewCell(idx, 'floor', e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-16"
+                          type="number"
+                          value={row.rooms}
+                          onChange={(e) => updatePreviewCell(idx, 'rooms', e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-24"
+                          type="number"
+                          value={row.area}
+                          onChange={(e) => updatePreviewCell(idx, 'area', e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          className="h-8 w-28"
+                          type="number"
+                          value={row.price}
+                          onChange={(e) => updatePreviewCell(idx, 'price', e.target.value)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenOpen(false)} disabled={creating}>
+              Отмена
+            </Button>
+            <Button onClick={handleBulkCreate} disabled={creating || genPreview.length === 0}>
+              {creating ? 'Создание...' : `Создать ${genPreview.length} квартир`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>

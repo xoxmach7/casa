@@ -1,3 +1,6 @@
+// NB: Railway crm-сервис деплоит по watch-paths, завязанным на app/**. Правки
+// только в components/** авто-деплой пропускает (SKIPPED). Если меняете лишь
+// компоненты — троньте любой файл под app/, иначе прод не обновится.
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";

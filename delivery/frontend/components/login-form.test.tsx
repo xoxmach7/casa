@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 
 describe('LoginForm', () => {
-  it('lands the broker on Сделки (CRM), not on the summary screen', async () => {
+  it('lands a non-developer on the /dashboard summary (раздел «Сделки (CRM)» временно скрыт)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -33,7 +33,22 @@ describe('LoginForm', () => {
     render(<LoginForm />);
     await submitLogin();
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/crm'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
+  });
+
+  it('lands a developer in their cabinet (/dashboard/projects)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ user: { id: 'd1', role: 'DEVELOPER' } }),
+      })
+    );
+
+    render(<LoginForm />);
+    await submitLogin();
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/projects'));
   });
 
   it('stores only the user profile — the session lives in the httpOnly cookie', async () => {

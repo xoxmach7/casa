@@ -59,9 +59,10 @@ export function LoginForm({
       // секрет и нужен для UI и роут-гарда.
       localStorage.setItem("user", JSON.stringify(data.user))
 
-      // Застройщик попадает в свой кабинет («Мои ЖК»), остальные — на рабочий
-      // экран «Сделки (CRM)». Сводка на /dashboard остаётся доступной.
-      router.push(data.user?.role === "DEVELOPER" ? "/dashboard/projects" : "/dashboard/crm")
+      // Застройщик попадает в свой кабинет («Мои ЖК»), остальные — на сводку
+      // /dashboard. Раньше входной точкой была «Сделки (CRM)», но раздел временно
+      // скрыт из меню (дорабатывается), поэтому на него больше не приземляем.
+      router.push(data.user?.role === "DEVELOPER" ? "/dashboard/projects" : "/dashboard")
     } catch (err) {
       setError("Не удалось подключиться к серверу")
     } finally {

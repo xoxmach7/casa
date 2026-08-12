@@ -26,6 +26,14 @@ model User {
   curatorEmail        String?             @map("curator_email") // Curator email  
   curatorWhatsApp     String?             @map("curator_whatsapp") // Curator WhatsApp
   isActive            Boolean             @default(true) @map("is_active")
+  status              UserStatus          @default(ACTIVE) // ACTIVE у всех существующих; застройщик регится как PENDING до одобрения админом
+  // Профиль компании-застройщика (заполняется только для роли DEVELOPER)
+  companyName         String?             @map("company_name")
+  bin                 String?             // БИН/ИИН компании
+  companyPhone        String?             @map("company_phone")
+  companyLogo         String?             @map("company_logo")   // URL логотипа
+  companyWebsite      String?             @map("company_website")
+  companyDescription  String?             @map("company_description")
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
 
@@ -565,6 +573,15 @@ enum UserRole {
   // собирает аналоги и считает, но решения не принимает.
   COORDINATOR
   ANALYST
+}
+
+// Статус аккаунта. Нужен для само­регистрации застройщика: он создаётся как
+// PENDING и не может войти, пока админ не одобрит (ACTIVE) или не отклонит
+// (REJECTED). Все ранее созданные пользователи — ACTIVE (дефолт).
+enum UserStatus {
+  ACTIVE
+  PENDING
+  REJECTED
 }
 
 enum ClientStatus {

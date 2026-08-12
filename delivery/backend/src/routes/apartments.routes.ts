@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import ExcelJS from 'exceljs';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 import { blockCrmWrites } from '../lib/access';
 import { prisma } from '../lib/prisma';
@@ -7,6 +9,61 @@ import { prisma } from '../lib/prisma';
 export const apartmentsRouter = Router();
 apartmentsRouter.use(authenticate);
 apartmentsRouter.use(blockCrmWrites);
+
+// Для загрузки .xlsx-файла фонда (в память, лимит 10 МБ).
+const xlsxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+// Заголовки шаблона импорта и порядок колонок.
+const IMPORT_COLUMNS = ['Этаж', 'Номер', 'Комнат', 'Площадь', 'Цена', 'Корпус'] as const;
+
+// Общая логика upsert'а фонда: и JSON-импорт (/import), и разбор .xlsx
+// (/import-xlsx) сводятся к массиву «сырых» строк и проходят через неё.
+async function importApartments(
+  projectId: string,
+  rows: any[],
+): Promise<{ created: number; skipped: number; errors: string[] }> {
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+
+  for (const apt of rows) {
+    try {
+      const number = String(apt.number ?? apt['Номер'] ?? '').trim();
+      const floor = parseInt(apt.floor ?? apt['Этаж']);
+      const rooms = parseInt(apt.rooms ?? apt['Комнат']);
+      const area = parseFloat(apt.area ?? apt['Площадь']);
+      const price = parseFloat(apt.price ?? apt['Цена']);
+
+      if (!number || isNaN(floor) || isNaN(rooms) || isNaN(area) || isNaN(price)) {
+        results.errors.push(`Пропущена квартира: невалидные данные (${number || 'без номера'})`);
+        results.skipped++;
+        continue;
+      }
+
+      await prisma.apartment.upsert({
+        where: { projectId_number: { projectId, number } },
+        update: { floor, rooms, area, price, status: 'AVAILABLE' },
+        create: { projectId, number, floor, rooms, area, price, status: 'AVAILABLE' },
+      });
+      results.created++;
+    } catch (e: any) {
+      results.errors.push(`Ошибка: ${e.message}`);
+      results.skipped++;
+    }
+  }
+
+  return results;
+}
+
+// Проверка, что проект принадлежит текущему застройщику (ADMIN — без ограничений).
+async function assertProjectAccess(req: Request, projectId: string): Promise<boolean> {
+  if (req.user?.role !== 'DEVELOPER') return true;
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, developerId: req.user.userId },
+  });
+  return !!project;
+}
 
 // Validation schemas
 const createApartmentSchema = z.object({
@@ -157,6 +214,27 @@ apartmentsRouter.get('/', async (req: Request, res: Response): Promise<void> => 
   } catch (error) {
     console.error('Get apartments error:', error);
     res.status(500).json({ error: 'Ошибка получения списка квартир' });
+  }
+});
+
+// GET /api/apartments/import-template - скачать .xlsx-шаблон фонда квартир.
+// ВАЖНО: регистрируется ДО GET /:id, иначе "import-template" уедет в :id.
+apartmentsRouter.get('/import-template', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Квартиры');
+    sheet.columns = IMPORT_COLUMNS.map((header) => ({ header, key: header, width: 14 }));
+    sheet.getRow(1).font = { bold: true };
+    // Пример строки, чтобы застройщику было понятно, что вводить.
+    sheet.addRow({ 'Этаж': 5, 'Номер': '52', 'Комнат': 2, 'Площадь': 61.5, 'Цена': 32000000, 'Корпус': 'Литер 1' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="apartments-template.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error('Import template error:', error);
+    res.status(500).json({ error: 'Ошибка генерации шаблона' });
   }
 });
 
@@ -443,48 +521,79 @@ apartmentsRouter.post('/import', requireRole('DEVELOPER', 'ADMIN'), async (req: 
       return;
     }
 
-    // Verify project belongs to developer
-    if (req.user?.role === 'DEVELOPER') {
-      const project = await prisma.project.findFirst({
-        where: { id: projectId, developerId: req.user.userId },
-      });
-      if (!project) {
-        res.status(403).json({ error: 'Нет доступа к этому проекту' });
-        return;
-      }
+    if (!(await assertProjectAccess(req, projectId))) {
+      res.status(403).json({ error: 'Нет доступа к этому проекту' });
+      return;
     }
 
-    const results = { created: 0, skipped: 0, errors: [] as string[] };
-
-    for (const apt of apartments) {
-      try {
-        const number = String(apt.number || apt['Номер'] || '').trim();
-        const floor = parseInt(apt.floor || apt['Этаж']);
-        const rooms = parseInt(apt.rooms || apt['Комнат']);
-        const area = parseFloat(apt.area || apt['Площадь']);
-        const price = parseFloat(apt.price || apt['Цена']);
-
-        if (!number || isNaN(floor) || isNaN(rooms) || isNaN(area) || isNaN(price)) {
-          results.errors.push(`Пропущена квартира: невалидные данные (${number || 'без номера'})`);
-          results.skipped++;
-          continue;
-        }
-
-        await prisma.apartment.upsert({
-          where: { projectId_number: { projectId, number } },
-          update: { floor, rooms, area, price, status: 'AVAILABLE' },
-          create: { projectId, number, floor, rooms, area, price, status: 'AVAILABLE' },
-        });
-        results.created++;
-      } catch (e: any) {
-        results.errors.push(`Ошибка: ${e.message}`);
-        results.skipped++;
-      }
-    }
-
+    const results = await importApartments(projectId, apartments);
     res.json({ message: `Импортировано: ${results.created}, пропущено: ${results.skipped}`, ...results });
   } catch (error) {
     console.error('Import apartments error:', error);
     res.status(500).json({ error: 'Ошибка импорта квартир' });
   }
 });
+
+// POST /api/apartments/import-xlsx - загрузить .xlsx-файл фонда (multipart, поле file).
+apartmentsRouter.post(
+  '/import-xlsx',
+  requireRole('DEVELOPER', 'ADMIN'),
+  xlsxUpload.single('file'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const projectId = req.body.projectId;
+      if (!projectId) {
+        res.status(400).json({ error: 'projectId обязателен' });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: 'Файл .xlsx не загружен' });
+        return;
+      }
+      if (!(await assertProjectAccess(req, projectId))) {
+        res.status(403).json({ error: 'Нет доступа к этому проекту' });
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer as any);
+      const sheet = workbook.worksheets[0];
+      if (!sheet) {
+        res.status(400).json({ error: 'В файле нет листов' });
+        return;
+      }
+
+      // Первая строка — заголовки; сопоставляем колонки по названию.
+      const headerRow = sheet.getRow(1);
+      const headerMap: Record<number, string> = {};
+      headerRow.eachCell((cell, col) => {
+        headerMap[col] = String(cell.value ?? '').trim();
+      });
+
+      const rows: any[] = [];
+      sheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // заголовки
+        const obj: any = {};
+        row.eachCell((cell, col) => {
+          const key = headerMap[col];
+          if (key) obj[key] = cell.value;
+        });
+        // Пропускаем полностью пустые строки.
+        if (Object.values(obj).some((v) => v !== null && v !== undefined && String(v).trim() !== '')) {
+          rows.push(obj);
+        }
+      });
+
+      if (rows.length === 0) {
+        res.status(400).json({ error: 'В файле нет строк с данными' });
+        return;
+      }
+
+      const results = await importApartments(projectId, rows);
+      res.json({ message: `Импортировано: ${results.created}, пропущено: ${results.skipped}`, ...results });
+    } catch (error) {
+      console.error('Import xlsx error:', error);
+      res.status(500).json({ error: 'Ошибка импорта .xlsx' });
+    }
+  },
+);

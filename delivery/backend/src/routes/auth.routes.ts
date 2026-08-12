@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
 import { generateToken } from '../lib/jwt';
 import { z } from 'zod';
-import { auth } from '../middleware/auth.middleware';
+import { auth, requireRole } from '../middleware/auth.middleware';
 
 export const authRouter = Router();
 
@@ -11,6 +11,26 @@ export const authRouter = Router();
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
+});
+
+// Само­регистрация застройщика: заводит User(role=DEVELOPER) в статусе PENDING.
+const registerDeveloperSchema = z.object({
+  companyName: z.string().min(2).max(200),
+  bin: z.string().min(3).max(20),
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  email: z.string().email(),
+  phone: z.string().min(5).max(30),
+  password: z.string().min(6),
+});
+
+const developerProfileSchema = z.object({
+  companyName: z.string().min(2).max(200).optional(),
+  bin: z.string().max(20).optional().nullable(),
+  companyPhone: z.string().max(30).optional().nullable(),
+  companyLogo: z.string().max(1000).optional().nullable(),
+  companyWebsite: z.string().max(200).optional().nullable(),
+  companyDescription: z.string().max(2000).optional().nullable(),
 });
 
 const profileSchema = z.object({
@@ -29,7 +49,21 @@ authRouter.post('/login', async (req: Request, res: Response): Promise<void> => 
       where: { email },
     });
 
-    if (!user || !user.isActive) {
+    if (!user) {
+      res.status(401).json({ error: 'Неверные учетные данные' });
+      return;
+    }
+
+    // Гейт застройщика на модерации: даём понятный текст вместо «неверные данные».
+    if (user.status === 'PENDING') {
+      res.status(403).json({ error: 'Ваша заявка застройщика на рассмотрении. Дождитесь одобрения администратором.' });
+      return;
+    }
+    if (user.status === 'REJECTED') {
+      res.status(403).json({ error: 'Заявка застройщика отклонена. Свяжитесь с администратором.' });
+      return;
+    }
+    if (!user.isActive) {
       res.status(401).json({ error: 'Неверные учетные данные' });
       return;
     }
@@ -97,6 +131,13 @@ authRouter.get('/me', auth, async (req: Request, res: Response) => {
         phone: true,
         role: true,
         balance: true,
+        // Профиль компании-застройщика (nullable для остальных ролей)
+        companyName: true,
+        bin: true,
+        companyPhone: true,
+        companyLogo: true,
+        companyWebsite: true,
+        companyDescription: true,
         // Fetch denormalized fields (legacy/cache)
         curatorName: true,
         curatorPhone: true,
@@ -238,4 +279,79 @@ authRouter.post('/logout', (_req: Request, res: Response) => {
 // GET /api/auth/check - проверка авторизации (cookie-based)
 authRouter.get('/check', auth, (_req: Request, res: Response) => {
   res.json({ authenticated: true, user: _req.user });
+});
+
+// POST /api/auth/register-developer - публичная само­регистрация застройщика.
+// Создаёт аккаунт в статусе PENDING (войти нельзя до одобрения админом).
+authRouter.post('/register-developer', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = registerDeveloperSchema.parse(req.body);
+
+    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    if (existing) {
+      res.status(409).json({ error: 'Пользователь с таким email уже существует' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    await prisma.user.create({
+      data: {
+        email: data.email,
+        password: hashedPassword,
+        role: 'DEVELOPER',
+        status: 'PENDING',
+        isActive: false, // страховка: даже без проверки status логин заблокирован
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phone: data.phone,
+        companyName: data.companyName,
+        bin: data.bin,
+        companyPhone: data.phone,
+      },
+    });
+
+    res.status(201).json({
+      message: 'Заявка отправлена. После одобрения администратором вы сможете войти.',
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Неверные данные', details: error.errors });
+      return;
+    }
+    console.error('Register developer error:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// PUT /api/auth/developer-profile - застройщик правит профиль своей компании.
+authRouter.put('/developer-profile', auth, requireRole('DEVELOPER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = developerProfileSchema.parse(req.body);
+
+    const user = await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: {
+        ...(data.companyName !== undefined && { companyName: data.companyName }),
+        ...(data.bin !== undefined && { bin: data.bin }),
+        ...(data.companyPhone !== undefined && { companyPhone: data.companyPhone }),
+        ...(data.companyLogo !== undefined && { companyLogo: data.companyLogo }),
+        ...(data.companyWebsite !== undefined && { companyWebsite: data.companyWebsite }),
+        ...(data.companyDescription !== undefined && { companyDescription: data.companyDescription }),
+      },
+      select: {
+        id: true, email: true, firstName: true, lastName: true, phone: true, role: true,
+        companyName: true, bin: true, companyPhone: true, companyLogo: true,
+        companyWebsite: true, companyDescription: true,
+      },
+    });
+
+    res.json(user);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Неверные данные', details: error.errors });
+      return;
+    }
+    console.error('Update developer profile error:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });

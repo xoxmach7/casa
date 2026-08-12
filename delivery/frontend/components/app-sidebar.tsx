@@ -56,7 +56,8 @@ import { NotificationBell } from "@/components/notification-bell"
 import { cn } from "@/lib/utils"
 import { clearAuthAndRedirect } from "@/lib/auth-utils"
 
-// Menu structure according to Casa PRO v1 ТЗ (5 main sections for broker)
+// Menu structure according to Casa PRO v1 ТЗ (5 main sections for broker).
+// (Авто-деплой crm чинён 2026-08-12: watchPatterns=delivery/frontend/** — см. DEPLOYMENT.md)
 interface MenuItem {
   title: string
   icon: any

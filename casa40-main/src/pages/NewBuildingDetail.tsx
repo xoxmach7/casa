@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Phone } from 'lucide-react';
 import { usePublicProject } from '@/hooks/useProjects';
 import { formatPrice } from '@/components/PropertyCard';
+import Seo from '@/components/Seo';
 
 const buildingStatusLabel: Record<string, string> = {
   UNDER_CONSTRUCTION: 'Строится',
@@ -44,8 +45,16 @@ const NewBuildingDetail = () => {
     return acc;
   }, {});
 
+  const seoCity = project.city || 'Казахстан';
+
   return (
     <div className="min-h-screen bg-background pb-8">
+      <Seo
+        title={`ЖК ${project.name} — новостройка, ${seoCity}`}
+        description={`ЖК ${project.name}${project.district ? `, ${project.district}` : ''}, ${seoCity}. Квартиры от ${formatPrice(project.minPrice)}, планировки и запись на просмотр в CASA.`}
+        path={`/novostroyki/${id}`}
+        image={project.images?.[0]}
+      />
       <header className="flex items-center h-[52px] px-4">
         <button onClick={() => navigate('/novostroyki')} className="w-9 h-9 flex items-center justify-center -ml-2 rounded-full hover:bg-accent transition-colors">
           <ArrowLeft className="w-5 h-5 text-foreground" strokeWidth={1.5} />

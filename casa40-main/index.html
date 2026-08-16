@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,25 +12,90 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
     />
 
-    <!-- TODO: Set the document title to the name of your application -->
-    <title>CASA — Продажа квартир в Астане</title>
-    <meta name="description" content="CASA — сервис продажи квартир без звонков. Покупатели записываются на просмотр, а CASA помогает пройти путь от просмотра до сделки.">
-    <meta name="author" content="Lovable" />
+    <!-- Primary SEO -->
+    <title>Квартиры в Казахстане — купить, продать, новостройки | CASA</title>
+    <meta
+      name="description"
+      content="CASA — сервис недвижимости по Казахстану: квартиры в Астане, Алматы, Шымкенте и других городах. Вторичка и новостройки от застройщиков, запись на просмотр без лишних звонков."
+    />
+    <meta
+      name="keywords"
+      content="недвижимость Казахстан, купить квартиру, продать квартиру, новостройки, квартиры Астана, квартиры Алматы, квартиры Шымкент, ЖК Казахстан, вторичка"
+    />
+    <meta name="author" content="CASA" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="canonical" href="https://casa.kz/" />
+    <meta name="theme-color" content="#0F275D" />
 
-    <!-- TODO: Update og:title to match your application name -->
-    
-    
+    <!-- Гео-таргетинг: обслуживаем весь Казахстан -->
+    <meta name="geo.region" content="KZ" />
+    <meta name="geo.placename" content="Казахстан" />
+
+    <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/27f0aa91-3bf1-4570-ab61-556b4b82fa42/id-preview-2e6bd640--e5e2629a-a771-44c8-9b14-06505f74b563.lovable.app-1774042382503.png">
+    <meta property="og:site_name" content="CASA" />
+    <meta property="og:locale" content="ru_KZ" />
+    <meta property="og:url" content="https://casa.kz/" />
+    <meta property="og:title" content="Квартиры в Казахстане — купить, продать, новостройки | CASA" />
+    <meta
+      property="og:description"
+      content="Недвижимость по всему Казахстану: Астана, Алматы, Шымкент. Вторичка и новостройки, запись на просмотр без лишних звонков."
+    />
+    <meta property="og:image" content="https://casa.kz/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
 
+    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@Lovable" />
-    <meta name="twitter:image" content="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/27f0aa91-3bf1-4570-ab61-556b4b82fa42/id-preview-2e6bd640--e5e2629a-a771-44c8-9b14-06505f74b563.lovable.app-1774042382503.png">
-    <meta property="og:title" content="CASA — Продажа квартир в Астане">
-  <meta name="twitter:title" content="CASA — Продажа квартир в Астане">
-  <meta property="og:description" content="CASA — сервис продажи квартир без звонков. Покупатели записываются на просмотр, а CASA помогает пройти путь от просмотра до сделки.">
-  <meta name="twitter:description" content="CASA — сервис продажи квартир без звонков. Покупатели записываются на просмотр, а CASA помогает пройти путь от просмотра до сделки.">
-</head>
+    <meta name="twitter:title" content="Квартиры в Казахстане — купить, продать, новостройки | CASA" />
+    <meta
+      name="twitter:description"
+      content="Недвижимость по всему Казахстану: Астана, Алматы, Шымкент. Вторичка и новостройки, запись на просмотр без лишних звонков."
+    />
+    <meta name="twitter:image" content="https://casa.kz/og-image.jpg" />
+
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Structured data: попадает в HTML сразу, до рендера JS (важно для SPA) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "RealEstateAgent",
+          "@id": "https://casa.kz/#organization",
+          "name": "CASA",
+          "url": "https://casa.kz/",
+          "logo": "https://casa.kz/og-image.jpg",
+          "image": "https://casa.kz/og-image.jpg",
+          "telephone": "+77075037160",
+          "priceRange": "₸₸",
+          "areaServed": [
+            { "@type": "Country", "name": "Казахстан" },
+            { "@type": "City", "name": "Астана" },
+            { "@type": "City", "name": "Алматы" },
+            { "@type": "City", "name": "Шымкент" },
+            { "@type": "City", "name": "Караганда" },
+            { "@type": "City", "name": "Актобе" }
+          ],
+          "address": {
+            "@type": "PostalAddress",
+            "addressCountry": "KZ",
+            "addressLocality": "Астана"
+          }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://casa.kz/#website",
+          "url": "https://casa.kz/",
+          "name": "CASA",
+          "inLanguage": "ru-KZ",
+          "publisher": { "@id": "https://casa.kz/#organization" }
+        }
+      ]
+    }
+    </script>
+  </head>
 
   <body>
     <div id="root"></div>

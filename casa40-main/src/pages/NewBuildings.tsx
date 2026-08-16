@@ -4,6 +4,7 @@ import casaLogo from '@/assets/casa-logo.webp';
 import { usePublishedProjects } from '@/hooks/useProjects';
 import { formatPrice } from '@/components/PropertyCard';
 import CategoryTabs from '@/components/CategoryTabs';
+import Seo from '@/components/Seo';
 
 const buildingStatusLabel: Record<string, string> = {
   UNDER_CONSTRUCTION: 'Строится',
@@ -17,6 +18,11 @@ const NewBuildings = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <Seo
+        title="Новостройки Казахстана — квартиры от застройщиков"
+        description="Новостройки и ЖК от застройщиков по всему Казахстану: Астана, Алматы, Шымкент. Планировки, цены и запись на просмотр без звонков."
+        path="/novostroyki"
+      />
       <header className="flex items-center justify-between h-[52px] px-4">
         <button onClick={() => navigate('/')} className="active:scale-95 transition-transform">
           <img src={casaLogo} alt="CASA" className="h-[22px] object-contain" />

@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { ChevronDown, ShieldCheck, Phone, MessageCircle } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
 import CasaHeader from '@/components/CasaHeader';
+import Seo from '@/components/Seo';
 
 const faqItems = [
   { q: 'Кто показывает квартиру?', a: 'Собственник. CASA организует запись и сопровождает сделку.' },
@@ -16,6 +18,11 @@ const SellLanding = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <Seo
+        title="Продать квартиру в Казахстане без звонков"
+        description="Продайте квартиру через CASA: без потока звонков, с записью покупателей на просмотр и сопровождением сделки. Астана, Алматы, Шымкент и вся страна."
+        path="/sell"
+      />
       <CasaHeader variant="sell" />
 
       <div className="px-4 pb-10">

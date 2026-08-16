@@ -7,6 +7,7 @@ import { formatPrice } from '@/components/PropertyCard';
 import PhotoGallery from '@/components/PhotoGallery';
 import { usePublicProperty } from '@/hooks/useProperties';
 import { layoutFromDb, bathroomFromDb } from '@/data/constants';
+import Seo from '@/components/Seo';
 import { toast } from 'sonner';
 import casaLogo from '@/assets/casa-logo.webp';
 
@@ -97,6 +98,12 @@ const PropertyDetail = () => {
       transition={{ duration: 0.35, ease: [0.2, 0, 0, 1] }}
       className="min-h-screen bg-background pb-8"
     >
+      <Seo
+        title={`${property.rooms}-комн. квартира, ${property.area} м²${property.district ? ` — ${property.district}` : ''}`}
+        description={`${property.rooms}-комнатная квартира ${property.area} м²${property.residential_complex ? `, ЖК ${property.residential_complex}` : ''}${property.district ? `, ${property.district}` : ''}. Цена ${formatPrice(property.price)}. Запись на просмотр через CASA.`}
+        path={`/property/${id}`}
+        image={property.photo_urls?.[0]}
+      />
       {/* Header overlay */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between h-13 px-4">
         <button

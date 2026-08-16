@@ -21,7 +21,7 @@ export default function HowItWorks() {
 
         {/* Подпись принадлежит списку, а не заголовку — поэтому она стоит
             вплотную к шагам, а воздух остаётся над ней. */}
-        <p className="mt-10 text-lg font-semibold text-slate-600 sm:text-xl">6 простых шагов:</p>
+        <p className="mt-10 text-lg font-semibold text-[#141f3a] sm:text-xl">6 простых шагов:</p>
 
         <ol className="mt-4 flex flex-col items-center">
           {STEPS.map((step, i) => (

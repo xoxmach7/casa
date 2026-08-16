@@ -275,9 +275,9 @@ export function AppSidebar() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
-              src="/logo.png"
-              alt="Casa Pro"
-              className="h-9 w-9 rounded-lg object-contain"
+              src="/casa-logo-white.png"
+              alt="CASA Pro"
+              className="h-9 w-9 object-contain"
             />
             <div>
               <h2 className="text-sm font-bold tracking-tight text-sidebar-foreground">
@@ -414,7 +414,7 @@ export function AppSidebar() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 text-sidebar-foreground/50 hover:text-sidebar-foreground"
+            className="h-7 w-7 shrink-0 text-sidebar-foreground/50 hover:bg-[#2f5fdb] hover:text-white"
             onClick={() => router.push("/dashboard/profile")}
             title="Перейти в профиль"
           >

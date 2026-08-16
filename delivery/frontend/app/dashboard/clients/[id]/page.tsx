@@ -761,7 +761,7 @@ export default function ClientDetailPage() {
                         </div>
                         <div>
                           <p className="text-muted-foreground">Переплата</p>
-                          <p className="font-medium text-orange-500">{formatCurrency(Number(calc.overpayment))}</p>
+                          <p className="font-medium text-foreground">{formatCurrency(Number(calc.overpayment))}</p>
                         </div>
                       </div>
                       

@@ -708,7 +708,7 @@ export default function ProjectDetailsPage() {
                 </span>
               </div>
               <div className="pt-2 space-y-2">
-                <Button className="w-full bg-green-600 hover:bg-green-700" size="lg" onClick={() => {
+                <Button className="w-full bg-[#15325B] text-white hover:bg-[#1c3f70]" size="lg" onClick={() => {
                   router.push(`/dashboard/projects/${project.id}/apartments`)
                 }}>
                   <Grid3x3 className="mr-2 h-4 w-4" />

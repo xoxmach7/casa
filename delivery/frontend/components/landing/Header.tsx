@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
-import { CasaLogo } from './CasaLogo';
 
 const NAV_LINKS = [
   { href: '#about', label: 'О проекте' },
@@ -19,7 +18,7 @@ export default function LandingHeader() {
     <header className="sticky top-0 z-50 border-b border-slate-100 bg-white">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link href="#top" className="flex items-center gap-2 text-[#141f3a]">
-          <CasaLogo className="h-8 w-auto" />
+          <img src="/casa-logo-navy.png" alt="CASA Pro" className="h-9 w-auto" />
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">

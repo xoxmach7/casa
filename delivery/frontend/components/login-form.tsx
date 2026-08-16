@@ -74,15 +74,15 @@ export function LoginForm({
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="border-border/50 shadow-sm">
         <CardHeader className="space-y-2 text-center">
-          <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center">
+          <div className="mx-auto mb-2 flex h-16 items-center justify-center">
             <img
-              src="/logo.png"
-              alt="Casa Pro"
-              className="h-14 w-14 rounded-xl object-contain"
+              src="/casa-logo-navy.png"
+              alt="CASA Pro"
+              className="h-16 w-auto object-contain"
             />
           </div>
           <CardTitle className="text-2xl font-semibold tracking-tight">
-            PRO.casa.kz
+            CASA Pro
           </CardTitle>
           <CardDescription className="text-sm text-muted-foreground">
             Войдите в систему для продолжения

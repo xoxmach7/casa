@@ -670,7 +670,7 @@ export default function MortgagePage() {
                     <CardDescription>Переплата</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-orange-500">{formatPrice(calculation.overpayment)} ₸</div>
+                    <div className="text-2xl font-bold text-foreground">{formatPrice(calculation.overpayment)} ₸</div>
                   </CardContent>
                 </Card>
               </div>

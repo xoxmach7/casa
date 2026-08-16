@@ -13,7 +13,8 @@ import {
   Loader2,
   Edit,
   Trash2,
-  MoreHorizontal
+  MoreHorizontal,
+  Plus
 } from "lucide-react"
 import { Crane } from "@/components/icons/crane"
 import { projectClassLabel } from "@/lib/project-class"
@@ -151,13 +152,13 @@ export default function ProjectsCatalogPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "UNDER_CONSTRUCTION":
-        return <Badge variant="secondary">Строится</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">Строится</Badge>
       case "COMPLETED":
-        return <Badge className="bg-green-600">Сдан</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">Сдан</Badge>
       case "READY_TO_MOVE":
-        return <Badge className="bg-blue-600">Заселение</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">Заселение</Badge>
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">{status}</Badge>
     }
   }
 
@@ -245,7 +246,7 @@ export default function ProjectsCatalogPage() {
           {/* Show Add Project button for Developer/Admin */}
           {canManageProjects && (
             <Button onClick={() => router.push("/dashboard/projects/new")}>
-              <Building2 className="mr-2 h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4" />
               Добавить объект
             </Button>
           )}

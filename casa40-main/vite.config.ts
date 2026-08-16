@@ -18,4 +18,26 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // Тяжёлые библиотеки — в отдельные кэшируемые чанки, чтобы они не
+    // раздували чанк первого экрана и переживали редеплои (долгий кэш).
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("recharts") || id.includes("/d3-")) return "charts";
+          if (id.includes("leaflet")) return "maps";
+          if (id.includes("framer-motion")) return "motion";
+          if (
+            id.includes("react-dom") ||
+            id.includes("react-router") ||
+            id.includes("@tanstack")
+          ) {
+            return "react-vendor";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 }));

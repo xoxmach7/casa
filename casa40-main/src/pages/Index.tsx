@@ -5,7 +5,7 @@ import { formatPrice } from '@/components/PropertyCard';
 import TrustLabel from '@/components/TrustLabel';
 import FilterSheet, { defaultFilters, type Filters } from '@/components/FilterSheet';
 import PublicMap from '@/components/PublicMap';
-import casaLogo from '@/assets/casa-logo.png';
+import casaLogo from '@/assets/casa-logo.webp';
 import { usePublishedProperties } from '@/hooks/useProperties';
 import CategoryTabs from '@/components/CategoryTabs';
 

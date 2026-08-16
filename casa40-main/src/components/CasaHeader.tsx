@@ -1,6 +1,6 @@
 import { ArrowLeft, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import casaLogo from '@/assets/casa-logo.png';
+import casaLogo from '@/assets/casa-logo.webp';
 
 interface CasaHeaderProps {
   variant?: 'home' | 'property' | 'sell' | 'admin' | 'form';

@@ -3,7 +3,7 @@ import { ChevronRight, LayoutGrid, Users, Banknote, Eye, Loader2, LogOut } from 
 import { setAuthToken } from '@/lib/api-client';
 import { useAllProperties, mapPropertyStatus } from '@/hooks/useProperties';
 import { useLeads, mapLeadStatus } from '@/hooks/useLeads';
-import casaLogo from '@/assets/casa-logo.png';
+import casaLogo from '@/assets/casa-logo.webp';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();

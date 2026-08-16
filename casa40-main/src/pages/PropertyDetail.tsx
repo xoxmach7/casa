@@ -8,7 +8,7 @@ import PhotoGallery from '@/components/PhotoGallery';
 import { usePublicProperty } from '@/hooks/useProperties';
 import { layoutFromDb, bathroomFromDb } from '@/data/constants';
 import { toast } from 'sonner';
-import casaLogo from '@/assets/casa-logo.png';
+import casaLogo from '@/assets/casa-logo.webp';
 
 const PropertyDetail = () => {
   const { id } = useParams();

@@ -4,7 +4,7 @@ import { api, setAuthToken, ApiError } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import casaLogo from '@/assets/casa-logo.png';
+import casaLogo from '@/assets/casa-logo.webp';
 
 const AdminLogin = () => {
   const navigate = useNavigate();

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Plus, Loader2 } from 'lucide-react';
-import casaLogo from '@/assets/casa-logo.png';
+import casaLogo from '@/assets/casa-logo.webp';
 import { usePublishedProjects } from '@/hooks/useProjects';
 import { formatPrice } from '@/components/PropertyCard';
 import CategoryTabs from '@/components/CategoryTabs';

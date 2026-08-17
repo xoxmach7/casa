@@ -14,7 +14,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # postgres:18 хранит данные в /var/lib/postgresql/<major>/docker —
+      # монтируем именно /var/lib/postgresql (иначе образ 18 не стартует).
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -64,7 +66,10 @@ services:
       context: ../../casa40-main
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: "https://casa.kz"
+        # Пусто → фронт зовёт /api относительно текущего хоста (same-origin).
+        # Работает на любом домене: временный поддомен для теста и casa.kz
+        # после переезда апекса — без пересборки.
+        VITE_API_URL: ""
     container_name: casa-casa40
     restart: always
     depends_on: [backend]

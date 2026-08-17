@@ -57,9 +57,11 @@ const statusLabels: Record<Subscription["status"], string> = {
 
 const roleLabels: Record<string, string> = {
   ADMIN: "Админ",
-  BROKER: "Брокер",
+  BROKER: "Агент",
+  REALTOR: "Агент",
+  COORDINATOR: "Агент",
+  ANALYST: "Аналитик",
   DEVELOPER: "Застройщик",
-  REALTOR: "Риелтор",
   AGENCY: "Агентство",
 }
 

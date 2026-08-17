@@ -36,13 +36,21 @@ interface User {
 }
 
 const roleLabels = {
-  BROKER: 'Брокер',
-  DEVELOPER: 'Девелопер',
+  BROKER: 'Агент',
+  REALTOR: 'Агент',
+  COORDINATOR: 'Агент',
+  AGENCY: 'Агентство',
+  ANALYST: 'Аналитик',
+  DEVELOPER: 'Застройщик',
   ADMIN: 'Администратор',
 };
 
 const roleColors = {
   BROKER: 'bg-[#15325B]',
+  REALTOR: 'bg-[#15325B]',
+  COORDINATOR: 'bg-[#15325B]',
+  AGENCY: 'bg-[#2f5fdb]',
+  ANALYST: 'bg-[#6b7280]',
   DEVELOPER: 'bg-[#D4A843]',
   ADMIN: 'bg-red-500',
 };
@@ -169,11 +177,11 @@ export default function UsersPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Брокеры</CardTitle>
+            <CardTitle className="text-sm font-medium">Агенты</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {users.filter((u) => u.role === 'BROKER').length}
+              {users.filter((u) => ['BROKER', 'REALTOR', 'COORDINATOR'].includes(u.role)).length}
             </div>
           </CardContent>
         </Card>

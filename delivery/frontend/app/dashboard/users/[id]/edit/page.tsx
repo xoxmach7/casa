@@ -247,8 +247,10 @@ export default function EditUserPage() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="BROKER">Брокер</SelectItem>
-                                        <SelectItem value="DEVELOPER">Девелопер</SelectItem>
+                                        <SelectItem value="BROKER">Агент</SelectItem>
+                                        <SelectItem value="AGENCY">Агентство</SelectItem>
+                                        <SelectItem value="ANALYST">Аналитик оценки (вторичка)</SelectItem>
+                                        <SelectItem value="DEVELOPER">Застройщик</SelectItem>
                                         <SelectItem value="ADMIN">Администратор</SelectItem>
                                     </SelectContent>
                                 </Select>

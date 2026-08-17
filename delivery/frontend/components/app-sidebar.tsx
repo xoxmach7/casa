@@ -178,13 +178,13 @@ const menuItems: MenuSection[] = [
     title: "Сделки (вторичка)",
     icon: Handshake,
     url: "/dashboard/deal-room",
-    roles: ["ADMIN", "COORDINATOR", "ANALYST"],
+    roles: ["ADMIN", "BROKER", "COORDINATOR", "ANALYST"],
   },
   {
     title: "Оценка объектов",
     icon: Ruler,
     url: "/dashboard/valuations",
-    roles: ["ADMIN", "COORDINATOR", "ANALYST"],
+    roles: ["ADMIN", "BROKER", "COORDINATOR", "ANALYST"],
   },
   // Профиль и Архив убраны из меню: профиль открывается иконкой-карандашом
   // у карточки пользователя внизу сайдбара; архив пока скрыт.
@@ -403,11 +403,11 @@ export function AppSidebar() {
             </p>
             <p className="truncate text-[10px] font-medium text-[#FFD700]/70">
               {user.role === "ADMIN" && "Администратор"}
-              {user.role === "BROKER" && "Брокер"}
+              {user.role === "BROKER" && "Агент"}
               {user.role === "DEVELOPER" && "Застройщик"}
-              {user.role === "REALTOR" && "Риелтор"}
+              {user.role === "REALTOR" && "Агент"}
               {user.role === "AGENCY" && "Агентство"}
-              {user.role === "COORDINATOR" && "Координатор сделок"}
+              {user.role === "COORDINATOR" && "Агент"}
               {user.role === "ANALYST" && "Аналитик оценки"}
             </p>
           </div>

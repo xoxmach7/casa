@@ -27,13 +27,15 @@ import {
 
 export const valuationsRouter = Router();
 
+// BROKER = объединённая роль «Агент» (бывшие broker/realtor/coordinator),
+// поэтому получает права координатора в оценке.
 // Кто видит очередь оценки.
-const READ_ROLES = ['ADMIN', 'COORDINATOR', 'ANALYST'] as const;
+const READ_ROLES = ['ADMIN', 'BROKER', 'COORDINATOR', 'ANALYST'] as const;
 // Кто ведёт работу по заявке: заводит, считает, собирает аналоги.
-const WORK_ROLES = ['ADMIN', 'COORDINATOR', 'ANALYST'] as const;
+const WORK_ROLES = ['ADMIN', 'BROKER', 'COORDINATOR', 'ANALYST'] as const;
 // Кто ставит финальное решение. Аналитик считает, но не решает — раздел
 // "Acceptance criteria" 02_CASA_Valuation_Spec.
-const DECIDE_ROLES = ['ADMIN', 'COORDINATOR'] as const;
+const DECIDE_ROLES = ['ADMIN', 'BROKER', 'COORDINATOR'] as const;
 
 valuationsRouter.use(authenticate, requireRole(...READ_ROLES));
 

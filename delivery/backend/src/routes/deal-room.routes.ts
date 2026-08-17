@@ -25,8 +25,10 @@ import {
 
 export const dealRoomRouter = Router();
 
-const READ_ROLES = ['ADMIN', 'COORDINATOR', 'ANALYST'] as const;
-const COORDINATE_ROLES = ['ADMIN', 'COORDINATOR'] as const;
+// BROKER — это объединённая роль «Агент» (бывшие broker/realtor/coordinator).
+// Агент ведёт сделки, поэтому получает права координатора в Deal Room.
+const READ_ROLES = ['ADMIN', 'BROKER', 'COORDINATOR', 'ANALYST'] as const;
+const COORDINATE_ROLES = ['ADMIN', 'BROKER', 'COORDINATOR'] as const;
 
 dealRoomRouter.use(authenticate, requireRole(...READ_ROLES));
 

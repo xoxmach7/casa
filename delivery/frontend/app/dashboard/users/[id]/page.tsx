@@ -277,7 +277,7 @@ export default function BrokerDetailPage({ params }: { params: Promise<{ id: str
           <p className="text-muted-foreground">{broker.email}</p>
         </div>
         <Badge variant={broker.role === "ADMIN" ? "default" : "secondary"} className="ml-auto">
-          {broker.role === "ADMIN" ? "Администратор" : broker.role === "BROKER" ? "Брокер" : "Девелопер"}
+          {broker.role === "ADMIN" ? "Администратор" : broker.role === "DEVELOPER" ? "Застройщик" : broker.role === "AGENCY" ? "Агентство" : broker.role === "ANALYST" ? "Аналитик" : "Агент"}
         </Badge>
       </div>
 

@@ -1,0 +1,93 @@
+# Единый стек для PS Cloud VPS (Basic-2, Ubuntu 24.04): обе витрины + backend.
+# Секреты берутся из ./.env.vps (не коммитится). Порядок запуска — поэтапный:
+#   1) docker compose -f docker-compose.vps.yml up -d postgres   (потом restore дампа)
+#   2) docker compose -f docker-compose.vps.yml up -d --build backend frontend casa40 nginx
+name: casa
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: casa-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [casa-net]
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: casa-backend
+    restart: always
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: "7d"
+      PORT: "3001"
+      NODE_ENV: "production"
+      # Оба домена — casa40 (casa.kz) и CRM (pro.casa.kz) ходят в один backend.
+      CORS_ORIGIN: "https://pro.casa.kz,https://casa.kz,https://www.casa.kz"
+      API_URL: "https://pro.casa.kz"
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [casa-net]
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "https://pro.casa.kz/api"
+    container_name: casa-frontend
+    restart: always
+    environment:
+      NODE_ENV: "production"
+    depends_on: [backend]
+    networks: [casa-net]
+
+  casa40:
+    build:
+      context: ../../casa40-main
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: "https://casa.kz"
+    container_name: casa-casa40
+    restart: always
+    depends_on: [backend]
+    networks: [casa-net]
+
+  nginx:
+    image: nginx:alpine
+    container_name: casa-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.vps.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on: [frontend, casa40, backend]
+    networks: [casa-net]
+
+volumes:
+  postgres_data:
+  uploads_data:
+
+networks:
+  casa-net:
+    driver: bridge

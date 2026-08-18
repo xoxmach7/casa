@@ -119,6 +119,7 @@ jobs:
              export IMAGE_TAG='${IMAGE_TAG}'; \
              docker compose -f docker-compose.vps.yml pull backend frontend casa40; \
              docker compose -f docker-compose.vps.yml up -d backend frontend casa40 nginx; \
+             docker compose -f docker-compose.vps.yml restart nginx; \
              docker image prune -f; \
              docker logout ghcr.io"
 

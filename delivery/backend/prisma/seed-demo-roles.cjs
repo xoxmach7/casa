@@ -13,10 +13,13 @@ const p = new PrismaClient();
   });
   console.log('роль -> Агент (BROKER):', merged.count);
 
+  // 1b. Демо-аккаунт агента: логин agent@ совпадает с ролью (был broker@).
+  await p.user.updateMany({ where: { email: 'broker@casa.kz' }, data: { email: 'agent@casa.kz' } });
+
   // 2. Известные демо-пароли на 5 канонических аккаунтов (по одному на роль).
   const accounts = [
     ['admin@casa.kz', 'Casa-Admin-2026'],
-    ['broker@casa.kz', 'Casa-Agent-2026'],   // Агент
+    ['agent@casa.kz', 'Casa-Agent-2026'],    // Агент (роль BROKER)
     ['agency@casa.kz', 'Casa-Agency-2026'],
     ['analyst@casa.kz', 'Casa-Analyst-2026'],
     ['developer@casa.kz', 'Casa-Dev-2026'],

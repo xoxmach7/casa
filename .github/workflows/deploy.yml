@@ -121,8 +121,21 @@ jobs:
       - name: Smoke-test production
         if: steps.cfg.outputs.ok == 'true'
         run: |
-          set -e
-          echo '→ CRM /login (expect 200)';   c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 https://pro.casa.kz/login);      [ "$c" = 200 ] || { echo "CRM login: $c"; exit 1; }
-          echo '→ casa40 / (expect 200)';      c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 https://casa.kz/);              [ "$c" = 200 ] || { echo "casa40: $c"; exit 1; }
-          echo '→ backend /api/clients (expect 401)'; c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 https://pro.casa.kz/api/clients); [ "$c" = 401 ] || { echo "backend: $c"; exit 1; }
-          echo 'Smoke tests passed ✓'
+          # Контейнеры только что пересозданы (nginx/next поднимаются) — даём им
+          # прогреться и ретраим, иначе тест ловит гонку готовности и падает зря.
+          sleep 8
+          check() {
+            local url="$1" want="$2" name="$3" code
+            for i in $(seq 1 10); do
+              code=$(curl -s -k -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)
+              if [ "$code" = "$want" ]; then echo "✓ $name ($code)"; return 0; fi
+              echo "… $name: got $code, want $want (попытка $i/10)"; sleep 6
+            done
+            echo "✗ $name: последний код $code, ожидали $want"; return 1
+          }
+          rc=0
+          check https://pro.casa.kz/login       200 "CRM /login"          || rc=1
+          check https://casa.kz/                200 "casa40 /"            || rc=1
+          check https://pro.casa.kz/api/clients 401 "backend /api/clients" || rc=1
+          [ "$rc" = 0 ] && echo 'Smoke tests passed ✓'
+          exit $rc

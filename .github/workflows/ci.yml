@@ -1,7 +1,7 @@
 name: CI
 
-# Quality gate for every push and PR. Production deploys wait on this workflow
-# (see deploy.yml) — nothing reaches Railway without a green run here.
+# Quality gate for every push and PR. Production deploy (deploy.yml) starts only
+# after this workflow is green — nothing reaches the VPS without a green run here.
 
 on:
   push:
@@ -35,7 +35,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://casa:casa@localhost:5432/casa_test?schema=public
-      # Throwaway CI value. Production secrets live in Railway, never here.
+      # Throwaway CI value. Production secrets live on the VPS (.env), never here.
       JWT_SECRET: ci-only-secret-not-used-anywhere-else
       NODE_ENV: test
       PORT: 3002

@@ -4,137 +4,109 @@
 
 | Workflow | Когда | Что делает |
 |---|---|---|
-| `ci.yml` | push в master, любой PR, вручную | Проверяет все три приложения |
-| `deploy.yml` | после успешного CI на master, вручную | Ждёт выкатки и проверяет прод |
+| `ci.yml` | push в `master`, любой PR, вручную | Гейт качества: typecheck + тесты + build всех трёх приложений |
+| `deploy.yml` | после **зелёного** CI на `master`, вручную (`workflow_dispatch`) | Собирает Docker-образы, публикует в GHCR, катит на VPS, smoke-тестит |
+
+Поток целиком:
+
+```
+push в master
+  └─ CI (ci.yml): backend + frontend + casa40  →  зелёный ✓
+        └─ Deploy (deploy.yml):
+              1) build 3 образов на раннерах GitHub  →  push в GHCR
+              2) SSH на VPS: docker compose pull && up -d
+              3) smoke-тест трёх витрин
+```
+
+Тяжёлая сборка идёт **на раннерах GitHub**, а не на VPS (на Basic-2 сборка одного
+только фронта занимала ~20 минут). VPS больше ничего не собирает — только тянет
+готовые образы и перезапускает контейнеры. Это же убирает «buildkit COPY CACHED».
+
+---
 
 ## `ci.yml` — гейт качества
 
-Три параллельные джобы.
+Три параллельные джобы (Node 22).
 
 **Backend** (`delivery/backend`), с поднятым `postgres:16-alpine`:
+`npm ci` → `prisma generate` → `typecheck` → `npm test` → `build` →
+`prisma migrate deploy` → seed → поднять API на `PORT=3002`, дождаться `/health` →
+`npm run test:integration` (интеграционные + security-тесты против живого сервера).
 
-1. `npm ci`
-2. `prisma generate`
-3. `npm run typecheck` — `tsc --noEmit`
-4. `npm test` — юнит/роут-тесты (Prisma замокан, сеть не нужна)
-5. `npm run build`
-6. `prisma migrate deploy` — заодно ловит миграцию, которая не накатывается на чистую базу
-7. `tsx src/prisma/seed.ts`
-8. Поднимает API на `PORT=3002`, ждёт `/health`
-9. `npm run test:integration` — 123 интеграционных и security-теста против живого сервера
+**Frontend** (`delivery/frontend`): `npm ci` → typecheck → `npm test` → `next build`.
 
-Пункты 6–9 — то, чего раньше не было: `api.test.ts` и `security.test.ts` требуют работающего сервера, поэтому локально они всегда падали с `ECONNREFUSED` и фактически не выполнялись ни разу. Теперь это отдельный конфиг (`vitest.integration.config.ts`) и отдельный шаг CI.
+**casa40** (`casa40-main`): `npm ci --legacy-peer-deps` → `tsc --noEmit` → `npm test` → `vite build`.
 
-**Frontend** (`delivery/frontend`): `npm ci` → typecheck → `npm test` (vitest + Testing Library) → `next build`.
+CI **не** содержит секретов прода — только одноразовые CI-значения (throwaway
+`JWT_SECRET`, тестовая БД). Настоящие секреты живут только в `.env` на VPS.
 
-**casa40** (`casa40-main`): `npm ci` → typecheck → `npm test` → `vite build`.
+---
 
-### Почему юнит и интеграция разведены
+## `deploy.yml` — выкатка на VPS
 
-`npm test` должен работать везде и всегда — на ноутбуке, в CI, в pre-commit. Тесты, которым нужен живой сервер, в этот набор не входят: их отсутствие означало бы «здесь не запускались», а не «сломаны». Списки не разъезжаются, потому что оба конфига читают один и тот же массив из `vitest.files.ts`.
+### Джоба `build` (matrix ×3)
+Логинится в GHCR эфемерным `GITHUB_TOKEN` и билдит/пушит:
 
-`NODE_ENV=test` в CI ослабляет rate-limiter (иначе 123 теста с логинами упираются в лимит 20 попыток/15 мин и падают не по делу). Остальное поведение — как в проде: `error.middleware` не отдаёт стектрейсы, потому что это не `development`.
+| App | Context | Build-arg | Образ |
+|---|---|---|---|
+| backend | `delivery/backend` | — | `ghcr.io/xoxmach7/casa-backend` |
+| frontend | `delivery/frontend` | `NEXT_PUBLIC_API_URL=https://pro.casa.kz/api` | `ghcr.io/xoxmach7/casa-frontend` |
+| casa40 | `casa40-main` | `VITE_API_URL=` (пусто → same-origin) | `ghcr.io/xoxmach7/casa-casa40` |
 
-## `deploy.yml` — проверка выкатки
+Теги: `latest` и `<sha>` коммита. Слои кэшируются в GitHub Actions cache (`type=gha`).
 
-Railway собирает master сам, через GitHub-интеграцию. Workflow делает вторую половину: дожидается, пока прод действительно начнёт отдавать нужный коммит, и проверяет живые эндпоинты.
+### Джоба `deploy` (после `build`)
+Окружение `production` (можно повесить ревьювера — станет ручной гейт).
 
-`GET /health` бэкенда отдаёт поле `commit` из `RAILWAY_GIT_COMMIT_SHA`. Workflow опрашивает его до совпадения с проверенным коммитом (до 15 минут) — то есть «выкатилось» это наблюдаемый факт, а не догадка о таймингах.
+1. SSH-ключом (`secrets.VPS_SSH_KEY`) заходит на VPS.
+2. `scp` актуального `docker-compose.vps.yml` на сервер.
+3. На сервере логинится в GHCR эфемерным `GITHUB_TOKEN` (scope `packages:read`),
+   `docker compose pull` нужных образов по тегу `<sha>`, `up -d`, `image prune`, `logout`.
+   Тег передаётся через `IMAGE_TAG` — деплой детерминированный (ровно этот коммит).
+4. Smoke-тест: `pro.casa.kz/login`→200, `casa.kz/`→200, `pro.casa.kz/api/clients`→401.
 
-Дальше смоук:
+Образы GHCR держатся **приватными** — VPS тянет их авторизуясь одноразовым
+`GITHUB_TOKEN` в момент деплоя, никакого долгоживущего токена на сервере нет.
 
-- `/health` → `status: ok` и `db: connected`
-- `GET /api/clients` без токена → должен быть `401` (ловит деплой с отключённой авторизацией)
-- `/login` в CRM → `200`
-- `/` публичного сайта → `200`
+---
 
-## Миграции накатываются при старте контейнера
+## Требуемые секреты репозитория
 
-Команда запуска прод-образа:
-
-```dockerfile
-CMD ["sh", "-c", "npx prisma migrate deploy && exec node dist/index.js"]
-```
-
-Схема приводится в соответствие с кодом **до** того, как поднимется HTTP-сервер. Отдельного шага в деплое для этого нет и не нужно.
-
-**Почему падение миграции роняет контейнер (это намеренно).** `&&` означает: не применилось — сервер не стартует. Альтернатива — подняться на несовместимой схеме, отвечать 500 на случайных запросах и писать в базу мусор. Упавший контейнер оставляет прод на предыдущем деплое, и это честнее. Railway перезапустит его 10 раз (`restartPolicyMaxRetries` в `railway.json`), после чего деплой будет помечен упавшим — смотреть логи сервиса `backend`.
-
-**Несколько реплик безопасны.** `migrate deploy` берёт advisory lock в самой базе, поэтому вторая реплика дожидается первую, а не накатывает то же самое параллельно.
-
-**Цена вопроса.** CLI `prisma` переехал из `devDependencies` в `dependencies` — иначе в рантайме его просто нет. Вместе с ним в образ приезжает `typescript` (~23 МБ), его optional peer. Это единственный dev-инструмент в прод-образе; `tsx`, `vitest` и остальное по-прежнему остаются в сборочном слое.
-
-### Как было раньше
-
-До 2026-08-10 миграции накатывались руками, и это ловушка, которая уже сработала: `20260809120000_add_coordinator_analyst_roles` не доехала до прода, админка предлагала роль «Координатор сделок», а база отвечала `invalid input value for enum "UserRole"`. Заметить это можно было только попыткой создать такого пользователя.
-
-Ручные команды остаются рабочими и нужны для диагностики:
-
-```bash
-cd delivery/backend
-PUB=$(railway variables --service Postgres --kv | grep '^DATABASE_PUBLIC_URL=' | cut -d= -f2-)
-DATABASE_URL="$PUB" npx prisma migrate status   # что применено, что нет
-DATABASE_URL="$PUB" npx prisma migrate deploy   # применить, не дожидаясь деплоя
-```
-
-Внутренний `DATABASE_URL` сервиса `backend` для этого не годится — это `postgres.railway.internal`, снаружи он не резолвится. Нужен именно `DATABASE_PUBLIC_URL` сервиса `Postgres` (TCP-прокси Railway).
-
-## Демо-данные вторички
-
-Контур вторички (Deal Room, оценка) наполняется отдельным сидом — он не входит в деплой и запускается вручную, когда нужен.
-
-```bash
-cd delivery/backend
-PUB=$(railway variables --service Postgres --kv | grep '^DATABASE_PUBLIC_URL=' | cut -d= -f2-)
-DATABASE_URL="$PUB" npm run demo:seed    # создать или обновить
-DATABASE_URL="$PUB" npm run demo:purge   # удалить ровно их
-```
-
-Все записи пишутся по фиксированным id с префиксом `demo_`, поэтому сид идемпотентен (повторный запуск обновляет те же строки, а не плодит копии), а `demo:purge` удаляет строго их и не может задеть боевые данные. Демо-пользователи: `coordinator@casa.kz`, `analyst@casa.kz`, `broker.demo@casa.kz`, пароль `demo1234`.
-
-## Что нужно настроить руками (один раз)
-
-**1. Жёсткий гейт в Railway.** Для каждого сервиса (`backend`, `crm`, `casa40`): Settings → Deploy → включить **Wait for CI**. Без этого Railway начнёт сборку сразу по пушу, не дожидаясь проверок, и CI останется просто сигнализацией. Включено 2026-08-09.
-
-**1a. Отключить Vercel от этого репозитория — до того, как включать гейт.** К репозиторию, кроме Railway, был подключён проект Vercel, падавший на каждом пуше: 59 неуспешных деплойментов подряд (`gh api repos/xoxmach7/casa/deployments` показывает обоих ботов). Прод он не обслуживал.
-
-Дело не в косметике. Сводный статус коммита из-за него был `failure`:
-
-```
-gh api repos/xoxmach7/casa/commits/<sha>/status
-combined=failure
-  Vercel: failure
-  pro-casa-backend - backend: success
-  ...
-```
-
-Пока Wait for CI не работал, это была просто грязь. С работающим гейтом Railway ждал бы зелёного статуса, которого Vercel никогда не даст, и прод перестал бы выкатываться вообще — а выглядело бы это как «Railway сломался». Отключено 2026-08-09.
-
-**2. Адреса прода** — Settings → Secrets and variables → Actions → вкладка **Variables**:
-
-| Переменная | Пример |
+| Secret | Значение |
 |---|---|
-| `PROD_API_URL` | `https://<backend>.up.railway.app` |
-| `PROD_CRM_URL` | `https://<crm>.up.railway.app` |
-| `PROD_SITE_URL` | `https://<casa40>.up.railway.app` |
+| `VPS_HOST` | IP VPS |
+| `VPS_USER` | `ubuntu` |
+| `VPS_SSH_KEY` | приватный SSH-ключ деплоя (пара к ключу в `~/.ssh/authorized_keys` на VPS) |
 
-Это именно variables, не secrets — адреса публичные, и в логах их видно намеренно. Если `PROD_API_URL` не задана, `deploy.yml` мирно ничего не делает и говорит об этом в логе.
+`GITHUB_TOKEN` подставляется автоматически (нужны `packages: write` в `build` и
+`packages: read` в `deploy` — заданы в самом workflow).
 
-## Запуск локально
+---
 
+## Ручной прогон и откат
+
+**Задеплоить вручную:** Actions → «Deploy to production (VPS)» → Run workflow.
+Либо `gh workflow run deploy.yml`.
+
+**Откат** на предыдущий коммит `<sha>` (образы с этим тегом уже в GHCR):
 ```bash
-# юниты — ничего поднимать не нужно
-cd delivery/backend && npm test
-cd delivery/frontend && npm test
-
-# интеграция + security: нужна база и сервер
-docker run -d --name casa-test-db -e POSTGRES_USER=casa -e POSTGRES_PASSWORD=casa \
-  -e POSTGRES_DB=casa_test -p 5439:5432 postgres:16-alpine
-
-cd delivery/backend
-export DATABASE_URL="postgresql://casa:casa@localhost:5439/casa_test?schema=public"
-export JWT_SECRET=local-test PORT=3002 NODE_ENV=test
-npx prisma migrate deploy && npx tsx src/prisma/seed.ts
-npx tsx src/index.ts &
-npm run test:integration
+ssh ubuntu@<VPS_HOST>
+cd ~/casa/delivery/deployment
+echo <GHCR_TOKEN> | docker login ghcr.io -u xoxmach7 --password-stdin   # или уже залогинен
+export IMAGE_TAG=<sha_предыдущего_коммита>
+docker compose -f docker-compose.vps.yml pull backend frontend casa40
+docker compose -f docker-compose.vps.yml up -d backend frontend casa40 nginx
 ```
+
+**Локальная разработка** по-прежнему работает через `build:` в compose
+(`docker compose ... up -d --build`) — `image:`/GHCR её не ломает.
+
+---
+
+## Что осталось за кадром (осознанно)
+
+- **Миграции БД** (`prisma migrate deploy`) на проде — пока накатываются вручную;
+  в CD-джобу не вшиты, чтобы случайная миграция не поехала на живую базу без
+  ревью. Кандидат на отдельный gated-шаг.
+- **SSH по паролю** на VPS оставлен включённым (деплой ходит по ключу). Отключение
+  парольного входа — отдельное решение пользователя.

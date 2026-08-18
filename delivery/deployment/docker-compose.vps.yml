@@ -25,6 +25,9 @@ services:
     networks: [casa-net]
 
   backend:
+    # Образ собирается в CI (GitHub Actions) и публикуется в GHCR; VPS его ТЯНЕТ,
+    # а не собирает. build: оставлен для локальной разработки/фолбэка.
+    image: ghcr.io/xoxmach7/casa-backend:${IMAGE_TAG:-latest}
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -49,6 +52,7 @@ services:
     networks: [casa-net]
 
   frontend:
+    image: ghcr.io/xoxmach7/casa-frontend:${IMAGE_TAG:-latest}
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -62,6 +66,7 @@ services:
     networks: [casa-net]
 
   casa40:
+    image: ghcr.io/xoxmach7/casa-casa40:${IMAGE_TAG:-latest}
     build:
       context: ../../casa40-main
       dockerfile: Dockerfile

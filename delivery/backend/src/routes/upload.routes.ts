@@ -55,6 +55,18 @@ const getFileCategory = (mimetype: string): string => {
   return 'documents';
 };
 
+// Безопасное расширение выводим из провалидированного mimetype, НЕ из
+// имени файла атакующего. Иначе можно было залить `x.html`/`x.svg` (ext из
+// originalname) и получить XSS: express.static отдавал бы его как text/html.
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif',
+  'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+  'video/x-matroska': '.mkv', 'video/matroska': '.mkv', 'video/avi': '.avi', 'video/x-msvideo': '.avi',
+  'application/pdf': '.pdf', 'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+};
+const safeExt = (mimetype: string): string => MIME_EXT[mimetype] || '.bin';
+
 // POST /api/upload/single - Upload single file
 uploadRouter.post('/single', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
   try {
@@ -65,7 +77,7 @@ uploadRouter.post('/single', upload.single('file'), async (req: Request, res: Re
 
     const file = req.file;
     const category = getFileCategory(file.mimetype);
-    const ext = path.extname(file.originalname);
+    const ext = safeExt(file.mimetype);
     const fileName = `${category}/${uuidv4()}${ext}`;
 
     // Upload to local storage (MinIO disabled)
@@ -105,7 +117,7 @@ uploadRouter.post('/multiple', upload.array('files', 10), async (req: Request, r
     const uploadedFiles = await Promise.all(
       req.files.map(async (file) => {
         const category = getFileCategory(file.mimetype);
-        const ext = path.extname(file.originalname);
+        const ext = safeExt(file.mimetype);
         const fileName = `${category}/${uuidv4()}${ext}`;
 
         // Local storage (MinIO disabled) — зеркалит POST /single.

@@ -1481,6 +1481,28 @@ crmPropertiesRouter.post('/:id/close', async (req: Request, res: Response) => {
             return;
         }
 
+        // Проверка владельца (как в PUT /:id): агент/агентство/застройщик
+        // может закрывать только свои объекты. Раньше проверки не было —
+        // любой мог закрыть чужую сделку по её id (IDOR).
+        const userId = req.user!.userId;
+        const userRole = req.user!.role;
+        const existing = await prisma.crmProperty.findUnique({ where: { id } });
+        if (!existing) {
+            res.status(404).json({ error: "Объект не найден" });
+            return;
+        }
+        const restrictedRoles = ['BROKER', 'REALTOR', 'AGENCY', 'DEVELOPER'];
+        if (restrictedRoles.includes(userRole) && existing.brokerId !== userId) {
+            res.status(403).json({ error: "Нет доступа к этому объекту" });
+            return;
+        }
+        // Оффер должен принадлежать этому объекту.
+        const offer = await prisma.offer.findUnique({ where: { id: offerId } });
+        if (!offer || offer.propertyId !== id) {
+            res.status(400).json({ error: "Оффер не относится к объекту" });
+            return;
+        }
+
         // Transaction for data integrity
         await prisma.$transaction(async (tx) => {
             // 1. Update Offer Status

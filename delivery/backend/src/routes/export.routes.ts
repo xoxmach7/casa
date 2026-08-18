@@ -39,7 +39,10 @@ exportRouter.get('/clients', async (req: Request, res: Response): Promise<void> 
     const userId = req.user!.userId;
     const userRole = req.user!.role;
     const where: any = {};
-    if (['BROKER', 'REALTOR', 'AGENCY'].includes(userRole)) {
+    // Deny-by-default: экспорт клиентов скоупим по владельцу ВСЕМ, кроме ADMIN.
+    // Раньше список ролей забывал DEVELOPER/ANALYST/COORDINATOR → они выгружали
+    // ИИН/доходы всех клиентов. Застройщик/аналитик клиентов брокеров не видят.
+    if (userRole !== 'ADMIN') {
       where.brokerId = userId;
     }
 
@@ -91,7 +94,8 @@ exportRouter.get('/analytics', async (req: Request, res: Response): Promise<void
     const userId = req.user!.userId;
     const userRole = req.user!.role;
     const where: any = {};
-    if (['BROKER', 'REALTOR', 'AGENCY'].includes(userRole)) {
+    // Deny-by-default: аналитика скоупится по владельцу всем, кроме ADMIN.
+    if (userRole !== 'ADMIN') {
       where.brokerId = userId;
     }
 

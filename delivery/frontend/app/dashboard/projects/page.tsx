@@ -246,7 +246,7 @@ export default function ProjectsCatalogPage() {
           {/* Show Add Project button for Developer/Admin */}
           {canManageProjects && (
             <Button onClick={() => router.push("/dashboard/projects/new")}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="mr-1.5 h-4 w-4" />
               Добавить объект
             </Button>
           )}

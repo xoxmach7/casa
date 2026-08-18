@@ -43,7 +43,7 @@ export function ApartmentListView({ apartments, selectedId, onSelect }: Apartmen
     <div className="max-h-[600px] space-y-3 overflow-y-auto">
       {floors.map((floor) => (
         <div key={floor} className="space-y-1.5">
-          <p className="sticky top-0 z-10 bg-background/95 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">
+          <p className="py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Этаж {floor}
           </p>
           {apartments

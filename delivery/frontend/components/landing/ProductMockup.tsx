@@ -57,7 +57,7 @@ function CatalogPanel() {
       {/* заголовок */}
       <div className="mb-3 flex items-start justify-between">
         <div>
-          <p className="text-[13px] font-bold text-[#141f3a] sm:text-sm">Каталог новостроек</p>
+          <p className="text-[13px] font-bold text-[#15325B] sm:text-sm">Каталог новостроек</p>
           <p className="text-[9px] text-slate-400 sm:text-[10px]">
             Жилые комплексы от проверенных застройщиков (5)
           </p>
@@ -111,7 +111,7 @@ function CatalogPanel() {
               </span>
             </div>
             <div className="px-2 py-1.5">
-              <p className="truncate text-[9px] font-semibold text-[#141f3a]">{p.name}</p>
+              <p className="truncate text-[9px] font-semibold text-[#15325B]">{p.name}</p>
               <p className="text-[8px] text-slate-400">от 28.6 млн ₸</p>
             </div>
           </div>
@@ -131,7 +131,7 @@ function Radio({ checked, label }: { checked?: boolean; label: string }) {
       >
         {checked && <span className="h-1 w-1 rounded-full bg-[#2f5fdb]" />}
       </span>
-      <span className={`text-[9px] ${checked ? 'font-medium text-[#141f3a]' : 'text-slate-500'}`}>
+      <span className={`text-[9px] ${checked ? 'font-medium text-[#15325B]' : 'text-slate-500'}`}>
         {label}
       </span>
     </div>
@@ -155,7 +155,7 @@ function Slider({
     <div>
       <div className="flex items-baseline justify-between">
         <p className="text-[9px] text-slate-500">{label}</p>
-        <p className="text-[9px] font-semibold text-[#141f3a]">{value}</p>
+        <p className="text-[9px] font-semibold text-[#15325B]">{value}</p>
       </div>
       <div className="relative mt-1.5 h-1 rounded-full bg-slate-200">
         <div className="absolute left-0 top-0 h-1 rounded-full bg-[#2f5fdb]" style={{ width: `${fill}%` }} />
@@ -178,7 +178,7 @@ function MortgagePanel() {
       {/* заголовок + вкладки */}
       <div className="mb-3 flex items-start justify-between">
         <div>
-          <p className="text-[13px] font-bold text-[#141f3a] sm:text-sm">Ипотека</p>
+          <p className="text-[13px] font-bold text-[#15325B] sm:text-sm">Ипотека</p>
           <p className="text-[9px] text-slate-400 sm:text-[10px]">
             Каталог ипотечных программ и калькулятор
           </p>
@@ -188,7 +188,7 @@ function MortgagePanel() {
             <span
               key={t}
               className={`rounded-md px-2 py-1 text-[8px] font-medium ${
-                t === 'Калькулятор' ? 'bg-white text-[#141f3a] shadow-sm' : 'text-slate-400'
+                t === 'Калькулятор' ? 'bg-white text-[#15325B] shadow-sm' : 'text-slate-400'
               }`}
             >
               {t}
@@ -201,7 +201,7 @@ function MortgagePanel() {
         {/* левая колонка — параметры */}
         <div className="space-y-2.5">
           <div>
-            <p className="text-[10px] font-semibold text-[#141f3a]">Калькулятор ипотеки</p>
+            <p className="text-[10px] font-semibold text-[#15325B]">Калькулятор ипотеки</p>
             <p className="text-[8px] text-slate-400">Рассчитайте ежемесячный платёж и переплату</p>
           </div>
 

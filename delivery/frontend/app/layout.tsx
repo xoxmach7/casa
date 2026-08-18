@@ -42,7 +42,6 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "CASA" }],
   alternates: { canonical: "/" },
-  icons: { icon: "/favicon.ico" },
   robots: {
     index: true,
     follow: true,
@@ -68,7 +67,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#141f3a",
+  themeColor: "#15325B",
 };
 
 export default function RootLayout({

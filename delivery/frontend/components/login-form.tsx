@@ -76,12 +76,12 @@ export function LoginForm({
         <CardHeader className="space-y-2 text-center">
           <div className="mx-auto mb-2 flex h-16 items-center justify-center">
             <img
-              src="/casa-logo-navy.png"
+              src="/casa-mark-navy.png"
               alt="CASA Pro"
               className="h-16 w-auto object-contain"
             />
           </div>
-          <CardTitle className="text-2xl font-semibold tracking-tight">
+          <CardTitle className="text-2xl font-semibold tracking-tight text-[#15325B]">
             CASA Pro
           </CardTitle>
           <CardDescription className="text-sm text-muted-foreground">

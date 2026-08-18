@@ -4,7 +4,7 @@ import { useEffect, useState, lazy, Suspense } from "react"
 import { ApartmentCard } from "@/components/apartments/ApartmentCard"
 import { AddToSelectionDialog } from "@/components/apartments/AddToSelectionDialog"
 import { MortgageQuickCalcDialog } from "@/components/apartments/MortgageQuickCalcDialog"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import {
   MapPin,
   Phone,
@@ -95,7 +95,6 @@ interface ProjectDetails {
 export default function ProjectDetailsPage() {
   const params = useParams()
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [project, setProject] = useState<ProjectDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeImage, setActiveImage] = useState(0)
@@ -106,9 +105,7 @@ export default function ProjectDetailsPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
   
-  // Определяем начальную вкладку по параметру book=true
-  const bookMode = searchParams.get("book") === "true"
-  const [activeTab, setActiveTab] = useState(bookMode ? "apartments" : "about")
+  const [activeTab, setActiveTab] = useState("about")
 
   useEffect(() => {
     fetchProjectDetails()
@@ -396,7 +393,6 @@ export default function ProjectDetailsPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
               <TabsTrigger value="about">О проекте</TabsTrigger>
-              <TabsTrigger value="apartments">Квартиры ({project.apartments.length})</TabsTrigger>
               <TabsTrigger value="location">На карте</TabsTrigger>
               <TabsTrigger value="mortgage">Ипотека</TabsTrigger>
             </TabsList>

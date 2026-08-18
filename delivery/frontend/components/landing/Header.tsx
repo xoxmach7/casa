@@ -17,8 +17,8 @@ export default function LandingHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-100 bg-white">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="#top" className="flex items-center gap-2 text-[#141f3a]">
-          <img src="/casa-logo-navy.png" alt="CASA Pro" className="h-9 w-auto" />
+        <Link href="#top" className="flex items-center gap-2 text-[#15325B]">
+          <img src="/casa-logo-navy.png" alt="CASA Pro" className="h-11 w-auto" />
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">
@@ -26,7 +26,7 @@ export default function LandingHeader() {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-slate-600 transition-colors hover:text-[#141f3a]"
+              className="text-sm font-medium text-slate-600 transition-colors hover:text-[#15325B]"
             >
               {link.label}
             </a>
@@ -34,12 +34,12 @@ export default function LandingHeader() {
         </nav>
 
         <div className="hidden items-center gap-5 md:flex">
-          <Link href="/login" className="text-sm font-medium text-slate-500 hover:text-[#141f3a]">
+          <Link href="/login" className="text-sm font-medium text-slate-500 hover:text-[#15325B]">
             Войти
           </Link>
           <a
             href="#contact"
-            className="rounded-full bg-[#141f3a] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1c2f56]"
+            className="rounded-full bg-[#15325B] px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1c2f56]"
           >
             Запросить доступ
           </a>
@@ -63,7 +63,7 @@ export default function LandingHeader() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className="rounded-md px-2 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#141f3a]"
+                className="rounded-md px-2 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#15325B]"
               >
                 {link.label}
               </a>
@@ -78,7 +78,7 @@ export default function LandingHeader() {
             <a
               href="#contact"
               onClick={() => setOpen(false)}
-              className="mt-2 rounded-full bg-[#141f3a] px-5 py-2.5 text-center text-sm font-semibold text-white"
+              className="mt-2 rounded-full bg-[#15325B] px-5 py-2.5 text-center text-sm font-semibold text-white"
             >
               Запросить доступ
             </a>

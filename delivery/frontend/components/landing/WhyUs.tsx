@@ -13,7 +13,7 @@ export default function WhyUs() {
   return (
     <section id="why-us" className="bg-white py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="text-center text-2xl font-bold text-[#141f3a] sm:text-3xl">
+        <h2 className="text-center text-2xl font-bold text-[#15325B] sm:text-3xl">
           Почему пользователи выбирают нас
         </h2>
 

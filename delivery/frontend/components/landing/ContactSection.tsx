@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { submitLandingLead } from '@/lib/submit-landing-lead';
 import { typo } from '@/lib/typography';
 
-const ROLES = ['Застройщик', 'Риелтор / брокер', 'Ипотечный специалист'];
+const ROLES = ['Застройщик', 'Агент недвижимости'];
 
 export default function ContactSection() {
   const { toast } = useToast();
@@ -42,7 +43,7 @@ export default function ContactSection() {
   }
 
   return (
-    <section id="contact" className="relative overflow-hidden bg-[#141f3a] py-24 sm:py-28">
+    <section id="contact" className="relative overflow-hidden bg-[#15325B] py-24 sm:py-28">
       <div className="relative mx-auto max-w-xl px-4 text-center sm:px-6">
         <h2 className="text-2xl font-bold text-white sm:text-3xl">
           {typo('Запросите доступ к CASA Pro')}
@@ -71,22 +72,28 @@ export default function ContactSection() {
             />
           </div>
 
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="h-11 w-full rounded-full border border-white/20 bg-white/5 px-4 text-sm text-white outline-none focus:border-white/50 [&>option]:text-slate-900"
-          >
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="h-11 w-full appearance-none rounded-full border border-white/20 bg-white/5 px-4 pr-10 text-sm text-white outline-none focus:border-white/50 [&>option]:text-slate-900"
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden
+              className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300"
+            />
+          </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="mt-2 w-full rounded-full border border-white/70 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#141f3a] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-white"
+            className="mt-2 w-full rounded-full border border-white/70 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-[#15325B] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-white"
           >
             {isSubmitting ? 'Отправляем…' : 'Запросить доступ'}
           </button>

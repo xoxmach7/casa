@@ -9,7 +9,7 @@ const DEVELOPER_ITEMS = [
 ];
 
 const BROKER_ITEMS = [
-  'Ищите актуальные квартиры вторичного рынка и квартиры в новостройках.',
+  'Ищите актуальные квартиры в новостройках.',
   'Следите за подтверждёнными этапами сделки и статусом своего вознаграждения.',
   'Получите предварительную оценку бюджета, допустимого платежа и ипотечного сценария.',
 ];
@@ -17,7 +17,7 @@ const BROKER_ITEMS = [
 function FeatureCard({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-2xl bg-[#f8fafc] p-7 sm:p-8">
-      <h3 className="text-lg font-bold text-[#141f3a]">{typo(title)}</h3>
+      <h3 className="text-lg font-bold text-[#15325B]">{typo(title)}</h3>
       <ul className="mt-5 space-y-4">
         {items.map((item) => (
           <li key={item} className="flex items-start gap-3">
@@ -36,11 +36,11 @@ export default function Features() {
   return (
     <section id="features" className="bg-white py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 className="mb-12 text-2xl font-bold text-[#141f3a] sm:text-3xl">Возможности</h2>
+        <h2 className="mb-12 text-2xl font-bold text-[#15325B] sm:text-3xl">Возможности</h2>
 
         <div className="grid gap-6 md:grid-cols-2">
           <FeatureCard title="Для застройщика" items={DEVELOPER_ITEMS} />
-          <FeatureCard title="Для брокера/риелтора" items={BROKER_ITEMS} />
+          <FeatureCard title="Для агента недвижимости" items={BROKER_ITEMS} />
         </div>
       </div>
     </section>

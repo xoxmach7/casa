@@ -11,7 +11,6 @@ import {
   LogOut,
   Shield,
   DollarSign,
-  Building,
   ChevronRight,
   Briefcase,
   GraduationCap,
@@ -113,12 +112,6 @@ const menuItems: MenuSection[] = [
     title: "Мои ЖК",
     icon: Building2,
     url: "/dashboard/projects",
-    roles: ["DEVELOPER"],
-  },
-  {
-    title: "Добавить ЖК",
-    icon: Building,
-    url: "/dashboard/projects/new",
     roles: ["DEVELOPER"],
   },
   {
@@ -283,8 +276,8 @@ export function AppSidebar() {
               <h2 className="text-sm font-bold tracking-tight text-sidebar-foreground">
                 Casa Pro
               </h2>
-              <p className="text-[10px] font-medium uppercase tracking-widest text-sidebar-foreground/40">
-                CRM Platform
+              <p className="text-[10px] font-medium tracking-wide text-sidebar-foreground/40">
+                B2B-платформа
               </p>
             </div>
           </div>
@@ -392,8 +385,8 @@ export function AppSidebar() {
       {/* Footer — User info + Logout */}
       <SidebarFooter className="border-t border-sidebar-border p-4">
         <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent/50 p-2.5">
-          <Avatar className="h-8 w-8 shrink-0 ring-2 ring-[#2f5fdb]">
-            <AvatarFallback className="bg-[#2f5fdb] text-[10px] font-bold text-white">
+          <Avatar className="h-8 w-8 shrink-0 ring-2 ring-[#15325B]">
+            <AvatarFallback className="bg-[#15325B] text-[10px] font-bold text-white">
               {getUserInitials()}
             </AvatarFallback>
           </Avatar>

@@ -8,8 +8,11 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",
-    theme_color: "#141f3a",
+    theme_color: "#15325B",
     lang: "ru-KZ",
-    icons: [{ src: "/favicon.ico", sizes: "48x48", type: "image/x-icon" }],
+    icons: [
+      { src: "/favicon-64.png", sizes: "64x64", type: "image/png" },
+      { src: "/casa-mark-navy.png", sizes: "512x512", type: "image/png" },
+    ],
   };
 }

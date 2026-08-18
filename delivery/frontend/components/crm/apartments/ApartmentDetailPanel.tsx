@@ -43,7 +43,7 @@ const STATUS_LABEL: Record<ApartmentDetail['status'], string> = {
 };
 
 const STATUS_BADGE: Record<ApartmentDetail['status'], string> = {
-  AVAILABLE: 'bg-green-500',
+  AVAILABLE: 'bg-[#15325B]',
   RESERVED: 'bg-yellow-500',
   SOLD: 'bg-gray-500',
 };

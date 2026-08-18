@@ -51,20 +51,26 @@ describe('valuations.routes — access control', () => {
     vi.clearAllMocks();
   });
 
-  it('403s a broker on every endpoint', async () => {
-    currentUser = { userId: 'broker_1', role: 'BROKER' };
-    const app = buildApp();
-    const list = await request(app).get('/api/valuations');
-    const create = await request(app).post('/api/valuations').send({ propertyId: 'p1' });
-    const calc = await request(app).post('/api/valuations/v1/calculate-preliminary');
-    const comparable = await request(app).post('/api/valuations/v1/comparables').send({});
-    const confirm = await request(app).post('/api/valuations/v1/confirm').send({});
+  it('403s roles outside the contour (developer/agency) on every endpoint', async () => {
+    for (const role of ['DEVELOPER', 'AGENCY'] as const) {
+      currentUser = { userId: `u_${role}`, role };
+      const app = buildApp();
+      expect((await request(app).get('/api/valuations')).status).toBe(403);
+      expect((await request(app).post('/api/valuations').send({ propertyId: 'p1' })).status).toBe(403);
+      expect((await request(app).post('/api/valuations/v1/calculate-preliminary')).status).toBe(403);
+      expect((await request(app).post('/api/valuations/v1/comparables').send({})).status).toBe(403);
+      expect((await request(app).post('/api/valuations/v1/confirm').send({})).status).toBe(403);
+    }
+  });
 
-    expect(list.status).toBe(403);
-    expect(create.status).toBe(403);
-    expect(comparable.status).toBe(403);
-    expect(calc.status).toBe(403);
-    expect(confirm.status).toBe(403);
+  it('lets a broker (merged «Агент» role) read the valuation queue', async () => {
+    // Слияние broker/realtor/coordinator в «Агент» (enum BROKER) открыло агенту
+    // контур оценки — раньше тест ждал здесь 403.
+    currentUser = { userId: 'broker_1', role: 'BROKER' };
+    (prisma.valuation.count as any).mockResolvedValue(0);
+    (prisma.valuation.findMany as any).mockResolvedValue([]);
+    const app = buildApp();
+    expect((await request(app).get('/api/valuations')).status).toBe(200);
   });
 
   it('lets an analyst do the work but not sign off the result', async () => {

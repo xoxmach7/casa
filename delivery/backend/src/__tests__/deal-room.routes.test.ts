@@ -57,11 +57,23 @@ describe('deal-room.routes — access control', () => {
     vi.clearAllMocks();
   });
 
-  it('403s a broker on every route — the secondary-market contour is not theirs', async () => {
+  it('403s roles outside the contour (developer/agency) on every route', async () => {
+    for (const role of ['DEVELOPER', 'AGENCY'] as const) {
+      currentUser = { userId: `u_${role}`, role };
+      const app = buildApp();
+      expect((await request(app).get('/api/deal-room')).status).toBe(403);
+      expect((await request(app).post('/api/deal-room').send({ offerId: 'o1' })).status).toBe(403);
+    }
+  });
+
+  it('lets a broker (merged «Агент» role) into the contour', async () => {
+    // После слияния ролей broker/realtor/coordinator в «Агент» (enum BROKER)
+    // контур вторички доступен агенту — раньше тест ждал здесь 403.
     currentUser = { userId: 'broker_1', role: 'BROKER' };
+    (prisma.secondaryDeal.count as any).mockResolvedValue(0);
+    (prisma.secondaryDeal.findMany as any).mockResolvedValue([]);
     const app = buildApp();
-    expect((await request(app).get('/api/deal-room')).status).toBe(403);
-    expect((await request(app).post('/api/deal-room').send({ offerId: 'o1' })).status).toBe(403);
+    expect((await request(app).get('/api/deal-room')).status).toBe(200);
   });
 
   it('lets an analyst read the board but not move a deal', async () => {

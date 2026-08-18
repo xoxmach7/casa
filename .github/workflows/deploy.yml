@@ -106,11 +106,15 @@ jobs:
 
       - name: Pull images and restart on server
         if: steps.cfg.outputs.ok == 'true'
+        env:
+          # Токен идёт в docker login через STDIN ssh (см. printf|ssh ниже),
+          # поэтому НЕ появляется в argv ни на раннере, ни на VPS.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "set -e; \
-             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.repository_owner }}' --password-stdin; \
+             docker login ghcr.io -u '${{ github.repository_owner }}' --password-stdin; \
              cd ~/casa/delivery/deployment; \
              export IMAGE_TAG='${IMAGE_TAG}'; \
              docker compose -f docker-compose.vps.yml pull backend frontend casa40; \

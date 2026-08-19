@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Home, Bookmark, Calculator, Star } from 'lucide-react';
+import { Home, Bookmark, Calculator, Image as ImageIcon } from 'lucide-react';
 import { AddToSelectionDialog } from '@/components/apartments/AddToSelectionDialog';
 import type { ApartmentCardData } from '@/components/apartments/ApartmentCard';
-import { getApiUrl, getAuthHeaders } from '@/lib/api-client';
 
 export interface ApartmentDetail {
   id: string;
@@ -52,42 +51,6 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
   const router = useRouter();
   // Квартира, для которой открыт диалог «В подборку» (null = закрыт).
   const [selectionApartment, setSelectionApartment] = useState<ApartmentCardData | null>(null);
-  // Личное избранное (без клиента): в нём ли выбранная квартира.
-  const [isFavorite, setIsFavorite] = useState(false);
-  const apartmentId = apartment?.id ?? null;
-
-  useEffect(() => {
-    if (!apartmentId) return;
-    let cancelled = false;
-    fetch(getApiUrl('favorites'), { headers: getAuthHeaders() })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((list: { apartmentId: string }[]) => {
-        if (!cancelled) setIsFavorite(list.some((f) => f.apartmentId === apartmentId));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [apartmentId]);
-
-  async function toggleFavorite() {
-    if (!apartmentId) return;
-    const next = !isFavorite;
-    setIsFavorite(next); // оптимистично
-    try {
-      if (next) {
-        await fetch(getApiUrl('favorites'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({ apartmentId }),
-        });
-      } else {
-        await fetch(getApiUrl(`favorites/${apartmentId}`), { method: 'DELETE', headers: getAuthHeaders() });
-      }
-    } catch {
-      setIsFavorite(!next); // откат при ошибке
-    }
-  }
 
   if (!apartment) {
     return (
@@ -103,31 +66,25 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
   return (
     <Card className="h-full">
       <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <CardTitle>Квартира №{apartment.number}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {apartment.rooms}-комнатная, {apartment.floor} этаж
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0"
-            title={isFavorite ? 'Убрать из избранного' : 'В избранное'}
-            onClick={toggleFavorite}
-          >
-            <Star className={isFavorite ? 'h-5 w-5 fill-[#f0b429] text-[#f0b429]' : 'h-5 w-5 text-muted-foreground'} />
-          </Button>
+        <div>
+          <CardTitle>Квартира №{apartment.number}</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {apartment.rooms}-комнатная, {apartment.floor} этаж
+          </p>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {apartment.layoutImage && (
+        {apartment.layoutImage ? (
           <img
             src={apartment.layoutImage}
             alt="Планировка"
             className="max-h-64 w-full rounded-lg border object-contain"
           />
+        ) : (
+          <div className="flex h-40 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/40 text-muted-foreground">
+            <ImageIcon className="h-8 w-8 opacity-50" />
+            <span className="text-xs">Нет изображения планировки</span>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-4">

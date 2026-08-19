@@ -173,7 +173,7 @@ export default function ClientsPage() {
           </div>
         </div>
         <Button onClick={() => router.push("/dashboard/clients/new")} className="bg-[#15325B] hover:bg-[#0F2544] text-white">
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="mr-1.5 h-4 w-4" />
           Добавить клиента
         </Button>
       </div>

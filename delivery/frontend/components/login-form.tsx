@@ -73,12 +73,12 @@ export function LoginForm({
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="border-border/50 shadow-sm">
-        <CardHeader className="space-y-2 text-center">
-          <div className="mx-auto mb-2 flex h-16 items-center justify-center">
+        <CardHeader className="space-y-1 text-center">
+          <div className="mx-auto flex h-20 items-center justify-center">
             <img
               src="/casa-mark-navy.png"
               alt="CASA Pro"
-              className="h-16 w-auto object-contain"
+              className="h-20 w-auto object-contain"
             />
           </div>
           <CardTitle className="text-2xl font-semibold tracking-tight text-[#15325B]">

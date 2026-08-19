@@ -4,7 +4,7 @@ export default function Hero() {
   return (
     <section
       id="top"
-      className="relative overflow-hidden bg-[#15325B] py-28 sm:py-36"
+      className="relative overflow-hidden bg-[#141F3A] py-28 sm:py-36"
     >
       {/* Faint architectural line pattern */}
       <div

@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { API_URL } from "@/lib/config"
+import { projectClassLabel } from "@/lib/project-class"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -174,8 +175,8 @@ export default function ProjectDetailsPage() {
         </div>
         <div className="ml-auto flex gap-2">
           {project.class && (
-            <Badge variant="outline" className="text-lg px-4 py-1">
-              {project.class}
+            <Badge variant="secondary" className="text-xs font-semibold">
+              {projectClassLabel(project.class)}
             </Badge>
           )}
           <Badge className="text-lg px-4 py-1 bg-primary">
@@ -690,17 +691,17 @@ export default function ProjectDetailsPage() {
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b">
+                <span className="text-muted-foreground">Фиксации</span>
+                <span className="font-medium text-yellow-600">
+                  {project.apartmentStats?.activeFixations ?? 0}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b">
                 <span className="text-muted-foreground">Мин. цена</span>
                 <span className="font-medium">
                   {project.apartments.filter(a => a.status === "AVAILABLE").length > 0
                     ? formatPrice(Math.min(...project.apartments.filter(a => a.status === "AVAILABLE").map(a => a.price)))
                     : "—"}
-                </span>
-              </div>
-              <div className="flex justify-between py-2 border-b">
-                <span className="text-muted-foreground">Фиксации</span>
-                <span className="font-medium text-orange-600">
-                  {project.apartmentStats?.activeFixations ?? 0}
                 </span>
               </div>
               <div className="pt-2 space-y-2">

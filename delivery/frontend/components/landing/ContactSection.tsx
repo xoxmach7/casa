@@ -43,7 +43,7 @@ export default function ContactSection() {
   }
 
   return (
-    <section id="contact" className="relative overflow-hidden bg-[#15325B] py-24 sm:py-28">
+    <section id="contact" className="relative overflow-hidden bg-[#141F3A] py-24 sm:py-28">
       <div className="relative mx-auto max-w-xl px-4 text-center sm:px-6">
         <h2 className="text-2xl font-bold text-white sm:text-3xl">
           {typo('Запросите доступ к CASA Pro')}

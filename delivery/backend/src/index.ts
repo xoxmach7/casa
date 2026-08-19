@@ -38,6 +38,7 @@ import { publicListingLeadsRouter } from './routes/public-listing-leads.routes';
 import { adminListingsRouter } from './routes/admin-listings.routes';
 import { publicSelectionsRouter } from './routes/public-selections.routes';
 import { publicBuyerLeadsRouter } from './routes/public-buyer-leads.routes';
+import { feedbackRouter } from './routes/feedback.routes';
 import { publicLandingLeadsRouter } from './routes/public-landing-leads.routes';
 import { landingLeadsRouter } from './routes/landing-leads.routes';
 import { publicUploadsRouter } from './routes/public-uploads.routes';
@@ -217,6 +218,7 @@ app.use('/api/export', exportRouter);
 app.use('/api/import', importRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/mortgage-applications', mortgageApplicationsRouter);
+app.use('/api/feedback', feedbackRouter);
 
 // Error handling
 if (process.env.SENTRY_DSN) {

@@ -52,6 +52,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { NotificationBell } from "@/components/notification-bell"
+import { FeedbackButton } from "@/components/feedback-button"
 import { cn } from "@/lib/utils"
 import { clearAuthAndRedirect } from "@/lib/auth-utils"
 
@@ -286,7 +287,10 @@ export function AppSidebar() {
               </p>
             </div>
           </div>
-          {user.role !== "ADMIN" && <NotificationBell />}
+          <div className="flex items-center gap-1">
+            <FeedbackButton />
+            {user.role !== "ADMIN" && <NotificationBell />}
+          </div>
         </div>
       </SidebarHeader>
 

@@ -80,6 +80,8 @@ interface ProjectDetails {
   bonus: string
   promotions?: string
   mortgagePrograms?: string[]
+  features?: string[]
+  nearby?: string[]
   images: string[]
   videoUrl?: string
   apartments: Apartment[]
@@ -409,6 +411,42 @@ export default function ProjectDetailsPage() {
                   </p>
                 </CardContent>
               </Card>
+
+              {project.features && project.features.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Особенности</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="grid gap-2.5 sm:grid-cols-2">
+                      {project.features.map((f, i) => (
+                        <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#15325B]" />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              {project.nearby && project.nearby.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Что интересного рядом</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="grid gap-2.5 sm:grid-cols-2">
+                      {project.nearby.map((n, i) => (
+                        <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#15325B]" />
+                          <span>{n}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Акция для покупателя — бонус брокера пока скрыт (см. PR) */}
               {project.promotions && (

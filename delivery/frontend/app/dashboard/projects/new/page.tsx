@@ -78,6 +78,10 @@ export default function NewProjectPage() {
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [projectImages, setProjectImages] = useState<string[]>([])
   const [selectedMortgagePrograms, setSelectedMortgagePrograms] = useState<string[]>([])
+  // Особенности / Что интересного рядом — по одному пункту на строку.
+  const [featuresText, setFeaturesText] = useState("")
+  const [nearbyText, setNearbyText] = useState("")
+  const toLines = (t: string) => t.split("\n").map((s) => s.trim()).filter(Boolean)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -134,6 +138,8 @@ export default function NewProjectPage() {
           lng: values.lng || selectedLocation?.lng,
           images: projectImages,
           mortgagePrograms: selectedMortgagePrograms,
+          features: toLines(featuresText),
+          nearby: toLines(nearbyText),
         }),
       })
 
@@ -501,6 +507,35 @@ export default function NewProjectPage() {
                   </FormItem>
                 )}
               />
+            </CardContent>
+          </Card>
+
+          {/* Особенности и что рядом */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Особенности и окружение</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div>
+                <FormLabel>Особенности</FormLabel>
+                <FormDescription className="mb-2">По одному пункту на строку</FormDescription>
+                <Textarea
+                  value={featuresText}
+                  onChange={(e) => setFeaturesText(e.target.value)}
+                  rows={4}
+                  placeholder={"Монолитно-каркасный дом\nПодземный паркинг\nЗакрытая территория"}
+                />
+              </div>
+              <div>
+                <FormLabel>Что интересного рядом</FormLabel>
+                <FormDescription className="mb-2">По одному пункту на строку</FormDescription>
+                <Textarea
+                  value={nearbyText}
+                  onChange={(e) => setNearbyText(e.target.value)}
+                  rows={4}
+                  placeholder={"Школа №5 — 300 м\nТРЦ «Мега» — 1.2 км\nПарк — 500 м"}
+                />
+              </div>
             </CardContent>
           </Card>
 

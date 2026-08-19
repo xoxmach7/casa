@@ -54,6 +54,10 @@ export default function EditProjectPage() {
     images: [],
     isPublished: false,
   });
+  // Особенности / Что интересного рядом — по одному пункту на строку.
+  const [featuresText, setFeaturesText] = useState('');
+  const [nearbyText, setNearbyText] = useState('');
+  const toLines = (t: string) => t.split('\n').map((s) => s.trim()).filter(Boolean);
 
   useEffect(() => {
     fetchProject();
@@ -93,6 +97,8 @@ export default function EditProjectPage() {
         images: data.images || [],
         isPublished: data.isPublished || false,
       });
+      setFeaturesText((data.features || []).join('\n'));
+      setNearbyText((data.nearby || []).join('\n'));
     } catch (error) {
       console.error('Error fetching project:', error);
       toast({
@@ -121,7 +127,7 @@ export default function EditProjectPage() {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({ ...formData, features: toLines(featuresText), nearby: toLines(nearbyText) }),
         }
       );
 
@@ -213,6 +219,30 @@ export default function EditProjectPage() {
                   onChange={(e) => handleChange('description', e.target.value)}
                   rows={4}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="features">Особенности</Label>
+                <Textarea
+                  id="features"
+                  placeholder={"Монолитно-каркасный дом\nПодземный паркинг\nЗакрытая территория"}
+                  value={featuresText}
+                  onChange={(e) => setFeaturesText(e.target.value)}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">По одному пункту на строку</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="nearby">Что интересного рядом</Label>
+                <Textarea
+                  id="nearby"
+                  placeholder={"Школа №5 — 300 м\nТРЦ «Мега» — 1.2 км\nПарк — 500 м"}
+                  value={nearbyText}
+                  onChange={(e) => setNearbyText(e.target.value)}
+                  rows={4}
+                />
+                <p className="text-xs text-muted-foreground">По одному пункту на строку</p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">

@@ -248,6 +248,8 @@ model Project {
   mortgagePrograms String[]       @default([]) @map("mortgage_programs") // Доступные программы ипотеки
   images           String[]
   videoUrl         String?        @map("video_url") // New
+  features         String[]       @default([]) @map("features") // Особенности ЖК (список)
+  nearby           String[]       @default([]) @map("nearby") // Что интересного рядом (список)
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
   developerId      String         @map("developer_id")
@@ -265,6 +267,21 @@ model Project {
   @@index([buildingStatus])
   @@index([isPublished])
   @@map("projects")
+}
+
+// Обратная связь от пользователей CRM (кнопка «Оставить обратную связь» в сайдбаре).
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  userName  String?  @map("user_name")
+  role      String?
+  message   String
+  contact   String?
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([resolved])
+  @@map("feedback")
 }
 
 model Building {

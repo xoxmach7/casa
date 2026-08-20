@@ -1,0 +1,188 @@
+openapi: 3.0.3
+# CASA Pro Ипотека — черновик контракта API (Phase 0, implementation_phases[0]).
+# Источник: CASA_Pro_Ipoteka_Project_Spec_v1.1.json → api. Это ДРАФТ: тела
+# запросов/ответов уточняются в Phase 1+. Пути, методы, коды ошибок и точки
+# идемпотентности зафиксированы по ТЗ.
+info:
+  title: CASA Pro Ипотека API
+  version: "1.1-draft"
+  description: >
+    Предварительное ипотечное заключение (не банковское решение). Все действия
+    tenant-scoped; чувствительные операции требуют активного согласия клиента.
+servers:
+  - url: https://pro.casa.kz/api/v1
+security:
+  - sessionOrBearer: []
+
+paths:
+  /clients:
+    post:
+      summary: Создать клиента
+      responses: { "201": { $ref: "#/components/responses/Client" }, "4XX": { $ref: "#/components/responses/Error" } }
+    get:
+      summary: Поиск и список клиентов
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      responses: { "200": { description: OK }, "4XX": { $ref: "#/components/responses/Error" } }
+  /clients/{client_id}:
+    parameters: [{ $ref: "#/components/parameters/ClientId" }]
+    get: { summary: Карточка клиента, responses: { "200": { $ref: "#/components/responses/Client" } } }
+    patch: { summary: Обновить анкету клиента, responses: { "200": { $ref: "#/components/responses/Client" } } }
+
+  /clients/{client_id}/consents:
+    parameters: [{ $ref: "#/components/parameters/ClientId" }]
+    post:
+      summary: Создать запрос согласия
+      description: Идемпотентно (Idempotency-Key обязателен).
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses: { "201": { description: Consent created }, "4XX": { $ref: "#/components/responses/Error" } }
+  /consents/{consent_id}:
+    parameters: [{ $ref: "#/components/parameters/ConsentId" }]
+    get: { summary: Публичная страница согласия, security: [], responses: { "200": { description: OK } } }
+  /consents/{consent_id}/otp/send:
+    parameters: [{ $ref: "#/components/parameters/ConsentId" }]
+    post: { summary: Отправить одноразовый код, responses: { "202": { description: Sent }, "429": { $ref: "#/components/responses/Error" } } }
+  /consents/{consent_id}/confirm:
+    parameters: [{ $ref: "#/components/parameters/ConsentId" }]
+    post: { summary: Подтвердить или отклонить согласие, responses: { "200": { description: OK } } }
+  /consents/{consent_id}/revoke:
+    parameters: [{ $ref: "#/components/parameters/ConsentId" }]
+    post: { summary: Отозвать согласие, responses: { "200": { description: OK } } }
+
+  /clients/{client_id}/documents:
+    parameters: [{ $ref: "#/components/parameters/ClientId" }]
+    post:
+      summary: Получить URL загрузки документа
+      description: Идемпотентно. Возвращает short-lived signed URL.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses: { "201": { description: Upload URL }, "4XX": { $ref: "#/components/responses/Error" } }
+  /documents/{document_id}/complete:
+    parameters: [{ $ref: "#/components/parameters/DocumentId" }]
+    post: { summary: Подтвердить завершение загрузки, responses: { "200": { description: OK } } }
+  /documents/{document_id}/extraction:
+    parameters: [{ $ref: "#/components/parameters/DocumentId" }]
+    get: { summary: Распознанные поля и уверенность, responses: { "200": { description: OK } } }
+    patch: { summary: Исправить и подтвердить поля, responses: { "200": { description: OK } } }
+
+  /clients/{client_id}/iin-checks:
+    parameters: [{ $ref: "#/components/parameters/ClientId" }]
+    post: { summary: Запустить разрешённые проверки по ИИН, responses: { "202": { description: Started }, "403": { $ref: "#/components/responses/Error" } } }
+  /clients/{client_id}/iin-checks/latest:
+    parameters: [{ $ref: "#/components/parameters/ClientId" }]
+    get: { summary: Последние результаты проверок, responses: { "200": { description: OK } } }
+
+  /clients/{client_id}/snapshots:
+    parameters: [{ $ref: "#/components/parameters/ClientId" }]
+    post: { summary: Создать подтверждённый (неизменяемый) снимок, responses: { "201": { description: Snapshot } } }
+
+  /analyses:
+    post:
+      summary: Запустить анализ программ
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses: { "201": { description: Analysis }, "4XX": { $ref: "#/components/responses/Error" } }
+  /analyses/{analysis_id}:
+    parameters: [{ $ref: "#/components/parameters/AnalysisId" }]
+    get: { summary: Объяснимый результат анализа, responses: { "200": { description: OK } } }
+  /analyses/{analysis_id}/scenarios/generate:
+    parameters: [{ $ref: "#/components/parameters/AnalysisId" }]
+    post: { summary: Сгенерировать сценарии, responses: { "200": { description: OK } } }
+  /analyses/{analysis_id}/scenarios/preview:
+    parameters: [{ $ref: "#/components/parameters/AnalysisId" }]
+    post: { summary: Пересчитать «Что если», responses: { "200": { description: OK } } }
+  /analyses/{analysis_id}/scenarios/{scenario_id}/select:
+    parameters:
+      - { $ref: "#/components/parameters/AnalysisId" }
+      - { name: scenario_id, in: path, required: true, schema: { type: string } }
+    post: { summary: Выбрать сценарий, responses: { "200": { description: OK } } }
+  /analyses/{analysis_id}/property-matches:
+    parameters: [{ $ref: "#/components/parameters/AnalysisId" }]
+    get: { summary: Подходящие квартиры, responses: { "200": { description: OK } } }
+
+  /clients/{client_id}/selections:
+    parameters: [{ $ref: "#/components/parameters/ClientId" }]
+    post: { summary: Сохранить подборку квартир, responses: { "201": { description: Selection } } }
+
+  /conclusions:
+    post:
+      summary: Зафиксировать и создать заключение
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      responses: { "201": { description: Conclusion } }
+  /conclusions/{public_token}:
+    get: { summary: Открыть клиентское заключение, security: [], parameters: [{ name: public_token, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+  /conclusions/{conclusion_id}/pdf:
+    get: { summary: Скачать PDF, parameters: [{ name: conclusion_id, in: path, required: true, schema: { type: string } }], responses: { "200": { description: PDF } } }
+
+  /mortgage-programs:
+    get: { summary: Опубликованные версии программ, responses: { "200": { description: OK } } }
+  /mortgage-programs/{program_id}/versions:
+    post: { summary: Создать версию программы, parameters: [{ name: program_id, in: path, required: true, schema: { type: string } }], responses: { "201": { description: Version } } }
+  /mortgage-programs/{program_id}/versions/{version_id}/publish:
+    post:
+      summary: Опубликовать проверенную версию
+      parameters:
+        - { name: program_id, in: path, required: true, schema: { type: string } }
+        - { name: version_id, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Published } }
+
+components:
+  securitySchemes:
+    sessionOrBearer:
+      type: http
+      scheme: bearer
+      description: tenant_scoped_session_or_bearer_token
+  parameters:
+    ClientId: { name: client_id, in: path, required: true, schema: { type: string } }
+    ConsentId: { name: consent_id, in: path, required: true, schema: { type: string } }
+    DocumentId: { name: document_id, in: path, required: true, schema: { type: string } }
+    AnalysisId: { name: analysis_id, in: path, required: true, schema: { type: string } }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string }
+      description: Требуется для POST /consents, /documents, /analyses, /conclusions.
+  responses:
+    Client:
+      description: Клиент
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Client" }
+    Error:
+      description: Стандартная ошибка
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Client:
+      type: object
+      properties:
+        id: { type: string }
+        full_name: { type: string }
+        phone: { type: string }
+        iin_masked: { type: string }
+        city: { type: string }
+        assigned_specialist_id: { type: string }
+        created_at: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+          enum:
+            - CONSENT_REQUIRED
+            - CONSENT_EXPIRED
+            - DOCUMENT_TYPE_INVALID
+            - DOCUMENT_PROCESSING_FAILED
+            - DATA_CONFIRMATION_REQUIRED
+            - PROGRAM_RULES_STALE
+            - SOURCE_UNAVAILABLE
+            - INSUFFICIENT_DATA
+            - FORBIDDEN
+            - RATE_LIMITED
+        message: { type: string }
+        field_errors:
+          type: array
+          items: { type: object }
+        trace_id: { type: string }

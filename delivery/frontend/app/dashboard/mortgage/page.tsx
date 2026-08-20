@@ -1,801 +1,501 @@
-"use client"
+"use client";
 
-import { useEffect, useState, useMemo } from "react"
+/**
+ * CASA Pro Ипотека — единый рабочий экран (single_workspace).
+ * Phase 0: интерфейс и контракты, все состояния на мок-данных.
+ *
+ * Оркестратор держит WorkspaceState и реализует переходы (contracts.ts).
+ * Ни одна цифра здесь не является банковским решением — CASA формирует
+ * предварительное заключение (product_definition.decision_boundary).
+ */
+
+import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Calculator,
-  Building2,
-  Percent,
+  ArrowRight,
+  RotateCcw,
+  Wand2,
+  TriangleAlert,
+  User2,
   Clock,
-  BadgeDollarSign,
-  Search,
-  Wallet,
-  Save
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+
+import type { WorkspaceState, MortgageClient, WhatIfInputs } from "@/lib/mortgage/types";
+import { formatDateTime } from "@/lib/mortgage/calc";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { ScoringPanel } from "@/components/mortgage/ScoringPanel"
-import { Slider } from "@/components/ui/slider"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { API_URL } from "@/lib/config"
-import { useToast } from "@/hooks/use-toast"
+  createInitialWorkspace,
+  DEMO_CLIENT,
+  DEFAULT_WHAT_IF,
+  CREDIT_HISTORY_FIELDS,
+  ENPF_FIELDS,
+  MOCK_OBLIGATIONS,
+  buildDemoAnalysis,
+  buildDemoScenarios,
+  buildDemoProperties,
+} from "@/lib/mortgage/mock";
+import type { WorkspaceHandlers } from "@/components/mortgage/workspace/contracts";
+import { SectionClientConsent, SectionDocuments, SectionAnalysis } from "@/components/mortgage/workspace/sections-early";
+import { SectionScenarios, SectionWhatIf, SectionProperties, SectionConclusion } from "@/components/mortgage/workspace/sections-late";
+import { ClientPickerModal, ConsentModal } from "@/components/mortgage/workspace/modals";
 
-interface Client {
-  id: string
-  firstName: string
-  lastName: string
-  phone: string
+const CASE_STATUS_LABEL: Record<WorkspaceState["caseStatus"], string> = {
+  new: "Новый",
+  consent_required: "Нужно согласие",
+  waiting_for_consent: "Ждём согласие",
+  documents_required: "Нужны документы",
+  documents_processing: "Обработка документов",
+  data_review_required: "Проверка данных",
+  ready_for_analysis: "Готов к анализу",
+  analysis_ready: "Анализ готов",
+  scenario_selected: "Сценарий выбран",
+  property_selection_ready: "Подборка готова",
+  ready_for_application: "Готов к заявке",
+  on_hold: "На паузе",
+  closed: "Закрыт",
+};
+
+const nowIso = () => new Date().toISOString();
+
+function scrollToSection(order: number) {
+  document.getElementById(`mortgage-section-${order}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-interface Apartment {
-  id: string
-  number: string
-  floor: number
-  rooms: number
-  area: number
-  price: number
-  project?: {
-    id: string
-    name: string
-  }
-}
+export default function MortgageWorkspacePage() {
+  const [st, setSt] = useState<WorkspaceState>(createInitialWorkspace);
+  const { toast } = useToast();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
 
-interface MortgageProgram {
-  id: string
-  name: string
-  bank: string
-  rate: number
-  minRate?: number
-  maxRate?: number
-  minDownPayment: number
-  maxTerm: number
-  type: string
-  housingTypes: string[]
-  description: string
-  requirements: string[]
-  maxAmount?: number
-}
+  const patch = useCallback((p: Partial<WorkspaceState>) => setSt((prev) => ({ ...prev, ...p })), []);
 
-// Маппинг данных из API в формат фронтенда
-function mapApiProgram(p: any): MortgageProgram {
-  const housingMap = {
-    'NEW_BUILDING': ['Новостройка'],
-    'SECONDARY': ['Вторичное'],
-    'ALL': ['Новостройка', 'Вторичное'],
-  };
-  let reqs: string[] = [];
-  try { reqs = JSON.parse(p.requirements); } catch { reqs = p.requirements ? p.requirements.split('\n').filter(Boolean) : []; }
-  return {
-    id: p.id,
-    name: p.programName,
-    bank: p.bankName,
-    rate: Number(p.interestRate),
-    minDownPayment: Number(p.minDownPayment),
-    maxTerm: p.maxTerm >= 12 ? Math.round(p.maxTerm / 12) : p.maxTerm,
-    type: Number(p.interestRate) <= 10 ? 'Государственная' : 'Коммерческая',
-    housingTypes: housingMap[p.propertyType as keyof typeof housingMap] || ['Новостройка', 'Вторичное'],
-    description: p.programName + ' — ' + p.bankName,
-    requirements: reqs,
-    maxAmount: p.maxAmount ? Number(p.maxAmount) : undefined,
-  };
-}
+  // --- Секция 1: клиент и согласие ------------------------------------------
 
-export default function MortgagePage() {
-  // Filter states
-  const [bankFilter, setBankFilter] = useState("ALL")
-  const [typeFilter, setTypeFilter] = useState("ALL")
-  const [housingFilter, setHousingFilter] = useState("ALL")
-  const [searchQuery, setSearchQuery] = useState("")
-  
-  // Calculator states
-  const [calcMode, setCalcMode] = useState<"PRICE" | "INCOME" | "PAYMENT">("PRICE")
-  const [propertyPrice, setPropertyPrice] = useState(35000000)
-  const [monthlyIncome, setMonthlyIncome] = useState(500000)
-  const [desiredMonthlyPayment, setDesiredMonthlyPayment] = useState(300000)
-  const [downPayment, setDownPayment] = useState(20)
-  const [term, setTerm] = useState(20)
-  const [selectedRate, setSelectedRate] = useState(7)
+  const selectClient = useCallback((client: MortgageClient) => {
+    setSt(() => {
+      const fresh = createInitialWorkspace();
+      const whatIf: WhatIfInputs = {
+        ...DEFAULT_WHAT_IF,
+        propertyPrice: client.desiredPropertyPrice ?? DEFAULT_WHAT_IF.propertyPrice,
+        downPayment: client.downPayment ?? DEFAULT_WHAT_IF.downPayment,
+        existingDebtPayment: client.existingMonthlyPayment ?? 0,
+        termMonths: client.desiredTermMonths ?? DEFAULT_WHAT_IF.termMonths,
+      };
+      return { ...fresh, client, caseStatus: "consent_required", whatIf };
+    });
+  }, []);
 
-  const [mortgagePrograms, setMortgagePrograms] = useState<MortgageProgram[]>([])
-  const [programsLoading, setProgramsLoading] = useState(true)
-
-  // Save to client states
-  const [clients, setClients] = useState<Client[]>([])
-  const [apartments, setApartments] = useState<Apartment[]>([])
-  const [showSaveDialog, setShowSaveDialog] = useState(false)
-  const [selectedClientId, setSelectedClientId] = useState<string>("")
-  const [selectedApartmentId, setSelectedApartmentId] = useState<string>("")
-  const [savingCalculation, setSavingCalculation] = useState(false)
-  const { toast } = useToast()
-
-  // Fetch clients and apartments
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = (localStorage.getItem('user') ? '1' : null)
-
-        // Загружаем ипотечные программы из БД
-        try {
-          const progRes = await fetch(`${API_URL}/mortgage-programs`, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-          if (progRes.ok) {
-            const progData = await progRes.json()
-            const mapped = (Array.isArray(progData) ? progData : []).filter(p => p.isActive !== false).map(mapApiProgram)
-            if (mapped.length > 0) setMortgagePrograms(mapped)
-          }
-        } catch (e) { console.error("Failed to fetch mortgage programs:", e) }
-        setProgramsLoading(false)
-
-        // Fetch clients
-        const clientsResponse = await fetch(`${API_URL}/clients?limit=100`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        if (clientsResponse.ok) {
-          const data = await clientsResponse.json()
-          setClients(data.clients || [])
-        }
-        
-        // Fetch available apartments
-        const apartmentsResponse = await fetch(`${API_URL}/apartments?status=AVAILABLE&limit=100`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        if (apartmentsResponse.ok) {
-          const data = await apartmentsResponse.json()
-          setApartments(data.apartments || data || [])
-        }
-      } catch (error) {
-        console.error("Failed to fetch data:", error)
-      }
-    }
-    fetchData()
-  }, [])
-
-  // Save calculation to client
-  const saveCalculationToClient = async () => {
-    if (!selectedClientId) {
-      toast({
-        title: "Выберите клиента",
-        description: "Необходимо выбрать клиента для сохранения расчёта",
-        variant: "destructive"
-      })
-      return
-    }
-
-    setSavingCalculation(true)
-    try {
-      const token = (localStorage.getItem('user') ? '1' : null)
-      const program = mortgagePrograms.find(p => p.rate === selectedRate)
-      const hasApartment = selectedApartmentId && selectedApartmentId !== "none"
-      const apartment = hasApartment ? apartments.find(a => a.id === selectedApartmentId) : null
-      
-      const calculationData = {
-        clientId: selectedClientId,
-        apartmentId: hasApartment ? selectedApartmentId : undefined,
-        propertyPrice: apartment ? Number(apartment.price) : calculation.price,
-        initialPayment: (apartment ? Number(apartment.price) : calculation.price) * downPayment / 100,
-        loanAmount: calculation.principal,
-        interestRate: selectedRate,
-        termMonths: term * 12,
-        monthlyPayment: calculation.monthlyPayment,
-        totalPayment: calculation.totalAmount,
-        overpayment: calculation.overpayment,
-        bankName: program?.bank || "Индивидуальный расчёт",
-        programName: program?.name || `Ставка ${selectedRate}%`,
-        apartmentInfo: apartment ? `${apartment.project?.name || 'ЖК'}, кв. ${apartment.number}, ${apartment.rooms}-комн, ${apartment.area} м²` : undefined
-      }
-      
-      const response = await fetch(`${API_URL}/mortgage/calculate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
+  const sendConsent = useCallback(() => {
+    setSt((prev) => ({
+      ...prev,
+      consent: {
+        ...prev.consent,
+        status: "sms_pending",
+        audit: {
+          consentId: `cs-${Date.now().toString(36)}`,
+          phoneMasked: prev.client?.phone ?? "—",
+          consentTextVersion: "1.1",
+          method: "casa_sms_link_otp",
+          requestedAt: nowIso(),
+          purposes: ["questionnaire", "credit_history", "enpf", "iin_checks", "scoring", "share_conclusion"],
+          smsProviderMessageId: `demo-${Math.floor(Math.random() * 1e6)}`,
         },
-        body: JSON.stringify(calculationData)
-      })
+      },
+      caseStatus: "waiting_for_consent",
+    }));
+    // Клиент «открыл ссылку»
+    setTimeout(() => {
+      setSt((prev) =>
+        prev.consent.status === "sms_pending"
+          ? { ...prev, consent: { ...prev.consent, status: "link_opened", audit: prev.consent.audit ? { ...prev.consent.audit, openedAt: nowIso() } : prev.consent.audit } }
+          : prev,
+      );
+    }, 1200);
+  }, []);
 
-      if (response.ok) {
-        const client = clients.find(c => c.id === selectedClientId)
-        toast({
-          title: "Расчёт сохранён",
-          description: `Ипотечный расчёт сохранён в карточку клиента ${client?.firstName} ${client?.lastName}${apartment ? ` для кв. ${apartment.number}` : ''}`
-        })
-        setShowSaveDialog(false)
-        setSelectedClientId("")
-        setSelectedApartmentId("")
-      } else {
-        throw new Error("Failed to save")
-      }
-    } catch (error) {
-      toast({
-        title: "Ошибка",
-        description: "Не удалось сохранить расчёт",
-        variant: "destructive"
-      })
-    } finally {
-      setSavingCalculation(false)
+  const clientConfirmConsent = useCallback(() => {
+    setSt((prev) => ({
+      ...prev,
+      consent: {
+        ...prev.consent,
+        status: "confirmed",
+        audit: prev.consent.audit ? { ...prev.consent.audit, confirmedAt: nowIso() } : prev.consent.audit,
+      },
+      caseStatus: "documents_required",
+    }));
+    setConsentOpen(false);
+    toast({ title: "Согласие подтверждено", description: "Чувствительные действия разблокированы." });
+  }, [toast]);
+
+  const clientRejectConsent = useCallback(() => {
+    setSt((prev) => ({ ...prev, consent: { ...prev.consent, status: "rejected" } }));
+    setConsentOpen(false);
+    toast({ title: "Согласие отклонено", variant: "destructive" });
+  }, [toast]);
+
+  const revokeConsent = useCallback(() => {
+    setSt((prev) => ({
+      ...createInitialWorkspace(),
+      client: prev.client,
+      whatIf: prev.whatIf,
+      consent: { ...prev.consent, status: "revoked" },
+      caseStatus: "consent_required",
+    }));
+    toast({ title: "Согласие отозвано", description: "Новая обработка и доступ заблокированы (AC-013)." });
+  }, [toast]);
+
+  // --- Секция 2: документы и ИИН --------------------------------------------
+
+  const uploadDocument = useCallback((which: "creditHistory" | "enpf") => {
+    const fields = which === "creditHistory" ? CREDIT_HISTORY_FIELDS : ENPF_FIELDS;
+    const stages: { status: WorkspaceState["documents"]["creditHistory"]["status"]; progress: number; delay: number }[] = [
+      { status: "uploading", progress: 25, delay: 0 },
+      { status: "scanning", progress: 50, delay: 700 },
+      { status: "processing", progress: 80, delay: 1500 },
+      { status: "needs_review", progress: 100, delay: 2400 },
+    ];
+    stages.forEach((s) => {
+      setTimeout(() => {
+        setSt((prev) => ({
+          ...prev,
+          caseStatus: "documents_processing",
+          documents: {
+            ...prev.documents,
+            [which]: {
+              ...prev.documents[which],
+              status: s.status,
+              progress: s.progress,
+              fileName: `${which === "creditHistory" ? "credit_history" : "enpf"}.pdf`,
+              fields: s.status === "needs_review" ? fields.map((f) => ({ ...f })) : prev.documents[which].fields,
+              reportDate: s.status === "needs_review" ? "12.08.2026" : prev.documents[which].reportDate,
+            },
+          },
+        }));
+      }, s.delay);
+    });
+  }, []);
+
+  const confirmDocument = useCallback((which: "creditHistory" | "enpf") => {
+    setSt((prev) => {
+      const documents = {
+        ...prev.documents,
+        [which]: {
+          ...prev.documents[which],
+          status: "confirmed" as const,
+          fields: prev.documents[which].fields.map((f) => ({ ...f, confirmed: true, confidence: Math.max(f.confidence, 0.95), inconsistency: undefined })),
+        },
+      };
+      const bothConfirmed = documents.creditHistory.status === "confirmed" && documents.enpf.status === "confirmed";
+      const obligations = which === "creditHistory" || prev.obligations.length ? MOCK_OBLIGATIONS : prev.obligations;
+      return {
+        ...prev,
+        documents,
+        obligations: documents.creditHistory.status === "confirmed" ? MOCK_OBLIGATIONS : obligations,
+        caseStatus: bothConfirmed ? "ready_for_analysis" : "documents_required",
+      };
+    });
+  }, []);
+
+  const correctField = useCallback((which: "creditHistory" | "enpf", key: string, value: string) => {
+    setSt((prev) => ({
+      ...prev,
+      documents: {
+        ...prev.documents,
+        [which]: {
+          ...prev.documents[which],
+          fields: prev.documents[which].fields.map((f) =>
+            f.key === key ? { ...f, value, confidence: 1, confirmed: true, inconsistency: undefined } : f,
+          ),
+        },
+      },
+    }));
+    toast({ title: "Поле исправлено", description: "Значение подтверждено вручную." });
+  }, [toast]);
+
+  const runIinCheck = useCallback(() => {
+    setSt((prev) => ({ ...prev, iinCheck: { status: "in_progress" } }));
+    setTimeout(() => {
+      setSt((prev) => ({
+        ...prev,
+        iinCheck: {
+          status: "verified_no_records",
+          checkedAt: nowIso(),
+          sourceUrl: "https://www.gov.kz/…/aisoip",
+        },
+      }));
+    }, 1500);
+  }, []);
+
+  // --- Секция 3: анализ ------------------------------------------------------
+
+  const runAnalysis = useCallback(() => {
+    setSt((prev) => ({
+      ...prev,
+      analysis: buildDemoAnalysis(),
+      scenarios: buildDemoScenarios(),
+      obligations: prev.obligations.length ? prev.obligations : MOCK_OBLIGATIONS,
+      caseStatus: "analysis_ready",
+      lastCalculationAt: nowIso(),
+    }));
+  }, []);
+
+  const confirmSnapshot = useCallback(() => {
+    setSt((prev) => ({ ...prev, snapshotConfirmed: true, caseStatus: "analysis_ready" }));
+    toast({ title: "Снимок зафиксирован", description: "Расчёт воспроизводим по этой версии данных (AC-012)." });
+  }, [toast]);
+
+  // --- Секция 4: сценарии ----------------------------------------------------
+
+  const selectScenario = useCallback((id: string) => {
+    setSt((prev) => ({ ...prev, selectedScenarioId: id, caseStatus: "scenario_selected", lastCalculationAt: nowIso() }));
+    const sc = st.scenarios.find((s) => s.id === id);
+    if (sc?.requiresVerifiedInput) {
+      toast({ title: "Нужны подтверждённые условия", description: "Введите проверенную ставку/предложение — итог показывается предварительным (AC-006)." });
     }
-  }
+  }, [st.scenarios, toast]);
 
-  const banks = [...new Set(mortgagePrograms.map(p => p.bank))]
-  const types = [...new Set(mortgagePrograms.map(p => p.type))]
+  const acceptCurrentCase = useCallback(() => {
+    setSt((prev) => ({ ...prev, selectedScenarioId: null, caseStatus: "scenario_selected" }));
+  }, []);
 
-  // Filtered programs
-  const filteredPrograms = useMemo(() => {
-    return mortgagePrograms.filter(program => {
-      if (bankFilter !== "ALL" && program.bank !== bankFilter) return false
-      if (typeFilter !== "ALL" && program.type !== typeFilter) return false
-      if (housingFilter !== "ALL" && !program.housingTypes.includes(housingFilter)) return false
-      if (searchQuery && !program.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-          !program.bank.toLowerCase().includes(searchQuery.toLowerCase())) return false
-      return true
-    })
-  }, [bankFilter, typeFilter, housingFilter, searchQuery, mortgagePrograms])
+  // --- Секция 5: что если ----------------------------------------------------
 
-  // Calculator logic — annuity formula, used in both directions depending on calcMode
-  const MAX_DEBT_SERVICE_RATIO = 0.5 // максимальная доля дохода на платёж по ипотеке
+  const changeWhatIf = useCallback((p: Partial<WhatIfInputs>) => {
+    setSt((prev) => ({ ...prev, whatIf: { ...prev.whatIf, ...p }, lastCalculationAt: nowIso() }));
+  }, []);
 
-  const monthlyPaymentFromPrincipal = (principal: number, annualRate: number, termMonths: number) => {
-    if (principal <= 0) return 0
-    const monthlyRate = annualRate / 100 / 12
-    if (monthlyRate <= 0) return principal / termMonths
-    const factor = Math.pow(1 + monthlyRate, termMonths)
-    return (principal * monthlyRate * factor) / (factor - 1)
-  }
+  const saveWhatIfScenario = useCallback(() => {
+    toast({ title: "Сценарий сохранён", description: "Добавлен в список сценариев клиента (демо)." });
+  }, [toast]);
 
-  const principalFromMonthlyPayment = (monthlyPayment: number, annualRate: number, termMonths: number) => {
-    if (monthlyPayment <= 0) return 0
-    const monthlyRate = annualRate / 100 / 12
-    if (monthlyRate <= 0) return monthlyPayment * termMonths
-    const factor = Math.pow(1 + monthlyRate, termMonths)
-    return (monthlyPayment * (factor - 1)) / (monthlyRate * factor)
-  }
+  // --- Секция 6: квартиры ----------------------------------------------------
 
-  const calculateMortgage = () => {
-    const totalPayments = term * 12
-    const downPaymentShare = downPayment / 100
+  const matchProperties = useCallback(() => {
+    setSt((prev) => ({ ...prev, properties: buildDemoProperties(), caseStatus: "property_selection_ready" }));
+  }, []);
 
-    let principal: number
-    let monthlyPayment: number
-    let price: number
+  const toggleSelection = useCallback((id: string) => {
+    setSt((prev) => ({
+      ...prev,
+      properties: prev.properties.map((p) => (p.id === id ? { ...p, inSelection: !p.inSelection } : p)),
+    }));
+  }, []);
 
-    if (calcMode === "INCOME") {
-      monthlyPayment = monthlyIncome * MAX_DEBT_SERVICE_RATIO
-      principal = principalFromMonthlyPayment(monthlyPayment, selectedRate, totalPayments)
-      price = downPaymentShare < 1 ? principal / (1 - downPaymentShare) : principal
-    } else if (calcMode === "PAYMENT") {
-      monthlyPayment = desiredMonthlyPayment
-      principal = principalFromMonthlyPayment(monthlyPayment, selectedRate, totalPayments)
-      price = downPaymentShare < 1 ? principal / (1 - downPaymentShare) : principal
-    } else {
-      price = propertyPrice
-      principal = propertyPrice * (1 - downPaymentShare)
-      monthlyPayment = monthlyPaymentFromPrincipal(principal, selectedRate, totalPayments)
-    }
+  // --- Секция 7: заключение --------------------------------------------------
 
-    const totalAmount = monthlyPayment * totalPayments
-    const overpayment = totalAmount - principal
+  const saveNextAction = useCallback((action: string, dueDate?: string) => {
+    setSt((prev) => ({ ...prev, nextAction: { action, dueDate, savedAt: nowIso() }, caseStatus: "ready_for_application" }));
+    toast({ title: "Решение сохранено" });
+  }, [toast]);
 
-    return {
-      monthlyPayment: Math.round(monthlyPayment),
-      totalAmount: Math.round(totalAmount),
-      overpayment: Math.round(overpayment),
-      principal: Math.round(principal),
-      price: Math.round(price)
-    }
-  }
+  const generateLink = useCallback(() => {
+    setSt((prev) => ({
+      ...prev,
+      conclusion: {
+        conclusionId: `cn-${Date.now().toString(36)}`,
+        version: (prev.conclusion?.version ?? 0) + 1,
+        publicLink: `https://pro.casa.kz/z/${Math.random().toString(36).slice(2, 10)}`,
+        expiresAt: "26.08.2026",
+        createdAt: nowIso(),
+        pdfReady: prev.conclusion?.pdfReady,
+      },
+    }));
+    toast({ title: "Ссылка создана", description: "Без индексации, с истечением, ИИН и документы скрыты (AC-014)." });
+  }, [toast]);
 
-  const calculation = calculateMortgage()
+  const generatePdf = useCallback(() => {
+    setSt((prev) => ({
+      ...prev,
+      conclusion: {
+        conclusionId: prev.conclusion?.conclusionId ?? `cn-${Date.now().toString(36)}`,
+        version: prev.conclusion?.version ?? 1,
+        createdAt: prev.conclusion?.createdAt ?? nowIso(),
+        publicLink: prev.conclusion?.publicLink,
+        expiresAt: prev.conclusion?.expiresAt,
+        pdfReady: true,
+      },
+    }));
+    toast({ title: "PDF сформирован (демо)" });
+  }, [toast]);
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat("ru-RU").format(price)
-  }
+  const handlers: WorkspaceHandlers = useMemo(
+    () => ({
+      openClientPicker: () => setPickerOpen(true),
+      openConsent: () => setConsentOpen(true),
+      revokeConsent,
+      uploadDocument,
+      confirmDocument,
+      correctField,
+      runIinCheck,
+      runAnalysis,
+      confirmSnapshot,
+      selectScenario,
+      acceptCurrentCase,
+      changeWhatIf,
+      saveWhatIfScenario,
+      matchProperties,
+      toggleSelection,
+      saveNextAction,
+      generateLink,
+      generatePdf,
+    }),
+    [revokeConsent, uploadDocument, confirmDocument, correctField, runIinCheck, runAnalysis, confirmSnapshot, selectScenario, acceptCurrentCase, changeWhatIf, saveWhatIfScenario, matchProperties, toggleSelection, saveNextAction, generateLink, generatePdf],
+  );
+
+  // --- Демо: пройти весь путь одним кликом (для просмотра всех состояний) ----
+
+  const fillDemo = useCallback(() => {
+    setSt(() => {
+      const base = createInitialWorkspace();
+      const analysis = buildDemoAnalysis();
+      return {
+        ...base,
+        client: DEMO_CLIENT,
+        whatIf: {
+          ...DEFAULT_WHAT_IF,
+          propertyPrice: DEMO_CLIENT.desiredPropertyPrice!,
+          downPayment: DEMO_CLIENT.downPayment!,
+          existingDebtPayment: DEMO_CLIENT.existingMonthlyPayment!,
+        },
+        consent: {
+          status: "confirmed",
+          linkTtlMinutes: 30,
+          otpTtlMinutes: 5,
+          audit: {
+            consentId: "cs-demo",
+            phoneMasked: DEMO_CLIENT.phone,
+            consentTextVersion: "1.1",
+            method: "casa_sms_link_otp",
+            requestedAt: nowIso(),
+            openedAt: nowIso(),
+            confirmedAt: nowIso(),
+            purposes: ["questionnaire", "credit_history", "enpf", "iin_checks", "scoring", "share_conclusion"],
+            smsProviderMessageId: "demo-000001",
+          },
+        },
+        documents: {
+          creditHistory: { ...base.documents.creditHistory, status: "confirmed", fields: CREDIT_HISTORY_FIELDS.map((f) => ({ ...f, confirmed: true, confidence: Math.max(f.confidence, 0.95), inconsistency: undefined })) },
+          enpf: { ...base.documents.enpf, status: "confirmed", fields: ENPF_FIELDS.map((f) => ({ ...f, confirmed: true })) },
+        },
+        iinCheck: { status: "verified_no_records", checkedAt: nowIso() },
+        obligations: MOCK_OBLIGATIONS,
+        analysis,
+        snapshotConfirmed: true,
+        scenarios: buildDemoScenarios(),
+        selectedScenarioId: "sc-refi",
+        properties: buildDemoProperties(),
+        caseStatus: "property_selection_ready",
+        lastCalculationAt: nowIso(),
+      };
+    });
+    toast({ title: "Демо-данные заполнены", description: "Весь путь до подбора квартир (мок-данные)." });
+  }, [toast]);
+
+  const resetAll = useCallback(() => {
+    setSt(createInitialWorkspace());
+    toast({ title: "Экран сброшен" });
+  }, [toast]);
+
+  // --- Первичное действие для липкого контекста ------------------------------
+
+  const primary = useMemo(() => {
+    const s = st;
+    if (!s.client) return { label: "Выбрать клиента", onClick: () => setPickerOpen(true) };
+    if (s.consent.status !== "confirmed") return { label: "Отправить согласие", onClick: () => setConsentOpen(true) };
+    if (!(s.documents.creditHistory.status === "confirmed" && s.documents.enpf.status === "confirmed"))
+      return { label: "Загрузить документы", onClick: () => scrollToSection(2) };
+    if (!s.analysis) return { label: "Запустить анализ", onClick: runAnalysis };
+    if (!s.snapshotConfirmed) return { label: "Подтвердить данные", onClick: confirmSnapshot };
+    if (!s.selectedScenarioId && s.caseStatus !== "scenario_selected") return { label: "Выбрать сценарий", onClick: () => scrollToSection(4) };
+    if (s.properties.length === 0) return { label: "Подобрать квартиры", onClick: matchProperties };
+    if (!s.nextAction) return { label: "Сохранить действие", onClick: () => scrollToSection(7) };
+    return { label: "Готово", onClick: () => scrollToSection(7) };
+  }, [st, runAnalysis, confirmSnapshot, matchProperties]);
+
+  const sectionProps = { state: st, h: handlers };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="mx-auto max-w-4xl space-y-4 pb-16">
+      {/* Заголовок */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Ипотека</h1>
-          <p className="text-muted-foreground">
-            Каталог ипотечных программ и калькулятор
+          <h1 className="text-2xl font-bold tracking-tight">Ипотечное решение клиента</h1>
+          <p className="text-sm text-muted-foreground">
+            Согласие → документы → анализ → сценарии → квартиры → заключение
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={fillDemo}>
+            <Wand2 className="mr-1.5 h-4 w-4" />
+            Демо
+          </Button>
+          <Button variant="ghost" size="sm" onClick={resetAll}>
+            <RotateCcw className="mr-1.5 h-4 w-4" />
+            Сброс
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/mortgage/tools">
+              <Calculator className="mr-1.5 h-4 w-4" />
+              Инструменты
+            </Link>
+          </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="catalog" className="space-y-6">
-        <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-3 gap-1">
-          <TabsTrigger value="catalog">Каталог программ</TabsTrigger>
-          <TabsTrigger value="calculator">Калькулятор</TabsTrigger>
-          <TabsTrigger value="scoring">Скоринг</TabsTrigger>
-        </TabsList>
+      {/* Демо-предупреждение */}
+      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800">
+        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>
+          Демо-режим (Phase 0): все банковские условия, ставки, платежи и квартиры демонстрационные и требуют проверки
+          перед production. CASA формирует предварительное заключение — окончательное решение принимает банк.
+        </span>
+      </div>
 
-        {/* Catalog Tab */}
-        <TabsContent value="catalog" className="space-y-6">
-          {/* Filters */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Поиск программ..."
-                    className="pl-9 h-9 w-56 rounded-full"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
+      {/* Липкий контекст */}
+      <div className="sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-card/95 p-3 shadow-sm backdrop-blur">
+        <div className="flex items-center gap-2">
+          <User2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">{st.client ? st.client.fullName : "Клиент не выбран"}</span>
+        </div>
+        <div className="hidden items-center gap-1.5 sm:flex">
+          <span className="text-xs text-muted-foreground">Статус:</span>
+          <span className="rounded-full bg-[#15325B]/10 px-2 py-0.5 text-xs font-medium text-[#15325B]">
+            {CASE_STATUS_LABEL[st.caseStatus]}
+          </span>
+        </div>
+        <div className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
+          <Clock className="h-3.5 w-3.5" />
+          Расчёт: {formatDateTime(st.lastCalculationAt)}
+        </div>
+        <Button size="sm" className={cn("ml-auto bg-[#15325B] hover:bg-[#15325B]/90")} onClick={primary.onClick}>
+          {primary.label}
+          <ArrowRight className="ml-1.5 h-4 w-4" />
+        </Button>
+      </div>
 
-                <Select value={bankFilter} onValueChange={setBankFilter}>
-                  <SelectTrigger size="sm" className="rounded-full">
-                    <SelectValue placeholder="Банк" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Все банки</SelectItem>
-                    {banks.map(bank => (
-                      <SelectItem key={bank} value={bank}>{bank}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      {/* Секции */}
+      <SectionClientConsent {...sectionProps} />
+      <SectionDocuments {...sectionProps} />
+      <SectionAnalysis {...sectionProps} />
+      <SectionScenarios {...sectionProps} />
+      <SectionWhatIf {...sectionProps} />
+      <SectionProperties {...sectionProps} />
+      <SectionConclusion {...sectionProps} />
 
-                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger size="sm" className="rounded-full">
-                    <SelectValue placeholder="Тип программы" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Все типы</SelectItem>
-                    {types.map(type => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={housingFilter} onValueChange={setHousingFilter}>
-                  <SelectTrigger size="sm" className="rounded-full">
-                    <SelectValue placeholder="Тип жилья" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Любое жилье</SelectItem>
-                    <SelectItem value="Новостройка">Новостройка</SelectItem>
-                    <SelectItem value="Вторичное">Вторичное</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Programs Grid */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredPrograms.map(program => (
-              <Card key={program.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">{program.name}</CardTitle>
-                      <CardDescription className="flex items-center gap-1 mt-1">
-                        <Building2 className="h-3 w-3" />
-                        {program.bank}
-                      </CardDescription>
-                    </div>
-                    <Badge className={program.type === "Государственная" ? "bg-[#15325B]" : "bg-[#D4A843]"}>
-                      {program.rate}%
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">{program.description}</p>
-                  
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Wallet className="h-4 w-4 text-muted-foreground" />
-                      <span>от {program.minDownPayment}%</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>до {program.maxTerm} лет</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1">
-                    {program.housingTypes.map(type => (
-                      <Badge key={type} variant="outline" className="text-xs">
-                        {type}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-                <CardFooter className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="flex-1"
-                    onClick={() => {
-                      setSelectedRate(program.rate)
-                      setDownPayment(program.minDownPayment)
-                      setTerm(program.maxTerm)
-                    }}
-                  >
-                    <Calculator className="mr-2 h-3 w-3" />
-                    Расчёт
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-
-          {filteredPrograms.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              Программы не найдены
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Calculator Tab */}
-        <TabsContent value="calculator" className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Calculator Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calculator className="h-5 w-5" />
-                  Калькулятор ипотеки
-                </CardTitle>
-                <CardDescription>
-                  Рассчитайте ежемесячный платёж и переплату
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-3">
-                  <Label>Вид расчёта</Label>
-                  <RadioGroup
-                    value={calcMode}
-                    onValueChange={(v) => setCalcMode(v as typeof calcMode)}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="PRICE" id="calc-mode-price" />
-                      <Label htmlFor="calc-mode-price" className="font-normal cursor-pointer">По стоимости недвижимости</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="INCOME" id="calc-mode-income" />
-                      <Label htmlFor="calc-mode-income" className="font-normal cursor-pointer">По доходу (заработной плате)</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="PAYMENT" id="calc-mode-payment" />
-                      <Label htmlFor="calc-mode-payment" className="font-normal cursor-pointer">По ежемесячному платежу</Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-
-                {calcMode === "PRICE" && (
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <Label>Стоимость недвижимости</Label>
-                      <span className="text-sm font-medium">{formatPrice(propertyPrice)} ₸</span>
-                    </div>
-                    <Slider
-                      value={[propertyPrice]}
-                      onValueChange={([v]) => setPropertyPrice(v)}
-                      min={5000000}
-                      max={300000000}
-                      step={1000000}
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>5 млн</span>
-                      <span>300 млн</span>
-                    </div>
-                  </div>
-                )}
-
-                {calcMode === "INCOME" && (
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <Label>Ежемесячный доход (зарплата)</Label>
-                      <span className="text-sm font-medium">{formatPrice(monthlyIncome)} ₸</span>
-                    </div>
-                    <Slider
-                      value={[monthlyIncome]}
-                      onValueChange={([v]) => setMonthlyIncome(v)}
-                      min={100000}
-                      max={5000000}
-                      step={50000}
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>100 тыс</span>
-                      <span>5 млн</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Расчёт исходит из того, что на платёж по ипотеке уходит не более {Math.round(MAX_DEBT_SERVICE_RATIO * 100)}% дохода
-                    </p>
-                  </div>
-                )}
-
-                {calcMode === "PAYMENT" && (
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <Label>Я готов ежемесячно платить</Label>
-                      <span className="text-sm font-medium">{formatPrice(desiredMonthlyPayment)} ₸</span>
-                    </div>
-                    <Slider
-                      value={[desiredMonthlyPayment]}
-                      onValueChange={([v]) => setDesiredMonthlyPayment(v)}
-                      min={50000}
-                      max={3000000}
-                      step={10000}
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>50 тыс</span>
-                      <span>3 млн</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label>Первоначальный взнос</Label>
-                    <span className="text-sm font-medium">{downPayment}% ({formatPrice(calculation.price * downPayment / 100)} ₸)</span>
-                  </div>
-                  <Slider
-                    value={[downPayment]}
-                    onValueChange={([v]) => setDownPayment(v)}
-                    min={0}
-                    max={90}
-                    step={5}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>0%</span>
-                    <span>90%</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label>Срок кредита</Label>
-                    <span className="text-sm font-medium">{term} лет</span>
-                  </div>
-                  <Slider
-                    value={[term]}
-                    onValueChange={([v]) => setTerm(v)}
-                    min={1}
-                    max={30}
-                    step={1}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>1 год</span>
-                    <span>30 лет</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label>Процентная ставка</Label>
-                    <span className="text-sm font-medium">{selectedRate}%</span>
-                  </div>
-                  <Slider
-                    value={[selectedRate]}
-                    onValueChange={([v]) => setSelectedRate(v)}
-                    min={2}
-                    max={25}
-                    step={0.1}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>2%</span>
-                    <span>25%</span>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t">
-                  <Label className="text-muted-foreground text-xs">Быстрый выбор программы</Label>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {mortgagePrograms.slice(0, 4).map(p => (
-                      <Button
-                        key={p.id}
-                        variant={selectedRate === p.rate ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setSelectedRate(p.rate)
-                          setDownPayment(p.minDownPayment)
-                          setTerm(Math.min(term, p.maxTerm))
-                        }}
-                      >
-                        {p.name} ({p.rate}%)
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Result Card */}
-            <div className="space-y-4">
-              <Card className="bg-primary text-primary-foreground">
-                <CardHeader>
-                  <CardTitle>Ежемесячный платёж</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-4xl font-bold">
-                    {formatPrice(calculation.monthlyPayment)} ₸
-                  </div>
-                </CardContent>
-              </Card>
-
-              {calcMode !== "PRICE" && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardDescription>Доступная стоимость недвижимости</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPrice(calculation.price)} ₸</div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardDescription>Сумма кредита</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPrice(calculation.principal)} ₸</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardDescription>Переплата</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-foreground">{formatPrice(calculation.overpayment)} ₸</div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>Общая сумма выплат</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{formatPrice(calculation.totalAmount)} ₸</div>
-                </CardContent>
-              </Card>
-
-              <div className="flex gap-2">
-                <Button className="flex-1" onClick={() => setShowSaveDialog(true)}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Сохранить расчёт клиенту
-                </Button>
-              </div>
-            </div>
-          </div>
-          
-          {/* Save to Client Dialog */}
-          <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Сохранить расчёт клиенту</DialogTitle>
-                <DialogDescription>
-                  Выберите клиента и привяжите расчёт к квартире
-                </DialogDescription>
-              </DialogHeader>
-              
-              <div className="space-y-4 py-4">
-                {/* Calculation Summary */}
-                <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Программа:</span>
-                    <span className="font-medium">{mortgagePrograms.find(p => p.rate === selectedRate)?.name || `${selectedRate}%`}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Сумма кредита:</span>
-                    <span className="font-medium">{formatPrice(calculation.principal)} ₸</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Ежемесячный платёж:</span>
-                    <span className="font-medium">{formatPrice(calculation.monthlyPayment)} ₸</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Срок:</span>
-                    <span className="font-medium">{term} лет</span>
-                  </div>
-                </div>
-
-                {/* Client Selection */}
-                <div className="space-y-2">
-                  <Label>Выберите клиента *</Label>
-                  <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Выберите клиента..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.length > 0 ? (
-                        clients.map(client => (
-                          <SelectItem key={client.id} value={client.id}>
-                            {client.firstName} {client.lastName} - {client.phone}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="none" disabled>
-                          Нет доступных клиентов
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Apartment Selection (optional) */}
-                <div className="space-y-2">
-                  <Label>Привязать к квартире (опционально)</Label>
-                  <Select value={selectedApartmentId} onValueChange={(value) => {
-                    setSelectedApartmentId(value)
-                    // Update property price when apartment is selected
-                    const apt = apartments.find(a => a.id === value)
-                    if (apt) {
-                      setPropertyPrice(apt.price)
-                    }
-                  }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Выберите квартиру..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Без привязки к квартире</SelectItem>
-                      {apartments.length > 0 && (
-                        apartments.map(apt => (
-                          <SelectItem key={apt.id} value={apt.id}>
-                            {apt.project?.name || 'ЖК'} - кв. {apt.number}, {apt.rooms}-комн, {apt.area} м², {formatPrice(apt.price)} ₸
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
-                  Отмена
-                </Button>
-                <Button 
-                  onClick={saveCalculationToClient} 
-                  disabled={savingCalculation || !selectedClientId}
-                >
-                  {savingCalculation ? "Сохранение..." : "Сохранить"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </TabsContent>
-
-        {/* Scoring Tab */}
-        <TabsContent value="scoring" className="space-y-6">
-          <ScoringPanel />
-        </TabsContent>
-
-      </Tabs>
+      {/* Модалки */}
+      <ClientPickerModal open={pickerOpen} onOpenChange={setPickerOpen} onSelect={selectClient} />
+      <ConsentModal
+        open={consentOpen}
+        onOpenChange={setConsentOpen}
+        client={st.client}
+        consentStatus={st.consent.status}
+        onSend={sendConsent}
+        onClientConfirm={clientConfirmConsent}
+        onClientReject={clientRejectConsent}
+      />
     </div>
-  )
+  );
 }

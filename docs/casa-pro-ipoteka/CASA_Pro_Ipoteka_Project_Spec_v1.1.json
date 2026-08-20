@@ -1,0 +1,1465 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "casa_pro_project_spec",
+  "generated_at": "2026-08-19T00:00:00+05:00",
+  "project": {
+    "id": "casa-pro-mortgage",
+    "name": "CASA Pro Ипотека",
+    "release": "1.1",
+    "status": "implementation_spec",
+    "country": "KZ",
+    "locale": "ru-KZ",
+    "currency": "KZT",
+    "timezone": "Asia/Almaty",
+    "production_host": "https://pro.casa.kz",
+    "interactive_reference": "https://casa-pro-ipoteka.ali-dld.chatgpt.site",
+    "owner": "CASA Pro",
+    "target_users": [
+      "mortgage_broker",
+      "real_estate_agent",
+      "new_build_specialist",
+      "agency_manager"
+    ]
+  },
+  "product_definition": {
+    "one_sentence": "Единый ипотечный рабочий экран, который получает согласие клиента, читает его документы, объясняет препятствия, строит минимальные пути к ипотеке и показывает подходящие квартиры в новостройках.",
+    "primary_outcome": "Брокер получает проверяемое следующее действие по реальному клиенту без Excel, ручного сравнения программ и разрозненных переписок.",
+    "decision_boundary": "CASA формирует предварительное профессиональное заключение; окончательное решение принимает банк после проверки клиента и объекта.",
+    "principles": [
+      "Один основной маршрут и одна вкладка вместо набора независимых калькуляторов.",
+      "Каждый вывод содержит причину, недостающее значение, источник правила и следующее действие.",
+      "Неизвестное или неподтвержденное правило не может давать зеленый результат.",
+      "Исходные данные клиента не изменяются при моделировании сценариев.",
+      "ИИ объясняет структурированный расчет, но не придумывает банковские правила.",
+      "Данные клиента обрабатываются только в пределах зафиксированного согласия и прав доступа."
+    ]
+  },
+  "release_scope": {
+    "must_have": [
+      "single_page_mortgage_workspace",
+      "client_creation_and_selection",
+      "sms_consent_and_audit",
+      "credit_history_pdf_upload",
+      "enpf_pdf_upload",
+      "document_extraction_and_manual_confirmation",
+      "iin_official_source_checks",
+      "explainable_program_matching",
+      "debt_load_calculation",
+      "scenario_engine",
+      "what_if_mode",
+      "new_build_property_matching",
+      "client_conclusion_link_and_pdf",
+      "audit_log"
+    ],
+    "later": [
+      "bank_application_submission",
+      "full_agency_crm",
+      "automatic_reactivation_of_old_clients",
+      "bank_program_change_impact_recalculation",
+      "client_mobile_cabinet",
+      "developer_inventory_reservation",
+      "native_mobile_apps"
+    ],
+    "out_of_scope": [
+      "guaranteed_bank_approval",
+      "reverse_engineering_of_private_bank_scoring",
+      "scraping_restricted_government_databases",
+      "automatic_credit_bureau_report_request_without_authorized_integration",
+      "automatic legal conclusion about consent validity",
+      "payment_or_loan_disbursement"
+    ]
+  },
+  "actors": [
+    {
+      "id": "specialist",
+      "name": "Ипотечный специалист",
+      "permissions": [
+        "create_client",
+        "request_consent",
+        "upload_client_documents",
+        "confirm_extracted_data",
+        "run_analysis",
+        "apply_scenarios",
+        "create_property_selection",
+        "share_conclusion"
+      ]
+    },
+    {
+      "id": "team_manager",
+      "name": "Руководитель команды",
+      "permissions": [
+        "all_specialist_permissions",
+        "assign_client",
+        "view_team_pipeline",
+        "view_team_audit"
+      ]
+    },
+    {
+      "id": "program_editor",
+      "name": "Редактор ипотечных программ",
+      "permissions": [
+        "create_program_draft",
+        "add_rule_source",
+        "verify_program_version",
+        "publish_program_version",
+        "deprecate_program_version"
+      ]
+    },
+    {
+      "id": "client",
+      "name": "Клиент",
+      "permissions": [
+        "open_secure_consent_link",
+        "read_consent_text",
+        "confirm_or_reject_consent",
+        "open_shared_conclusion"
+      ]
+    },
+    {
+      "id": "system_worker",
+      "name": "Системный обработчик",
+      "permissions": [
+        "scan_documents",
+        "extract_document_fields",
+        "run_rules",
+        "generate_scenarios",
+        "match_properties",
+        "emit_events"
+      ]
+    }
+  ],
+  "navigation": {
+    "existing_menu_item": "Ипотека",
+    "route": "/mortgage",
+    "primary_pattern": "single_workspace",
+    "secondary_surfaces": [
+      "client_picker_modal",
+      "consent_modal",
+      "program_details_drawer",
+      "client_report_modal",
+      "casa_assistant_drawer"
+    ]
+  },
+  "single_workspace": {
+    "title": "Ипотечное решение клиента",
+    "sticky_context": [
+      "selected_client",
+      "analysis_status",
+      "last_calculation_time",
+      "primary_action"
+    ],
+    "sections": [
+      {
+        "order": 1,
+        "id": "client_and_consent",
+        "title": "Клиент и согласие",
+        "contains": [
+          "client_selector",
+          "client_summary",
+          "consent_status",
+          "send_sms_consent_button",
+          "consent_audit_details"
+        ],
+        "completion_rule": "active_consent_exists"
+      },
+      {
+        "order": 2,
+        "id": "documents_and_sources",
+        "title": "Документы и проверка по ИИН",
+        "contains": [
+          "credit_history_upload",
+          "enpf_upload",
+          "document_processing_status",
+          "iin_official_sources_check",
+          "manual_error_correction"
+        ],
+        "completion_rule": "required_documents_confirmed"
+      },
+      {
+        "order": 3,
+        "id": "analysis",
+        "title": "Распознанные данные и решение",
+        "contains": [
+          "income_summary",
+          "pension_summary",
+          "debt_table",
+          "credit_history_summary",
+          "program_verdicts",
+          "blocking_reasons",
+          "missing_data",
+          "confirm_data_button"
+        ],
+        "completion_rule": "confirmed_snapshot_exists"
+      },
+      {
+        "order": 4,
+        "id": "scenarios",
+        "title": "Как провести клиента",
+        "contains": [
+          "ranked_scenario_cards",
+          "scenario_delta",
+          "new_programs_opened",
+          "required_documents",
+          "apply_scenario_button"
+        ],
+        "completion_rule": "scenario_selected_or_current_case_accepted"
+      },
+      {
+        "order": 5,
+        "id": "what_if",
+        "title": "Что если",
+        "contains": [
+          "property_price",
+          "down_payment",
+          "mortgage_term",
+          "existing_debt_payment",
+          "refinancing_offer",
+          "partial_prepayment",
+          "additional_confirmed_income",
+          "co_borrower",
+          "live_results",
+          "save_scenario_button"
+        ],
+        "completion_rule": "not_required"
+      },
+      {
+        "order": 6,
+        "id": "properties",
+        "title": "Подходящие квартиры в новостройках",
+        "contains": [
+          "matching_summary",
+          "property_cards",
+          "fit_status",
+          "price_and_down_payment",
+          "estimated_payment_and_kdn",
+          "availability_and_accreditation_freshness",
+          "add_to_selection_button"
+        ],
+        "completion_rule": "not_required"
+      },
+      {
+        "order": 7,
+        "id": "next_action_and_conclusion",
+        "title": "Следующее действие и заключение",
+        "contains": [
+          "next_best_action",
+          "due_date",
+          "save_client_decision",
+          "generate_link",
+          "generate_pdf"
+        ],
+        "completion_rule": "next_action_saved"
+      }
+    ]
+  },
+  "main_flow": [
+    "select_or_create_client",
+    "send_sms_consent",
+    "wait_for_client_confirmation",
+    "unlock_sensitive_actions",
+    "upload_credit_history_pdf",
+    "upload_enpf_pdf",
+    "run_authorized_iin_checks",
+    "extract_and_review_data",
+    "confirm_client_snapshot",
+    "run_program_matching",
+    "generate_ranked_scenarios",
+    "select_or_adjust_scenario",
+    "match_new_build_properties",
+    "save_next_action",
+    "share_client_conclusion"
+  ],
+  "consent": {
+    "purpose": [
+      "collect_and_process_questionnaire_data",
+      "process_uploaded_credit_history",
+      "process_uploaded_pension_statement",
+      "perform_authorized_iin_checks",
+      "calculate_preliminary_mortgage_options",
+      "match_mortgage_programs_and_properties",
+      "generate_and_share_client_conclusion"
+    ],
+    "required_before": [
+      "document_upload",
+      "document_processing",
+      "iin_checks",
+      "scoring",
+      "share_conclusion"
+    ],
+    "channels": [
+      {
+        "id": "government_access_control_service",
+        "name": "Государственный сервис контроля доступа к персональным данным",
+        "priority": 1,
+        "availability": "requires_approved_integration",
+        "note": "Использовать после юридической и технической проверки интеграции."
+      },
+      {
+        "id": "casa_sms_link_otp",
+        "name": "Защищенная CASA-ссылка + одноразовый SMS-код",
+        "priority": 2,
+        "availability": "implementation_option",
+        "note": "Достаточность способа для каждого вида данных подтверждается юристом и поставщиком данных до production."
+      }
+    ],
+    "status_enum": [
+      "not_requested",
+      "sms_pending",
+      "link_opened",
+      "confirmed",
+      "rejected",
+      "expired",
+      "revoked"
+    ],
+    "request": {
+      "link_ttl_minutes": 30,
+      "otp_ttl_minutes": 5,
+      "otp_max_attempts": 5,
+      "resend_cooldown_seconds": 60,
+      "rate_limits": {
+        "per_client_per_hour": 5,
+        "per_phone_per_day": 10
+      }
+    },
+    "audit_fields": [
+      "consent_id",
+      "client_id",
+      "phone_masked",
+      "phone_hash",
+      "consent_text_version",
+      "consent_text_hash",
+      "purposes",
+      "method",
+      "requested_at",
+      "opened_at",
+      "confirmed_at",
+      "rejected_at",
+      "revoked_at",
+      "ip_address",
+      "user_agent",
+      "sms_provider_message_id",
+      "actor_id"
+    ],
+    "legal_gate": {
+      "status": "required_before_production",
+      "checks": [
+        "approved_consent_text",
+        "approved_identity_confirmation_method",
+        "approved_data_retention_period",
+        "approved_list_of_necessary_and_sufficient_data",
+        "approved_third_party_processors",
+        "approved_cross_border_data_flow",
+        "approved_revocation_process"
+      ]
+    }
+  },
+  "document_processing": {
+    "accepted_formats": ["application/pdf"],
+    "max_file_size_mb": 25,
+    "max_pages_per_file": 100,
+    "types": [
+      {
+        "id": "credit_history",
+        "required": true,
+        "owner": "borrower",
+        "extract": [
+          "report_date",
+          "report_source",
+          "active_loans",
+          "closed_loans",
+          "monthly_payments",
+          "outstanding_balances",
+          "credit_limits",
+          "delinquencies",
+          "days_past_due",
+          "inquiries"
+        ]
+      },
+      {
+        "id": "enpf_statement",
+        "required": true,
+        "owner": "borrower",
+        "extract": [
+          "statement_period",
+          "contribution_months",
+          "monthly_opv_amounts",
+          "employer_names",
+          "gaps",
+          "latest_contribution_date",
+          "estimated_income_basis"
+        ]
+      }
+    ],
+    "pipeline": [
+      "validate_mime_and_signature",
+      "malware_scan",
+      "encrypt_and_store_original",
+      "classify_document",
+      "extract_text",
+      "extract_structured_fields",
+      "calculate_field_confidence",
+      "detect_inconsistencies",
+      "request_manual_review",
+      "confirm_fields",
+      "create_client_snapshot"
+    ],
+    "status_enum": [
+      "missing",
+      "uploading",
+      "uploaded",
+      "scanning",
+      "processing",
+      "needs_review",
+      "confirmed",
+      "rejected",
+      "expired",
+      "processing_failed"
+    ],
+    "field_provenance": {
+      "required": true,
+      "fields": [
+        "document_id",
+        "page_number",
+        "source_text_fragment_hash",
+        "extractor_version",
+        "confidence",
+        "confirmed_value",
+        "confirmed_by",
+        "confirmed_at"
+      ]
+    },
+    "confidence_policy": {
+      "auto_accept_min": 0.95,
+      "manual_review_below": 0.95,
+      "block_scoring_below": 0.7
+    }
+  },
+  "iin_checks": {
+    "gate": "active_consent_and_legal_source_access",
+    "policy": "Получать только законно доступные сведения из официальных источников или утвержденных интеграций. ИИН не считается общедоступным по умолчанию.",
+    "connectors": [
+      {
+        "id": "aisoip",
+        "name": "АИС ОИП",
+        "mode": "official_api_or_operator_assisted_link",
+        "production_status": "integration_and_legal_review_required",
+        "result_fields": [
+          "check_status",
+          "possible_enforcement_records",
+          "source_url",
+          "checked_at",
+          "response_reference"
+        ]
+      },
+      {
+        "id": "kgd_public_services",
+        "name": "Открытые сервисы КГД",
+        "mode": "official_api_or_operator_assisted_link",
+        "production_status": "integration_and_legal_review_required",
+        "result_fields": [
+          "check_status",
+          "public_registration_signals",
+          "source_url",
+          "checked_at",
+          "response_reference"
+        ]
+      }
+    ],
+    "forbidden": [
+      "credential_reuse_from_client",
+      "captcha_bypass",
+      "scraping_restricted_pages",
+      "collecting_unrelated_personal_data",
+      "presenting_no_result_as_verified_absence_when_source_failed"
+    ],
+    "result_status_enum": [
+      "not_started",
+      "in_progress",
+      "verified_no_records",
+      "records_found",
+      "source_unavailable",
+      "manual_check_required",
+      "not_authorized"
+    ]
+  },
+  "entities": {
+    "client": {
+      "required_fields": [
+        "id",
+        "full_name",
+        "phone",
+        "iin_encrypted",
+        "city",
+        "assigned_specialist_id",
+        "created_at"
+      ],
+      "optional_fields": [
+        "birth_date",
+        "marital_status",
+        "spouse_client_id",
+        "children_count",
+        "employment_type",
+        "employer_name",
+        "employment_start_date",
+        "primary_income",
+        "additional_income",
+        "income_confirmation_method",
+        "self_employed_since",
+        "desired_property_price",
+        "down_payment",
+        "down_payment_source",
+        "comfortable_monthly_payment",
+        "desired_term_months",
+        "property_market",
+        "property_type",
+        "co_borrower_client_ids",
+        "additional_collateral",
+        "notes"
+      ],
+      "sensitive_fields": [
+        "iin_encrypted",
+        "phone",
+        "birth_date",
+        "income",
+        "loan_obligations",
+        "credit_history",
+        "pension_contributions",
+        "documents"
+      ]
+    },
+    "consent": {
+      "primary_key": "consent_id",
+      "fields": [
+        "client_id",
+        "status",
+        "method",
+        "purposes",
+        "text_version",
+        "text_hash",
+        "requested_at",
+        "confirmed_at",
+        "expires_at",
+        "revoked_at",
+        "audit_metadata"
+      ]
+    },
+    "document": {
+      "primary_key": "document_id",
+      "fields": [
+        "client_id",
+        "type",
+        "owner_role",
+        "storage_key",
+        "sha256",
+        "status",
+        "issued_at",
+        "valid_until",
+        "uploaded_by",
+        "uploaded_at",
+        "extractor_version",
+        "extracted_fields",
+        "reviewed_by",
+        "reviewed_at"
+      ]
+    },
+    "client_snapshot": {
+      "primary_key": "snapshot_id",
+      "immutability": "immutable_after_confirmation",
+      "fields": [
+        "client_id",
+        "version",
+        "source_document_ids",
+        "questionnaire_values",
+        "confirmed_income",
+        "income_evidence",
+        "pension_history",
+        "obligations",
+        "credit_history_summary",
+        "property_goal",
+        "created_at",
+        "confirmed_by",
+        "confirmed_at"
+      ]
+    },
+    "loan_obligation": {
+      "primary_key": "obligation_id",
+      "fields": [
+        "client_id",
+        "creditor",
+        "product_type",
+        "original_amount",
+        "outstanding_balance",
+        "annual_rate",
+        "gesv",
+        "monthly_payment",
+        "remaining_term_months",
+        "delinquency_status",
+        "early_repayment_rules",
+        "source_document_id",
+        "confidence"
+      ]
+    },
+    "mortgage_program": {
+      "primary_key": "program_id",
+      "fields": [
+        "bank_id",
+        "name",
+        "market_scope",
+        "status",
+        "current_version_id"
+      ]
+    },
+    "program_version": {
+      "primary_key": "program_version_id",
+      "immutability": "immutable_after_publication",
+      "fields": [
+        "program_id",
+        "version",
+        "effective_from",
+        "effective_to",
+        "verification_status",
+        "verified_at",
+        "verified_by",
+        "source_references",
+        "calculation_parameters",
+        "rules"
+      ]
+    },
+    "program_rule": {
+      "primary_key": "rule_id",
+      "fields": [
+        "program_version_id",
+        "scope",
+        "field",
+        "operator",
+        "value",
+        "formula_id",
+        "missing_data_behavior",
+        "failure_reason_template",
+        "remediation_actions",
+        "source_reference_id",
+        "confidence_level"
+      ]
+    },
+    "analysis": {
+      "primary_key": "analysis_id",
+      "fields": [
+        "client_snapshot_id",
+        "engine_version",
+        "program_version_ids",
+        "started_at",
+        "completed_at",
+        "status",
+        "program_results",
+        "blocking_factors",
+        "missing_data",
+        "calculation_trace"
+      ]
+    },
+    "scenario": {
+      "primary_key": "scenario_id",
+      "fields": [
+        "analysis_id",
+        "type",
+        "input_changes",
+        "assumptions",
+        "new_calculation",
+        "opened_programs",
+        "closed_programs",
+        "required_actions",
+        "required_documents",
+        "rank",
+        "score_breakdown",
+        "selected_at"
+      ]
+    },
+    "property_unit": {
+      "primary_key": "property_unit_id",
+      "fields": [
+        "development_id",
+        "developer_id",
+        "city",
+        "address",
+        "property_type",
+        "rooms",
+        "area_sqm",
+        "floor",
+        "completion_date",
+        "price",
+        "minimum_down_payment",
+        "available",
+        "availability_checked_at",
+        "accreditations",
+        "source_reference"
+      ]
+    },
+    "property_match": {
+      "primary_key": "property_match_id",
+      "fields": [
+        "scenario_id",
+        "property_unit_id",
+        "status",
+        "mortgage_program_version_id",
+        "estimated_loan_amount",
+        "estimated_monthly_payment",
+        "estimated_kdn",
+        "missing_down_payment",
+        "reasons",
+        "warnings",
+        "calculated_at"
+      ]
+    },
+    "client_conclusion": {
+      "primary_key": "conclusion_id",
+      "fields": [
+        "client_id",
+        "analysis_id",
+        "selected_scenario_id",
+        "selected_property_match_ids",
+        "version",
+        "public_token_hash",
+        "public_link_expires_at",
+        "generated_pdf_key",
+        "created_by",
+        "created_at",
+        "revoked_at"
+      ]
+    },
+    "audit_event": {
+      "primary_key": "audit_event_id",
+      "fields": [
+        "tenant_id",
+        "actor_id",
+        "client_id",
+        "action",
+        "entity_type",
+        "entity_id",
+        "before_hash",
+        "after_hash",
+        "ip_address",
+        "user_agent",
+        "created_at"
+      ]
+    }
+  },
+  "state_machines": {
+    "case_status": [
+      "new",
+      "consent_required",
+      "waiting_for_consent",
+      "documents_required",
+      "documents_processing",
+      "data_review_required",
+      "ready_for_analysis",
+      "analysis_ready",
+      "scenario_selected",
+      "property_selection_ready",
+      "ready_for_application",
+      "on_hold",
+      "closed"
+    ],
+    "program_verdict": [
+      "eligible_by_known_rules",
+      "potentially_eligible",
+      "not_eligible",
+      "insufficient_data",
+      "manual_bank_confirmation_required"
+    ],
+    "property_fit": [
+      "fits_now",
+      "fits_after_selected_scenario",
+      "does_not_fit",
+      "availability_check_required",
+      "accreditation_check_required"
+    ]
+  },
+  "calculation_engine": {
+    "money_rounding": "KZT_integer_for_display_decimal_for_internal_calculation",
+    "formulas": [
+      {
+        "id": "annuity_payment",
+        "expression": "P * r * (1 + r)^n / ((1 + r)^n - 1)",
+        "variables": {
+          "P": "loan_principal",
+          "r": "monthly_nominal_rate",
+          "n": "term_months"
+        },
+        "warning": "Использовать параметры конкретной версии программы; комиссии и страхование считать отдельно."
+      },
+      {
+        "id": "preliminary_kdn",
+        "expression": "(existing_monthly_obligations + proposed_mortgage_payment) / accepted_confirmed_income * 100",
+        "warning": "Состав обязательств, дохода и предельное значение определяются правилами конкретного банка и программы."
+      },
+      {
+        "id": "down_payment_gap",
+        "expression": "max(0, required_down_payment - available_down_payment)"
+      },
+      {
+        "id": "loan_amount",
+        "expression": "property_price - down_payment"
+      },
+      {
+        "id": "estimated_income_from_opv",
+        "expression": "opv_amount / configured_opv_ratio",
+        "warning": "Только предварительная база. Принимаемый банком доход подтверждается документами и правилами программы."
+      }
+    ],
+    "rule_result": {
+      "status_enum": ["pass", "fail", "unknown", "manual"],
+      "required_output": [
+        "rule_id",
+        "status",
+        "actual_value",
+        "required_value",
+        "delta",
+        "human_reason",
+        "remediation_actions",
+        "source_reference",
+        "program_version_id"
+      ]
+    },
+    "reproducibility": {
+      "required": true,
+      "store": [
+        "client_snapshot_id",
+        "program_version_ids",
+        "engine_version",
+        "input_hash",
+        "calculation_trace",
+        "calculated_at"
+      ]
+    }
+  },
+  "scenario_engine": {
+    "goal": "Найти минимальное проверяемое изменение, которое открывает программу или снижает риск и ежемесячную нагрузку.",
+    "types": [
+      {
+        "id": "increase_down_payment",
+        "inputs": ["additional_down_payment"],
+        "outputs": ["new_loan_amount", "new_payment", "new_kdn", "opened_programs", "missing_amount"]
+      },
+      {
+        "id": "close_obligation",
+        "inputs": ["obligation_id", "payoff_amount"],
+        "outputs": ["new_existing_payment", "new_kdn", "opened_programs", "cash_required"]
+      },
+      {
+        "id": "refinance_high_rate_debt",
+        "inputs": [
+          "obligation_id",
+          "verified_refinancing_rate",
+          "verified_refinancing_gesv",
+          "new_term_months",
+          "fees",
+          "insurance",
+          "offer_valid_until"
+        ],
+        "outputs": [
+          "old_payment",
+          "new_payment",
+          "monthly_saving",
+          "total_cost_difference",
+          "new_kdn",
+          "opened_programs",
+          "break_even_month"
+        ],
+        "guardrails": [
+          "No rate is assumed without a user-entered or integrated verified offer.",
+          "Show total cost and fees, not only lower monthly payment.",
+          "Mark as preliminary until lender confirms the refinancing offer."
+        ]
+      },
+      {
+        "id": "partial_early_repayment",
+        "inputs": [
+          "obligation_id",
+          "prepayment_amount",
+          "recalculation_mode",
+          "new_schedule_source"
+        ],
+        "allowed_recalculation_modes": ["reduce_payment", "reduce_term"],
+        "default_recalculation_mode": "reduce_payment",
+        "outputs": [
+          "old_balance",
+          "new_balance",
+          "old_payment",
+          "estimated_new_payment",
+          "monthly_saving",
+          "new_kdn",
+          "opened_programs"
+        ],
+        "guardrails": [
+          "The recommendation must explicitly select payment reduction when the goal is lower debt load.",
+          "Final value requires a new lender schedule or verified recalculation rule.",
+          "Do not mutate the original obligation."
+        ]
+      },
+      {
+        "id": "increase_confirmed_income",
+        "inputs": [
+          "income_amount",
+          "income_type",
+          "confirmation_method",
+          "program_acceptance_status"
+        ],
+        "outputs": ["accepted_income", "new_kdn", "opened_programs", "required_documents"],
+        "guardrails": [
+          "Count only income accepted by the selected program.",
+          "Display required evidence and verification status.",
+          "Never recommend artificial or false income."
+        ]
+      },
+      {
+        "id": "lower_property_budget",
+        "inputs": ["new_property_price"],
+        "outputs": ["new_loan_amount", "new_payment", "new_kdn", "opened_programs", "matching_properties"]
+      },
+      {
+        "id": "add_co_borrower",
+        "inputs": ["co_borrower_snapshot_id"],
+        "outputs": ["combined_accepted_income", "combined_obligations", "new_kdn", "opened_programs", "required_documents"]
+      },
+      {
+        "id": "wait_for_history",
+        "inputs": ["target_date", "reason"],
+        "outputs": ["expected_rule_changes", "reminder_date", "programs_to_recalculate"]
+      }
+    ],
+    "combination_policy": {
+      "max_changes_per_scenario": 3,
+      "default_show_count": 5,
+      "prohibited": [
+        "fabricated_income",
+        "hidden_debt",
+        "unverified_bank_exception",
+        "scenario_that_worsens_total_cost_without_warning"
+      ]
+    },
+    "ranking": {
+      "factors": [
+        {"id": "eligibility_gain", "weight": 0.35},
+        {"id": "cash_required", "weight": 0.2},
+        {"id": "monthly_payment_reduction", "weight": 0.15},
+        {"id": "total_cost", "weight": 0.1},
+        {"id": "time_to_complete", "weight": 0.1},
+        {"id": "document_complexity", "weight": 0.05},
+        {"id": "rule_confidence", "weight": 0.05}
+      ],
+      "explanation_required": true
+    }
+  },
+  "program_knowledge_base": {
+    "no_hardcoded_rules_in_ui": true,
+    "verification_status_enum": [
+      "officially_verified",
+      "bank_confirmed",
+      "observed_requires_confirmation",
+      "stale_requires_review",
+      "changed_unpublished",
+      "archived"
+    ],
+    "source_priority": [
+      "official_bank_or_government_publication",
+      "written_bank_confirmation",
+      "verified_internal_observation",
+      "manual_confirmation_required"
+    ],
+    "required_version_fields": [
+      "program_id",
+      "version",
+      "effective_from",
+      "effective_to",
+      "source_url_or_document",
+      "source_published_at",
+      "verified_at",
+      "verified_by",
+      "rules_hash"
+    ],
+    "freshness_policy": {
+      "show_verified_date": true,
+      "block_green_result_if_stale": true,
+      "stale_days_default": 14,
+      "stale_days_configurable_per_source": true
+    }
+  },
+  "property_matching": {
+    "placement": "after_selected_or_current_financial_scenario",
+    "required_filters": [
+      "city",
+      "new_build_only",
+      "property_price_lte_client_budget",
+      "available_down_payment_gte_required_down_payment",
+      "estimated_payment_lte_comfortable_payment",
+      "program_property_compatibility",
+      "unit_availability"
+    ],
+    "conditional_filters": [
+      "bank_accreditation",
+      "developer_requirement",
+      "construction_stage",
+      "commissioning_date",
+      "additional_collateral_requirement"
+    ],
+    "card_fields": [
+      "development_name",
+      "developer_name",
+      "city_and_address",
+      "rooms",
+      "area_sqm",
+      "floor",
+      "completion_date",
+      "price",
+      "minimum_down_payment",
+      "estimated_loan_amount",
+      "estimated_monthly_payment",
+      "estimated_kdn",
+      "fit_status",
+      "fit_reasons",
+      "warnings",
+      "availability_checked_at",
+      "accreditation_checked_at"
+    ],
+    "actions": [
+      "open_development",
+      "add_to_client_selection",
+      "request_availability_confirmation",
+      "include_in_conclusion"
+    ],
+    "guardrails": [
+      "Do not show unavailable units as available.",
+      "Mark demo inventory explicitly.",
+      "Do not treat preliminary financial fit as bank approval.",
+      "Show freshness of price, availability and accreditation."
+    ]
+  },
+  "api": {
+    "base_path": "/api/v1",
+    "authentication": "tenant_scoped_session_or_bearer_token",
+    "idempotency_required_for": [
+      "POST /clients/{client_id}/consents",
+      "POST /clients/{client_id}/documents",
+      "POST /analyses",
+      "POST /conclusions"
+    ],
+    "endpoints": [
+      {"method": "POST", "path": "/clients", "purpose": "Создать клиента"},
+      {"method": "GET", "path": "/clients", "purpose": "Поиск и список клиентов"},
+      {"method": "GET", "path": "/clients/{client_id}", "purpose": "Получить карточку клиента"},
+      {"method": "PATCH", "path": "/clients/{client_id}", "purpose": "Обновить анкету клиента"},
+      {"method": "POST", "path": "/clients/{client_id}/consents", "purpose": "Создать запрос согласия"},
+      {"method": "GET", "path": "/consents/{consent_id}", "purpose": "Получить публичную страницу согласия"},
+      {"method": "POST", "path": "/consents/{consent_id}/otp/send", "purpose": "Отправить одноразовый код"},
+      {"method": "POST", "path": "/consents/{consent_id}/confirm", "purpose": "Подтвердить или отклонить согласие"},
+      {"method": "POST", "path": "/consents/{consent_id}/revoke", "purpose": "Отозвать согласие"},
+      {"method": "POST", "path": "/clients/{client_id}/documents", "purpose": "Получить URL загрузки документа"},
+      {"method": "POST", "path": "/documents/{document_id}/complete", "purpose": "Подтвердить завершение загрузки"},
+      {"method": "GET", "path": "/documents/{document_id}/extraction", "purpose": "Получить распознанные поля и уверенность"},
+      {"method": "PATCH", "path": "/documents/{document_id}/extraction", "purpose": "Исправить и подтвердить поля"},
+      {"method": "POST", "path": "/clients/{client_id}/iin-checks", "purpose": "Запустить разрешенные проверки"},
+      {"method": "GET", "path": "/clients/{client_id}/iin-checks/latest", "purpose": "Получить последние результаты"},
+      {"method": "POST", "path": "/clients/{client_id}/snapshots", "purpose": "Создать подтвержденный снимок"},
+      {"method": "POST", "path": "/analyses", "purpose": "Запустить анализ программ"},
+      {"method": "GET", "path": "/analyses/{analysis_id}", "purpose": "Получить объяснимый результат"},
+      {"method": "POST", "path": "/analyses/{analysis_id}/scenarios/generate", "purpose": "Сгенерировать сценарии"},
+      {"method": "POST", "path": "/analyses/{analysis_id}/scenarios/preview", "purpose": "Пересчитать Что если"},
+      {"method": "POST", "path": "/analyses/{analysis_id}/scenarios/{scenario_id}/select", "purpose": "Выбрать сценарий"},
+      {"method": "GET", "path": "/analyses/{analysis_id}/property-matches", "purpose": "Получить подходящие квартиры"},
+      {"method": "POST", "path": "/clients/{client_id}/selections", "purpose": "Сохранить подборку квартир"},
+      {"method": "POST", "path": "/conclusions", "purpose": "Зафиксировать и создать заключение"},
+      {"method": "GET", "path": "/conclusions/{public_token}", "purpose": "Открыть клиентское заключение"},
+      {"method": "GET", "path": "/conclusions/{conclusion_id}/pdf", "purpose": "Скачать PDF"},
+      {"method": "GET", "path": "/mortgage-programs", "purpose": "Получить опубликованные версии программ"},
+      {"method": "POST", "path": "/mortgage-programs/{program_id}/versions", "purpose": "Создать версию программы"},
+      {"method": "POST", "path": "/mortgage-programs/{program_id}/versions/{version_id}/publish", "purpose": "Опубликовать проверенную версию"}
+    ],
+    "standard_error": {
+      "fields": ["code", "message", "field_errors", "trace_id"],
+      "codes": [
+        "CONSENT_REQUIRED",
+        "CONSENT_EXPIRED",
+        "DOCUMENT_TYPE_INVALID",
+        "DOCUMENT_PROCESSING_FAILED",
+        "DATA_CONFIRMATION_REQUIRED",
+        "PROGRAM_RULES_STALE",
+        "SOURCE_UNAVAILABLE",
+        "INSUFFICIENT_DATA",
+        "FORBIDDEN",
+        "RATE_LIMITED"
+      ]
+    }
+  },
+  "events": [
+    "client.created",
+    "consent.requested",
+    "consent.opened",
+    "consent.confirmed",
+    "consent.rejected",
+    "consent.expired",
+    "consent.revoked",
+    "document.uploaded",
+    "document.processing_started",
+    "document.needs_review",
+    "document.confirmed",
+    "iin_check.completed",
+    "client_snapshot.confirmed",
+    "analysis.completed",
+    "program_option.appeared",
+    "program_option.disappeared",
+    "scenario.generated",
+    "scenario.selected",
+    "property_match.created",
+    "property_availability.stale",
+    "conclusion.shared"
+  ],
+  "security_and_privacy": {
+    "tenant_isolation": "mandatory",
+    "encryption": {
+      "in_transit": "TLS 1.2+",
+      "at_rest": "managed KMS encryption",
+      "field_level": ["iin", "document_storage_key", "public_link_token"]
+    },
+    "access_control": "role_based_and_client_scope_checked_on_every_request",
+    "document_access": "short_lived_signed_urls",
+    "public_links": {
+      "random_token_min_bits": 128,
+      "expiry_required": true,
+      "revocable": true,
+      "no_search_engine_indexing": true,
+      "sensitive_fields_hidden": true
+    },
+    "logging": {
+      "mask": ["iin", "phone", "document_text", "otp"],
+      "audit_sensitive_reads": true,
+      "do_not_log": ["raw_pdf", "otp_plaintext", "full_iin"]
+    },
+    "retention": {
+      "policy": "configurable_after_legal_approval",
+      "delete_or_anonymize_after_expiry": true,
+      "revocation_effect": "block_new_processing_and_revoke_shared_access; preserve only legally required audit data"
+    },
+    "operational_controls": [
+      "malware_scanning",
+      "dependency_scanning",
+      "secret_management",
+      "backup_encryption",
+      "incident_response_runbook",
+      "least_privilege_service_accounts",
+      "production_data_forbidden_in_test"
+    ]
+  },
+  "non_functional_requirements": {
+    "performance": [
+      {"metric": "workspace_initial_load_p75", "target": "<= 2.5s on broadband"},
+      {"metric": "what_if_recalculation_p95", "target": "<= 500ms after input debounce"},
+      {"metric": "analysis_status_response_p95", "target": "<= 1s excluding asynchronous extraction"},
+      {"metric": "document_upload_start_p95", "target": "<= 1s"}
+    ],
+    "availability": {
+      "monthly_target": "99.5% for v1.1",
+      "graceful_degradation": "If external source is unavailable, keep local analysis available and mark source status explicitly."
+    },
+    "accessibility": [
+      "keyboard_navigation",
+      "visible_focus",
+      "semantic_labels",
+      "contrast_at_least_wcag_aa_for_text",
+      "status_not_conveyed_by_color_only"
+    ],
+    "observability": [
+      "structured_logs",
+      "distributed_trace_id",
+      "job_metrics",
+      "external_connector_health",
+      "document_processing_error_dashboard",
+      "rule_engine_regression_dashboard"
+    ],
+    "browsers": [
+      "latest_2_chrome",
+      "latest_2_edge",
+      "latest_2_safari",
+      "latest_2_firefox"
+    ],
+    "responsive": ["desktop_1280_plus", "tablet_768_plus", "mobile_client_consent_page"]
+  },
+  "analytics": {
+    "events": [
+      "mortgage_workspace_opened",
+      "client_created",
+      "consent_sent",
+      "consent_confirmed",
+      "document_uploaded",
+      "document_confirmed",
+      "analysis_run",
+      "scenario_applied",
+      "what_if_changed",
+      "property_added_to_selection",
+      "conclusion_generated",
+      "conclusion_shared"
+    ],
+    "funnel": [
+      "workspace_opened",
+      "real_client_created",
+      "consent_confirmed",
+      "two_documents_confirmed",
+      "analysis_completed",
+      "scenario_selected",
+      "property_selection_created",
+      "conclusion_shared"
+    ]
+  },
+  "acceptance_tests": [
+    {
+      "id": "AC-001",
+      "priority": "P0",
+      "given": "У клиента нет активного согласия",
+      "when": "Специалист пытается загрузить PDF или запустить проверку по ИИН",
+      "then": "Действие заблокировано, показана причина и кнопка отправки SMS-согласия"
+    },
+    {
+      "id": "AC-002",
+      "priority": "P0",
+      "given": "Клиент открыл защищенную ссылку и ввел правильный одноразовый код",
+      "when": "Он подтверждает актуальную версию текста согласия",
+      "then": "Согласие получает статус confirmed, сохраняется неизменяемый аудит, специалист видит обновление без перезагрузки"
+    },
+    {
+      "id": "AC-003",
+      "priority": "P0",
+      "given": "Загружены кредитная история и выписка ЕНПФ",
+      "when": "Распознавание завершено",
+      "then": "Поля показаны с источником и уверенностью; низкая уверенность требует ручного подтверждения"
+    },
+    {
+      "id": "AC-004",
+      "priority": "P0",
+      "given": "Есть неполные или противоречивые данные",
+      "when": "Запускается анализ",
+      "then": "Ни одна программа не получает зеленый вердикт; система перечисляет недостающие поля"
+    },
+    {
+      "id": "AC-005",
+      "priority": "P0",
+      "given": "Клиент не проходит из-за долговой нагрузки",
+      "when": "CASA строит сценарии",
+      "then": "Показаны минимум рефинансирование, частичное досрочное погашение с уменьшением платежа и подтверждение дополнительного дохода, если применимо"
+    },
+    {
+      "id": "AC-006",
+      "priority": "P0",
+      "given": "Для рефинансирования нет проверенной ставки или предложения",
+      "when": "Сценарий открыт",
+      "then": "Система просит ввести подтвержденные условия и не показывает выдуманный итог"
+    },
+    {
+      "id": "AC-007",
+      "priority": "P0",
+      "given": "Специалист вводит сумму частичного погашения",
+      "when": "Выбран режим уменьшения платежа",
+      "then": "CASA показывает старый и новый платеж, изменение КДН, открывшиеся программы и необходимость получить новый график"
+    },
+    {
+      "id": "AC-008",
+      "priority": "P0",
+      "given": "Специалист добавляет дополнительный доход",
+      "when": "Программа не принимает выбранный тип подтверждения",
+      "then": "Доход не включается в принимаемую базу и показывается объяснение"
+    },
+    {
+      "id": "AC-009",
+      "priority": "P0",
+      "given": "Специалист меняет стоимость квартиры, взнос или долг",
+      "when": "Поле изменено",
+      "then": "Платеж, КДН, программы и квартиры пересчитываются не позднее 500 мс на p95"
+    },
+    {
+      "id": "AC-010",
+      "priority": "P0",
+      "given": "Выбран финансовый сценарий",
+      "when": "Система запрашивает подбор недвижимости",
+      "then": "В конце экрана показаны только подходящие или условно подходящие новостройки с причиной статуса и свежестью данных"
+    },
+    {
+      "id": "AC-011",
+      "priority": "P0",
+      "given": "Версия программы устарела или требует ручного подтверждения",
+      "when": "Клиент формально соответствует правилам",
+      "then": "Вердикт не становится зеленым; указаны дата и источник последней проверки"
+    },
+    {
+      "id": "AC-012",
+      "priority": "P0",
+      "given": "Расчет сохранен",
+      "when": "Позже опубликована новая версия программы",
+      "then": "Старый расчет воспроизводится по прежнему снимку клиента и прежней версии правил"
+    },
+    {
+      "id": "AC-013",
+      "priority": "P0",
+      "given": "Клиент отозвал согласие",
+      "when": "Пользователь открывает документы или публичную ссылку",
+      "then": "Новая обработка и доступ блокируются, событие записывается в аудит"
+    },
+    {
+      "id": "AC-014",
+      "priority": "P0",
+      "given": "Создано заключение клиента",
+      "when": "Открывается публичная ссылка или PDF",
+      "then": "Видны варианты, цифры, плюсы, ограничения и следующие шаги; внутренние заметки, полный ИИН и исходные документы скрыты"
+    },
+    {
+      "id": "AC-015",
+      "priority": "P1",
+      "given": "Источник проверки по ИИН недоступен",
+      "when": "Проверка завершилась ошибкой",
+      "then": "CASA показывает source_unavailable, а не verified_no_records, и предлагает ручную проверку"
+    }
+  ],
+  "implementation_phases": [
+    {
+      "phase": 0,
+      "name": "Интерфейс и контракты",
+      "deliverables": [
+        "single_page_workspace_in_existing_CASA_shell",
+        "all_interactive_states_with_mock_data",
+        "typed_frontend_models",
+        "OpenAPI_contract_draft",
+        "analytics_event_map"
+      ],
+      "exit_criteria": "Все P0 пользовательские переходы кликабельны и согласованы дизайнером, продуктом и разработчиком."
+    },
+    {
+      "phase": 1,
+      "name": "Согласие, документы и данные",
+      "deliverables": [
+        "sms_provider_integration",
+        "secure_consent_page",
+        "consent_audit",
+        "encrypted_document_storage",
+        "credit_history_extraction",
+        "enpf_extraction",
+        "manual_review_ui",
+        "authorized_iin_connector_framework"
+      ],
+      "exit_criteria": "Реальный клиент может дать согласие; два PDF превращаются в подтвержденный снимок с трассировкой полей."
+    },
+    {
+      "phase": 2,
+      "name": "Правила и пути к ипотеке",
+      "deliverables": [
+        "versioned_program_knowledge_base",
+        "rule_engine",
+        "explainable_verdicts",
+        "refinancing_scenario",
+        "partial_prepayment_scenario",
+        "additional_income_scenario",
+        "what_if_recalculation"
+      ],
+      "exit_criteria": "Один и тот же снимок дает воспроизводимый анализ; каждое препятствие связано с конкретным действием."
+    },
+    {
+      "phase": 3,
+      "name": "Новостройки и заключение",
+      "deliverables": [
+        "property_inventory_connector",
+        "property_fit_engine",
+        "client_selection",
+        "versioned_conclusion",
+        "public_link",
+        "pdf_generation"
+      ],
+      "exit_criteria": "После выбора сценария CASA формирует объяснимую подборку квартир и безопасное клиентское заключение."
+    }
+  ],
+  "open_decisions": [
+    {
+      "id": "OD-001",
+      "owner": "legal",
+      "question": "Какой способ подтверждения согласия допустим для каждого источника и цели обработки?",
+      "blocks": "production_consent"
+    },
+    {
+      "id": "OD-002",
+      "owner": "legal_security",
+      "question": "Где физически хранить персональные данные и допускается ли трансграничная обработка выбранными подрядчиками?",
+      "blocks": "production_storage"
+    },
+    {
+      "id": "OD-003",
+      "owner": "engineering",
+      "question": "Какой SMS-провайдер и резервный канал использовать?",
+      "blocks": "sms_consent"
+    },
+    {
+      "id": "OD-004",
+      "owner": "data_legal",
+      "question": "Какие официальные API или договорные каналы доступны для АИС ОИП и сервисов КГД?",
+      "blocks": "automated_iin_checks"
+    },
+    {
+      "id": "OD-005",
+      "owner": "product_underwriting",
+      "question": "Какие первые банки и программы входят в проверенный стартовый набор?",
+      "blocks": "rule_engine_go_live"
+    },
+    {
+      "id": "OD-006",
+      "owner": "product_data",
+      "question": "Какой источник дает актуальные цены, наличие и аккредитации новостроек?",
+      "blocks": "property_matching_go_live"
+    },
+    {
+      "id": "OD-007",
+      "owner": "legal_product",
+      "question": "Какой срок хранения установлен для документов, согласий, расчетов и аудита?",
+      "blocks": "retention_policy"
+    }
+  ],
+  "demo_fixture": {
+    "demo_only": true,
+    "warning": "Все банковские условия, ставки, платежи и квартиры в фикстуре демонстрационные и требуют проверки перед production.",
+    "client": {
+      "full_name": "Айдос Мухамедов",
+      "age": 31,
+      "city": "Алматы",
+      "confirmed_income": 650000,
+      "pension_contributions": "stable",
+      "existing_monthly_payment": 115000,
+      "outstanding_debt": 4200000,
+      "down_payment": 5000000,
+      "desired_property_price": 30000000,
+      "comfortable_monthly_payment": 240000
+    },
+    "expected_scenario_types": [
+      "increase_down_payment",
+      "refinance_high_rate_debt",
+      "partial_early_repayment",
+      "increase_confirmed_income",
+      "lower_property_budget",
+      "add_co_borrower"
+    ],
+    "expected_last_section": "matching_new_build_properties"
+  },
+  "official_reference_urls": [
+    {
+      "title": "Закон Республики Казахстан «О персональных данных и их защите»",
+      "url": "https://adilet.zan.kz/rus/docs/Z1300000094",
+      "usage": "legal_review_reference"
+    },
+    {
+      "title": "Закон Республики Казахстан «О кредитных бюро и формировании кредитных историй в Республике Казахстан»",
+      "url": "https://adilet.zan.kz/rus/docs/Z040000573_",
+      "usage": "legal_review_reference"
+    },
+    {
+      "title": "Государственный сервис контроля доступа к персональным данным",
+      "url": "https://www.gov.kz/memleket/entities/infsecurity/press/article/details/130936?lang=ru",
+      "usage": "integration_and_consent_research"
+    },
+    {
+      "title": "ЕНПФ: направить выписку со счетов на электронный адрес",
+      "url": "https://www.enpf.kz/ru/elektronnye-servisy/send.php",
+      "usage": "client_document_flow_reference"
+    }
+  ]
+}

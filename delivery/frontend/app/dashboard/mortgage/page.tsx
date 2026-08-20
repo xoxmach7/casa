@@ -492,6 +492,7 @@ export default function MortgageWorkspacePage() {
         onOpenChange={setConsentOpen}
         client={st.client}
         consentStatus={st.consent.status}
+        previewHref={st.consent.audit?.consentId ? `/consent/${st.consent.audit.consentId}` : undefined}
         onSend={sendConsent}
         onClientConfirm={clientConfirmConsent}
         onClientReject={clientRejectConsent}

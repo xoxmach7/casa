@@ -147,6 +147,7 @@ export function ConsentModal({
   onOpenChange,
   client,
   consentStatus,
+  previewHref,
   onSend,
   onClientConfirm,
   onClientReject,
@@ -155,6 +156,7 @@ export function ConsentModal({
   onOpenChange: (v: boolean) => void;
   client: MortgageClient | null;
   consentStatus: ConsentStatus;
+  previewHref?: string;
   onSend: () => void;
   onClientConfirm: () => void;
   onClientReject: () => void;
@@ -198,6 +200,16 @@ export function ConsentModal({
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Ссылка отправлена на {client?.phone}. Ожидаем ответ клиента…
               </p>
+              {previewHref && (
+                <a
+                  href={previewHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-md border border-dashed py-2 text-center text-xs text-[#15325B] hover:bg-[#15325B]/[0.03]"
+                >
+                  Открыть страницу клиента (демо) ↗
+                </a>
+              )}
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1 text-red-600" onClick={onClientReject}>
                   <X className="mr-2 h-4 w-4" />

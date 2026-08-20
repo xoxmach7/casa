@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { API_URL } from "@/lib/config";
 
 import type { WorkspaceState, MortgageClient, WhatIfInputs } from "@/lib/mortgage/types";
 import { formatDateTime } from "@/lib/mortgage/calc";
@@ -291,20 +292,41 @@ export default function MortgageWorkspacePage() {
     toast({ title: "Решение сохранено" });
   }, [toast]);
 
-  const generateLink = useCallback(() => {
+  const generateLink = useCallback(async () => {
+    // Пытаемся создать заключение на бэкенде (demo-хранилище) и получить токен;
+    // если бэкенд недоступен — локальный fallback (страница /z/[token] сама
+    // покажет demo-заключение).
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://pro.casa.kz";
+    let token = `demo-${Math.random().toString(36).slice(2, 10)}`;
+    let expiresAt = "26.08.2026";
+    try {
+      const res = await fetch(`${API_URL}/mortgage-workspace/conclusions`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedScenarioId: st.selectedScenarioId, whatIf: st.whatIf }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.token) token = d.token;
+        if (d.expiresAt) expiresAt = new Date(d.expiresAt).toLocaleDateString("ru-RU");
+      }
+    } catch {
+      /* fallback ниже */
+    }
     setSt((prev) => ({
       ...prev,
       conclusion: {
         conclusionId: `cn-${Date.now().toString(36)}`,
         version: (prev.conclusion?.version ?? 0) + 1,
-        publicLink: `https://pro.casa.kz/z/${Math.random().toString(36).slice(2, 10)}`,
-        expiresAt: "26.08.2026",
+        publicLink: `${origin}/z/${token}`,
+        expiresAt,
         createdAt: nowIso(),
         pdfReady: prev.conclusion?.pdfReady,
       },
     }));
     toast({ title: "Ссылка создана", description: "Без индексации, с истечением, ИИН и документы скрыты (AC-014)." });
-  }, [toast]);
+  }, [toast, st.selectedScenarioId, st.whatIf]);
 
   const generatePdf = useCallback(() => {
     setSt((prev) => ({

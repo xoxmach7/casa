@@ -66,6 +66,8 @@ import { exportRouter } from './routes/export.routes';
 import { importRouter } from './routes/import.routes';
 import { subscriptionsRouter } from './routes/subscriptions.routes';
 import { mortgageApplicationsRouter } from './routes/mortgage-applications.routes';
+import { mortgageWorkspaceRouter } from './routes/mortgage-workspace.routes';
+import { publicMortgageRouter } from './routes/public-mortgage.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { auditMiddleware } from './middleware/audit.middleware';
 import { csrfGuard } from './middleware/csrf.middleware';
@@ -191,6 +193,7 @@ app.use('/api/public/buyer-leads', publicBuyerLeadsRouter);
 app.use('/api/public/landing-leads', publicLandingLeadsRouter);
 app.use('/api/public/selections', publicSelectionsRouter);
 app.use('/api/public/uploads', publicUploadsRouter);
+app.use('/api/public/mortgage', publicMortgageRouter);
 
 // CASA CRM Routes
 app.use('/api/sellers', sellersRouter);
@@ -218,6 +221,7 @@ app.use('/api/export', exportRouter);
 app.use('/api/import', importRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/mortgage-applications', mortgageApplicationsRouter);
+app.use('/api/mortgage-workspace', mortgageWorkspaceRouter);
 app.use('/api/feedback', feedbackRouter);
 
 // Error handling

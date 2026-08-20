@@ -440,7 +440,14 @@ export function SectionConclusion({ state, h }: SectionProps) {
           {state.conclusion?.publicLink && (
             <div className="rounded-md bg-muted p-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate font-mono">{state.conclusion.publicLink}</span>
+                <a
+                  href={state.conclusion.publicLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate font-mono text-[#15325B] underline-offset-2 hover:underline"
+                >
+                  {state.conclusion.publicLink}
+                </a>
                 <StatusBadge tone="green" className="text-[10px]">активна</StatusBadge>
               </div>
               <p className="mt-1 text-muted-foreground">

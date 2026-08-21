@@ -150,8 +150,9 @@ export default function MortgageWorkspacePage() {
 
   // --- Секция 2: документы и ИИН --------------------------------------------
 
-  const uploadDocument = useCallback((which: "creditHistory" | "enpf") => {
+  const uploadDocument = useCallback((which: "creditHistory" | "enpf", fileName?: string, _fileSize?: number) => {
     const fields = which === "creditHistory" ? CREDIT_HISTORY_FIELDS : ENPF_FIELDS;
+    const name = fileName || `${which === "creditHistory" ? "credit_history" : "enpf"}.pdf`;
     const stages: { status: WorkspaceState["documents"]["creditHistory"]["status"]; progress: number; delay: number }[] = [
       { status: "uploading", progress: 25, delay: 0 },
       { status: "scanning", progress: 50, delay: 700 },
@@ -169,7 +170,7 @@ export default function MortgageWorkspacePage() {
               ...prev.documents[which],
               status: s.status,
               progress: s.progress,
-              fileName: `${which === "creditHistory" ? "credit_history" : "enpf"}.pdf`,
+              fileName: name,
               fields: s.status === "needs_review" ? fields.map((f) => ({ ...f })) : prev.documents[which].fields,
               reportDate: s.status === "needs_review" ? "12.08.2026" : prev.documents[which].reportDate,
             },

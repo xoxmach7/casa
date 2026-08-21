@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   UserPlus,
   ShieldCheck,
@@ -231,6 +231,19 @@ function DocumentCard({
   const label = DOC_LABEL[doc.status];
   const inFlight = ["uploading", "scanning", "processing"].includes(doc.status);
   const lowConfidence = doc.fields.filter((f) => f.confidence < 0.7 || f.inconsistency);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // разрешить повторный выбор того же файла
+    if (!f) return;
+    const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) { setPickError("Нужен файл в формате PDF"); return; }
+    if (f.size > 25 * 1024 * 1024) { setPickError("Файл больше 25 МБ"); return; }
+    setPickError(null);
+    h.uploadDocument(which, f.name, f.size);
+  };
 
   return (
     <div className="rounded-lg border p-3">
@@ -241,6 +254,11 @@ function DocumentCard({
         </div>
         <StatusBadge tone={label.tone}>{label.text}</StatusBadge>
       </div>
+      {doc.fileName && (
+        <p className="mt-1 truncate text-xs text-muted-foreground" title={doc.fileName}>
+          Файл: {doc.fileName}
+        </p>
+      )}
 
       {inFlight && (
         <div className="mt-3">
@@ -250,10 +268,23 @@ function DocumentCard({
       )}
 
       {doc.status === "missing" && (
-        <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => h.uploadDocument(which)}>
-          <FileUp className="mr-2 h-3.5 w-3.5" />
-          Загрузить PDF
-        </Button>
+        <div className="mt-3">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            onChange={onPick}
+          />
+          <Button variant="outline" size="sm" className="w-full" onClick={() => inputRef.current?.click()}>
+            <FileUp className="mr-2 h-3.5 w-3.5" />
+            Загрузить свой PDF
+          </Button>
+          {pickError && <p className="mt-1 text-xs text-red-600">{pickError}</p>}
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Свой файл PDF, до 25 МБ. В демо файл остаётся в браузере; распознавание полей демонстрационное.
+          </p>
+        </div>
       )}
 
       {(doc.status === "needs_review" || doc.status === "confirmed") && doc.fields.length > 0 && (

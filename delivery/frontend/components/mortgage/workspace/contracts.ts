@@ -8,8 +8,8 @@ export interface WorkspaceHandlers {
   openConsent: () => void;
   revokeConsent: () => void;
 
-  // Секция 2 — документы и ИИН
-  uploadDocument: (doc: "creditHistory" | "enpf") => void;
+  // Секция 2 — документы и ИИН. fileName/fileSize — реального выбранного файла.
+  uploadDocument: (doc: "creditHistory" | "enpf", fileName?: string, fileSize?: number) => void;
   confirmDocument: (doc: "creditHistory" | "enpf") => void;
   correctField: (doc: "creditHistory" | "enpf", key: string, value: string) => void;
   runIinCheck: () => void;

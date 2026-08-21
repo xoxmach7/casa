@@ -204,6 +204,24 @@ export function extractCreditHistory(rawText: string): DocumentExtraction {
   }));
   notes.push('Текущий DPD и исторический максимум DPD не смешиваются; максимум — это факт прошлого, а не текущая просрочка.');
 
+  // Сводные счётчики договоров — чистые, надёжные якоря реального отчёта ПКБ
+  // («2Действующие договоры без просрочки» и т.п.). Калибровано на образце.
+  const cnt = (re: RegExp): number | null => {
+    const m = text.match(re);
+    return m ? parseInt(m[1], 10) : null;
+  };
+  const pushCount = (key: string, label: string, val: number | null, critical: boolean): void => {
+    fields.push(fld({
+      key, label, presence: val !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: val,
+      confidence: val !== null ? 0.85 : 0, critical, level: 'SOURCE_FACT',
+    }));
+  };
+  pushCount('active_without_overdue', 'Действующие договоры без просрочки', cnt(/(\d+)\s*Действующие\s+договор[а-яё]*\s+без\s+просрочки/i), true);
+  pushCount('active_with_overdue', 'Действующие договоры с просрочкой', cnt(/(\d+)\s*Действующие\s+договор[а-яё]*\s+с\s+просрочкой/i), true);
+  pushCount('closed_without_overdue', 'Завершённые договоры без просрочки', cnt(/(\d+)\s*Завершенн[а-яё]*\s+договор[а-яё]*\s+без\s+просрочки/i), false);
+  pushCount('closed_with_overdue', 'Завершённые договоры с просрочкой', cnt(/(\d+)\s*Завершенн[а-яё]*\s+договор[а-яё]*\s+с\s+просрочкой/i), false);
+  pushCount('recalled_contracts', 'Отозванные договоры', cnt(/(\d+)\s*Отозванн[а-яё]*\s+договор/i), false);
+
   const template = full && bureau === 'FCB' ? 'FCB_FULL_PERSONAL_PDF' : 'UNKNOWN';
   const supported = template === 'FCB_FULL_PERSONAL_PDF';
   if (!supported) gates.push('SAMPLE_REQUIRED: авто-разбор подтверждён только для полного персонального отчёта ПКБ; для этого файла нужен золотой образец шаблона.');
@@ -275,10 +293,14 @@ export function extractPension(rawText: string): DocumentExtraction {
   // строки взносов: ищем КНП-коды и рядом суммы/периоды/статусы
   const knpCodes = Array.from(text.matchAll(/\b(0\d{2}|\d{3})\b/g)).map((m) => m[1]);
   const knpFound = knpCodes.filter((c) => KNP_REGISTRY[c]);
-  // Формат KZ-денег: тысячи через пробел, копейки через запятую («10 000,00», «4 737 798,64»).
-  // Строгий, чтобы не «склеиться» с кодом КНП или датой.
-  const amounts = Array.from(text.matchAll(/\b(\d{1,3}(?: \d{3})*,\d{2})\b/g))
-    .map((m) => parseMoney(m[1]))
+  // Суммы в выписке ЕНПФ (реальный шаблон GOVCORP) печатаются ОТДЕЛЬНЫМИ строками:
+  // «20000.0» / «20 000,00» (без обязательного пробела-тысяч, точка или запятая,
+  // 1–2 знака). Берём только строки-числа с дробной частью — это исключает даты
+  // ДД.ММ.ГГГГ (4-значный год), время и 12-значные ИИН/БИН.
+  const amounts = text
+    .split('\n')
+    .map((l) => l.trim())
+    .map((l) => (/^(?:\d{1,3}(?:[  ]\d{3})*|\d{3,})[.,]\d{1,2}$/.test(l) ? parseMoney(l) : null))
     .filter((v): v is number => v !== null && v > 0);
   const processed = /обработанн/i.test(text);
   const months = Array.from(text.matchAll(/\b(0[1-9]|1[0-2])[.\-/](20\d{2})\b/g)).map((m) => `${m[2]}-${m[1]}`);

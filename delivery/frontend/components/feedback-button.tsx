@@ -46,11 +46,11 @@ export function FeedbackButton() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          className="relative shrink-0"
           title="Оставить обратную связь"
           aria-label="Оставить обратную связь"
         >
-          <MessageSquarePlus className="h-4 w-4" />
+          <MessageSquarePlus className="h-5 w-5" />
         </Button>
       </DialogTrigger>
       <DialogContent>

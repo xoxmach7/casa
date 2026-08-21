@@ -287,7 +287,7 @@ export function AppSidebar() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <FeedbackButton />
             {user.role !== "ADMIN" && <NotificationBell />}
           </div>

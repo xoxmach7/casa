@@ -82,6 +82,7 @@ interface Project {
   class: string
   buildingStatus: string
   deliveryDate: string
+  developerName?: string
   images: string[]
   lat?: number
   lng?: number
@@ -152,13 +153,13 @@ export default function ProjectsCatalogPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "UNDER_CONSTRUCTION":
-        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">Строится</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B] text-[13px]">Строится</Badge>
       case "COMPLETED":
-        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">Сдан</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B] text-[13px]">Сдан</Badge>
       case "READY_TO_MOVE":
-        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">Заселение</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B] text-[13px]">Заселение</Badge>
       default:
-        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B]">{status}</Badge>
+        return <Badge className="bg-[#15325B] text-white hover:bg-[#15325B] text-[13px]">{status}</Badge>
     }
   }
 
@@ -242,7 +243,7 @@ export default function ProjectsCatalogPage() {
             Жилые комплексы от проверенных застройщиков ({filteredProjects.length})
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {/* Show Add Project button for Developer/Admin */}
           {canManageProjects && (
             <Button onClick={() => router.push("/dashboard/projects/new")}>
@@ -250,14 +251,14 @@ export default function ProjectsCatalogPage() {
               Добавить объект
             </Button>
           )}
-          
+
           {/* View mode toggle */}
-          <div className="flex border rounded-lg">
+          <div className="inline-flex h-9 items-center border rounded-lg">
             <Button
               variant={viewMode === "grid" ? "secondary" : "ghost"}
               size="icon"
               onClick={() => setViewMode("grid")}
-              className="rounded-r-none"
+              className="h-9 w-9 rounded-r-none"
             >
               <LayoutGrid className="h-4 w-4" />
             </Button>
@@ -265,7 +266,7 @@ export default function ProjectsCatalogPage() {
               variant={viewMode === "list" ? "secondary" : "ghost"}
               size="icon"
               onClick={() => setViewMode("list")}
-              className="rounded-none border-x"
+              className="h-9 w-9 rounded-none border-x"
             >
               <List className="h-4 w-4" />
             </Button>
@@ -273,7 +274,7 @@ export default function ProjectsCatalogPage() {
               variant={viewMode === "map" ? "secondary" : "ghost"}
               size="icon"
               onClick={() => setViewMode("map")}
-              className="rounded-l-none"
+              className="h-9 w-9 rounded-l-none"
             >
               <MapIcon className="h-4 w-4" />
             </Button>
@@ -284,6 +285,7 @@ export default function ProjectsCatalogPage() {
       {/* Filters */}
       <Card>
         <CardContent className="p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">Фильтры</h3>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -559,16 +561,22 @@ export default function ProjectsCatalogPage() {
                 <h3 className="font-semibold text-base leading-tight line-clamp-1 mb-1.5" title={project.name}>
                   {project.name}
                 </h3>
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mb-3 line-clamp-1">
+                <p className={`text-xs text-muted-foreground flex items-center gap-1 line-clamp-1 ${project.developerName ? "mb-1" : "mb-3"}`}>
                   <MapPin className="h-3 w-3 shrink-0" />
                   <span className="truncate">{project.district ? `${project.district}, ` : ""}{project.address}</span>
                 </p>
+                {project.developerName && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mb-3 line-clamp-1">
+                    <Building2 className="h-3 w-3 shrink-0" />
+                    <span className="truncate">Застройщик: {project.developerName}</span>
+                  </p>
+                )}
 
                 {/* Класс, статус и цена — под изображением, вместе с остальной
                     информацией о ЖК, а не наложенными поверх фотографии. */}
                 <div className="flex flex-wrap items-center gap-1.5 mb-3">
                   {project.class && (
-                    <Badge variant="secondary" className="text-xs font-semibold">
+                    <Badge variant="secondary" className="text-[13px] font-semibold">
                       {projectClassLabel(project.class)}
                     </Badge>
                   )}

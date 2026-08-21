@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Filter, Plus, Trash2, List, Table2, Download, Upload, Grid3x3 } from 'lucide-react';
+import { ArrowLeft, Filter, Plus, Trash2, List, Table2, Download, Upload, Grid3x3, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -48,6 +48,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl, getAuthHeaders } from '@/lib/api-client';
 import { ApartmentListView } from '@/components/crm/apartments/ApartmentListView';
+import { ApartmentCardsView } from '@/components/crm/apartments/ApartmentCardsView';
 import { ApartmentTableView } from '@/components/crm/apartments/ApartmentTableView';
 import { ApartmentDetailPanel, type ApartmentDetail } from '@/components/crm/apartments/ApartmentDetailPanel';
 import { CreateFixationForm } from '@/components/crm/forms/CreateFixationForm';
@@ -70,7 +71,7 @@ interface Building {
   name: string;
 }
 
-type ViewMode = 'list' | 'table';
+type ViewMode = 'list' | 'table' | 'cards';
 
 export default function ApartmentsGridPage() {
   const router = useRouter();
@@ -377,6 +378,13 @@ export default function ApartmentsGridPage() {
               >
                 <List className="h-4 w-4" />
               </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`p-2 ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : ''}`}
+                title="Карточки"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </CardHeader>
@@ -419,6 +427,13 @@ export default function ApartmentsGridPage() {
           <CardContent className="pt-6">
             {viewMode === 'list' && (
               <ApartmentListView
+                apartments={filteredApartments}
+                selectedId={selectedApartment?.id ?? null}
+                onSelect={setSelectedApartment}
+              />
+            )}
+            {viewMode === 'cards' && (
+              <ApartmentCardsView
                 apartments={filteredApartments}
                 selectedId={selectedApartment?.id ?? null}
                 onSelect={setSelectedApartment}

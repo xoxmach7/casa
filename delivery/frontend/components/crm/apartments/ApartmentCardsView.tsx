@@ -1,8 +1,5 @@
 'use client';
 
-import { Home } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-
 interface Apartment {
   id: string;
   number: string;
@@ -19,64 +16,51 @@ interface ApartmentCardsViewProps {
   onSelect: (apartment: Apartment) => void;
 }
 
-function getStatusColor(status: string) {
-  switch (status) {
-    case 'AVAILABLE':
-      return 'bg-green-100 border-green-500 hover:bg-green-200 text-green-900';
-    case 'RESERVED':
-      return 'bg-yellow-100 border-yellow-500 hover:bg-yellow-200 text-yellow-900';
-    case 'SOLD':
-      return 'bg-gray-100 border-gray-500 hover:bg-gray-200 text-gray-900';
-    default:
-      return 'bg-gray-100 border-gray-300';
-  }
+function formatPrice(price: string) {
+  return new Intl.NumberFormat('ru-KZ', {
+    style: 'currency',
+    currency: 'KZT',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(parseFloat(price));
 }
 
+const STATUS_LABEL: Record<Apartment['status'], { text: string; cls: string }> = {
+  AVAILABLE: { text: 'Доступно', cls: 'bg-emerald-100 text-emerald-700' },
+  RESERVED: { text: 'Фиксация', cls: 'bg-yellow-100 text-yellow-700' },
+  SOLD: { text: 'Продано', cls: 'bg-gray-100 text-gray-600' },
+};
+
 export function ApartmentCardsView({ apartments, selectedId, onSelect }: ApartmentCardsViewProps) {
-  const byFloor = apartments.reduce((acc, apt) => {
-    if (!acc[apt.floor]) acc[apt.floor] = [];
-    acc[apt.floor].push(apt);
-    return acc;
-  }, {} as Record<number, Apartment[]>);
-
-  const floors = Object.keys(byFloor).map(Number).sort((a, b) => b - a);
-
-  if (floors.length === 0) {
-    return (
-      <div className="py-12 text-center">
-        <Home className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">Квартиры не найдены. Попробуйте изменить фильтры.</p>
-      </div>
-    );
+  if (apartments.length === 0) {
+    return <p className="py-8 text-center text-muted-foreground">Квартиры не найдены.</p>;
   }
 
   return (
-    <div className="space-y-4">
-      {floors.map((floor) => (
-        <div key={floor} className="rounded-lg border p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <Badge variant="outline" className="text-base">{floor} этаж</Badge>
-            <span className="text-sm text-muted-foreground">({byFloor[floor].length} квартир)</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {byFloor[floor]
-              .sort((a, b) => a.number.localeCompare(b.number))
-              .map((apt) => (
-                <button
-                  key={apt.id}
-                  onClick={() => onSelect(apt)}
-                  className={`rounded-lg border-2 p-3 text-left transition-all ${getStatusColor(apt.status)} ${
-                    selectedId === apt.id ? 'ring-2 ring-primary' : ''
-                  }`}
-                >
-                  <div className="text-lg font-bold">{apt.number}</div>
-                  <div className="text-xs opacity-75">{apt.rooms}-комн</div>
-                  <div className="text-xs opacity-75">{apt.area} м²</div>
-                </button>
-              ))}
-          </div>
-        </div>
-      ))}
+    <div className="grid max-h-[600px] grid-cols-2 gap-3 overflow-y-auto">
+      {apartments.map((apt) => {
+        const st = STATUS_LABEL[apt.status];
+        return (
+          <button
+            key={apt.id}
+            onClick={() => onSelect(apt)}
+            className={`flex flex-col items-start rounded-lg border p-3 text-left transition-colors hover:bg-muted ${
+              selectedId === apt.id ? 'border-primary ring-1 ring-primary/30 bg-muted' : ''
+            }`}
+          >
+            <div className="flex w-full items-center justify-between">
+              <span className="font-semibold">№{apt.number}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.text}</span>
+            </div>
+            <span className="mt-1 text-sm text-muted-foreground">
+              {apt.rooms}-комн · {apt.area} м² · {apt.floor} этаж
+            </span>
+            <span className="mt-2 text-base font-bold text-[#15325B] tabular-nums">
+              {formatPrice(apt.price)}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -25,7 +25,8 @@ import {
   Video,
   Tag,
   BadgePercent,
-  Landmark
+  Landmark,
+  Edit
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -103,6 +104,11 @@ export default function ProjectDetailsPage() {
   const [activeImage, setActiveImage] = useState(0)
   const [apartmentSearch, setApartmentSearch] = useState("")
   const [selectedLayout, setSelectedLayout] = useState<Apartment | null>(null)
+  const [userRole, setUserRole] = useState<string | null>(null)
+  useEffect(() => {
+    try { setUserRole(JSON.parse(localStorage.getItem("user") || "{}").role || null) } catch { setUserRole(null) }
+  }, [])
+  const canEditProject = userRole === "DEVELOPER" || userRole === "ADMIN"
   const [selectionApartment, setSelectionApartment] = useState<Apartment | null>(null)
   const [mortgageApartment, setMortgageApartment] = useState<Apartment | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -177,12 +183,12 @@ export default function ProjectDetailsPage() {
         </div>
         <div className="ml-auto flex gap-2">
           {project.class && (
-            <Badge variant="secondary" className="text-xs font-semibold">
+            <Badge variant="secondary" className="text-sm font-semibold px-3 py-0.5">
               {projectClassLabel(project.class)}
             </Badge>
           )}
-          <Badge className="text-lg px-4 py-1 bg-primary">
-            {project.buildingStatus === "UNDER_CONSTRUCTION" ? "Строится" : 
+          <Badge className="text-sm px-3 py-0.5 bg-primary">
+            {project.buildingStatus === "UNDER_CONSTRUCTION" ? "Строится" :
              project.buildingStatus === "READY_TO_MOVE" ? "Заселение" : "Сдан"}
           </Badge>
         </div>
@@ -401,52 +407,48 @@ export default function ProjectDetailsPage() {
             </TabsList>
 
             <TabsContent value="about" className="space-y-4 mt-4">
+              {/* Описание, особенности и окружение — в одном блоке. */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Описание</CardTitle>
+                  <CardTitle>О проекте</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground whitespace-pre-line">
-                    {project.description || "Описание не указано"}
-                  </p>
+                <CardContent className="space-y-5">
+                  <div>
+                    <h4 className="mb-1.5 text-sm font-semibold text-foreground">Описание</h4>
+                    <p className="text-muted-foreground whitespace-pre-line">
+                      {project.description || "Описание не указано"}
+                    </p>
+                  </div>
+
+                  {project.features && project.features.length > 0 && (
+                    <div className="border-t pt-5">
+                      <h4 className="mb-2.5 text-sm font-semibold text-foreground">Особенности</h4>
+                      <ul className="grid gap-2.5 sm:grid-cols-2">
+                        {project.features.map((f, i) => (
+                          <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#15325B]" />
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {project.nearby && project.nearby.length > 0 && (
+                    <div className="border-t pt-5">
+                      <h4 className="mb-2.5 text-sm font-semibold text-foreground">Что интересного рядом</h4>
+                      <ul className="grid gap-2.5 sm:grid-cols-2">
+                        {project.nearby.map((n, i) => (
+                          <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#15325B]" />
+                            <span>{n}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-
-              {project.features && project.features.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Особенности</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="grid gap-2.5 sm:grid-cols-2">
-                      {project.features.map((f, i) => (
-                        <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground">
-                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#15325B]" />
-                          <span>{f}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
-
-              {project.nearby && project.nearby.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Что интересного рядом</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="grid gap-2.5 sm:grid-cols-2">
-                      {project.nearby.map((n, i) => (
-                        <li key={i} className="flex items-start gap-2.5 text-sm text-muted-foreground">
-                          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#15325B]" />
-                          <span>{n}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
 
               {/* Акция для покупателя — бонус брокера пока скрыт (см. PR) */}
               {project.promotions && (
@@ -749,6 +751,16 @@ export default function ProjectDetailsPage() {
                   <Grid3x3 className="mr-2 h-4 w-4" />
                   Шахматка квартир
                 </Button>
+                {canEditProject && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => router.push(`/dashboard/projects/${project.id}/edit`)}
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    Редактировать объект
+                  </Button>
+                )}
                 {/* Кнопка «Позвонить застройщику» убрана: она делала
                     tel:-переход, который на десктопе ничего не открывает.
                     Сам номер остаётся в карточке «Отдел продаж» ниже. */}

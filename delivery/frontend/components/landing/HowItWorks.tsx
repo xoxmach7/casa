@@ -14,7 +14,7 @@ export default function HowItWorks() {
   return (
     <section
       id="how-it-works"
-      className="bg-gradient-to-b from-[#eef3fc] to-[#dbe6f8] py-20 sm:py-28"
+      className="bg-gradient-to-b from-[#eef3fc] to-[#dbe6f8] py-12 sm:py-14"
     >
       <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
         <h2 className="text-2xl font-bold text-[#15325B] sm:text-3xl">Как это работает</h2>

@@ -159,6 +159,16 @@ export interface ClientDocument {
   fields: ExtractedField[];
   /** Прогресс конвейера обработки 0..100 для индикатора. */
   progress?: number;
+  /** Файл реально загружен и сохранён на сервере (приватно). */
+  serverStored?: boolean;
+  /** ID документа на сервере (для приватной выдачи файла). */
+  documentId?: string;
+  storedAt?: string;
+  /** Честные ограничения/гейты распознавания из спецификации. */
+  gates?: string[];
+  notes?: string[];
+  /** Раздельные статусы (файл/подлинность/извлечение) — не один зелёный. */
+  statuses?: { file_integrity?: string; authenticity?: string; extraction?: string };
 }
 
 // --- Обязательства (из кредитной истории) -----------------------------------

@@ -9,6 +9,7 @@
 
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import multer from 'multer';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
 import {
@@ -20,9 +21,32 @@ import {
   DEMO_EXISTING_PAYMENT,
 } from '../lib/mortgage-workspace/engine';
 import { createConsent, getConsent, createConclusion } from '../lib/mortgage-workspace/store';
+import { extractTextFromPdf } from '../lib/scoring-document.service';
+import { extractDocument } from '../lib/mortgage-workspace/extraction';
+import {
+  saveDocument,
+  readMeta,
+  readPdf,
+  updateMeta,
+  isValidId,
+  newDocumentId,
+  sha256Of,
+  type MortgageDocType,
+  type StoredDocumentMeta,
+} from '../lib/mortgage-workspace/document-store';
 
 export const mortgageWorkspaceRouter = Router();
 mortgageWorkspaceRouter.use(authenticate);
+
+// Приём PDF: только application/pdf, до 25 МБ (спека: max_file_size_mb 25).
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') cb(null, true);
+    else cb(new Error('Принимается только PDF'));
+  },
+});
 
 // --- Демо-данные -------------------------------------------------------------
 
@@ -156,6 +180,111 @@ mortgageWorkspaceRouter.post('/conclusions', (req: Request, res: Response): void
     console.error('Create conclusion error:', error);
     res.status(500).json({ error: 'Не удалось сформировать заключение' });
   }
+});
+
+// --- Документы: приватная загрузка, хранение и распознавание ------------------
+
+// POST /api/mortgage-workspace/documents — загрузить PDF (credit_history|enpf_statement),
+// сохранить приватно на сервере и распознать поля по спецификации.
+mortgageWorkspaceRouter.post(
+  '/documents',
+  pdfUpload.single('file'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const file = req.file;
+      const type = String(req.body?.type || '') as MortgageDocType;
+      if (!file) {
+        res.status(400).json({ error: 'Файл не получен (поле file)' });
+        return;
+      }
+      if (type !== 'credit_history' && type !== 'enpf_statement') {
+        res.status(400).json({ error: 'Укажите type: credit_history или enpf_statement' });
+        return;
+      }
+
+      const buffer = file.buffer;
+      const sha256 = sha256Of(buffer);
+      const id = newDocumentId();
+
+      // Реальное извлечение текстового слоя PDF, затем распознавание по спеке.
+      let extraction;
+      let extractionFailed = false;
+      try {
+        const text = await extractTextFromPdf(buffer);
+        extraction = extractDocument(type, text);
+      } catch (e) {
+        extractionFailed = true;
+        extraction = {
+          docType: type, template: 'UNKNOWN', supported: false,
+          statuses: { file_integrity: 'UNREADABLE', authenticity: 'MANUAL_REVIEW_REQUIRED', extraction: 'FAILED' },
+          fields: [], derived: {}, gates: ['SAMPLE_REQUIRED'],
+          notes: ['Не удалось извлечь текстовый слой PDF (возможно скан/фото — нужен OCR, вне текущего контура).'],
+          reviewRequired: true, textChars: 0,
+        };
+      }
+
+      const meta: StoredDocumentMeta = {
+        id,
+        type,
+        fileName: file.originalname || `${type}.pdf`,
+        size: file.size,
+        sha256,
+        status: extractionFailed ? 'processing_failed' : 'needs_review',
+        uploadedBy: req.user?.userId,
+        caseRef: typeof req.body?.caseRef === 'string' ? req.body.caseRef : undefined,
+        storedAt: new Date().toISOString(),
+        extraction,
+      };
+      saveDocument(buffer, meta);
+
+      res.status(201).json({
+        id,
+        type,
+        fileName: meta.fileName,
+        size: meta.size,
+        sha256,
+        status: meta.status,
+        storedAt: meta.storedAt,
+        stored: true,
+        extraction,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Не удалось обработать документ';
+      console.error('Mortgage document upload error:', msg);
+      res.status(500).json({ error: msg });
+    }
+  },
+);
+
+// GET /api/mortgage-workspace/documents/:id — метаданные + распознанные поля (без байтов)
+mortgageWorkspaceRouter.get('/documents/:id', (req: Request, res: Response): void => {
+  const { id } = req.params;
+  if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
+  const meta = readMeta(id);
+  if (!meta) { res.status(404).json({ error: 'Документ не найден' }); return; }
+  res.json(meta);
+});
+
+// GET /api/mortgage-workspace/documents/:id/file — приватная выдача PDF (только авторизованным)
+mortgageWorkspaceRouter.get('/documents/:id/file', (req: Request, res: Response): void => {
+  const { id } = req.params;
+  if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
+  const meta = readMeta(id);
+  const bytes = readPdf(id);
+  if (!meta || !bytes) { res.status(404).json({ error: 'Документ не найден' }); return; }
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(meta.fileName)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(bytes);
+});
+
+// PATCH /api/mortgage-workspace/documents/:id/confirm — подтвердить данные документа
+mortgageWorkspaceRouter.patch('/documents/:id/confirm', (req: Request, res: Response): void => {
+  const { id } = req.params;
+  if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
+  const updated = updateMeta(id, { status: 'confirmed' });
+  if (!updated) { res.status(404).json({ error: 'Документ не найден' }); return; }
+  res.json({ id, status: updated.status });
 });
 
 export default mortgageWorkspaceRouter;

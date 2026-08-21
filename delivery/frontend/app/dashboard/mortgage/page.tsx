@@ -150,35 +150,93 @@ export default function MortgageWorkspacePage() {
 
   // --- Секция 2: документы и ИИН --------------------------------------------
 
-  const uploadDocument = useCallback((which: "creditHistory" | "enpf", fileName?: string, _fileSize?: number) => {
+  // Локальный демо-fallback (если сервер недоступен): показать демо-поля.
+  const runLocalDemoPipeline = useCallback((which: "creditHistory" | "enpf", name: string) => {
     const fields = which === "creditHistory" ? CREDIT_HISTORY_FIELDS : ENPF_FIELDS;
-    const name = fileName || `${which === "creditHistory" ? "credit_history" : "enpf"}.pdf`;
-    const stages: { status: WorkspaceState["documents"]["creditHistory"]["status"]; progress: number; delay: number }[] = [
-      { status: "uploading", progress: 25, delay: 0 },
-      { status: "scanning", progress: 50, delay: 700 },
-      { status: "processing", progress: 80, delay: 1500 },
-      { status: "needs_review", progress: 100, delay: 2400 },
-    ];
-    stages.forEach((s) => {
-      setTimeout(() => {
-        setSt((prev) => ({
-          ...prev,
-          caseStatus: "documents_processing",
-          documents: {
-            ...prev.documents,
-            [which]: {
-              ...prev.documents[which],
-              status: s.status,
-              progress: s.progress,
-              fileName: name,
-              fields: s.status === "needs_review" ? fields.map((f) => ({ ...f })) : prev.documents[which].fields,
-              reportDate: s.status === "needs_review" ? "12.08.2026" : prev.documents[which].reportDate,
-            },
-          },
-        }));
-      }, s.delay);
-    });
+    setSt((prev) => ({
+      ...prev,
+      caseStatus: "documents_processing",
+      documents: {
+        ...prev.documents,
+        [which]: {
+          ...prev.documents[which],
+          status: "needs_review",
+          progress: 100,
+          fileName: name,
+          fields: fields.map((f) => ({ ...f })),
+          serverStored: false,
+          gates: [],
+          notes: ["Сервер недоступен — показаны демонстрационные поля, файл НЕ сохранён на сервере."],
+        },
+      },
+    }));
   }, []);
+
+  const uploadDocument = useCallback(async (which: "creditHistory" | "enpf", file: File) => {
+    const backendType = which === "creditHistory" ? "credit_history" : "enpf_statement";
+    const name = file.name;
+    // состояние «загрузка/обработка»
+    setSt((prev) => ({
+      ...prev,
+      caseStatus: "documents_processing",
+      documents: {
+        ...prev.documents,
+        [which]: { ...prev.documents[which], status: "processing", progress: 55, fileName: name },
+      },
+    }));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("type", backendType);
+      const res = await fetch(`${API_URL}/mortgage-workspace/documents`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const d = await res.json();
+      const serverFields = Array.isArray(d.extraction?.fields) ? d.extraction.fields : [];
+      const fields = serverFields.map((f: {
+        key: string; label: string; rawValue: unknown; normalizedValue: unknown; presence: string; confidence: number; critical?: boolean;
+      }) => {
+        const val =
+          f.normalizedValue ?? f.rawValue ??
+          (f.presence === "UNKNOWN" ? "нет данных" : f.presence === "BLANK" ? "—" : f.presence);
+        const low = f.confidence < 0.7 || f.presence === "UNKNOWN";
+        return {
+          key: f.key,
+          label: f.label,
+          value: val as string | number,
+          confidence: typeof f.confidence === "number" ? f.confidence : 0,
+          confirmed: false,
+          inconsistency: low && f.critical ? "Требует ручной проверки (критическое поле)" : undefined,
+        };
+      });
+      setSt((prev) => ({
+        ...prev,
+        documents: {
+          ...prev.documents,
+          [which]: {
+            ...prev.documents[which],
+            status: d.status === "processing_failed" ? "needs_review" : "needs_review",
+            progress: 100,
+            fileName: name,
+            fields,
+            serverStored: !!d.stored,
+            documentId: d.id,
+            storedAt: d.storedAt,
+            gates: d.extraction?.gates ?? [],
+            notes: d.extraction?.notes ?? [],
+            statuses: d.extraction?.statuses,
+          },
+        },
+      }));
+      toast({ title: "Документ загружен и сохранён", description: "Поля распознаны из текста PDF. Проверьте и подтвердите." });
+    } catch {
+      runLocalDemoPipeline(which, name);
+      toast({ title: "Сервер недоступен — демо-режим", description: "Файл не сохранён; показаны демонстрационные поля.", variant: "destructive" });
+    }
+  }, [toast, runLocalDemoPipeline]);
 
   const confirmDocument = useCallback((which: "creditHistory" | "enpf") => {
     setSt((prev) => {

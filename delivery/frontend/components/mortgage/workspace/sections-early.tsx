@@ -242,7 +242,7 @@ function DocumentCard({
     if (!isPdf) { setPickError("Нужен файл в формате PDF"); return; }
     if (f.size > 25 * 1024 * 1024) { setPickError("Файл больше 25 МБ"); return; }
     setPickError(null);
-    h.uploadDocument(which, f.name, f.size);
+    h.uploadDocument(which, f);
   };
 
   return (
@@ -257,6 +257,16 @@ function DocumentCard({
       {doc.fileName && (
         <p className="mt-1 truncate text-xs text-muted-foreground" title={doc.fileName}>
           Файл: {doc.fileName}
+        </p>
+      )}
+      {doc.serverStored && (
+        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-emerald-700">
+          <FileCheck2 className="h-3 w-3" /> Сохранён на сервере (приватно)
+        </p>
+      )}
+      {doc.statuses && (doc.status === "needs_review" || doc.status === "confirmed") && (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          файл: {doc.statuses.file_integrity} · подлинность: {doc.statuses.authenticity} · извлечение: {doc.statuses.extraction}
         </p>
       )}
 
@@ -282,40 +292,57 @@ function DocumentCard({
           </Button>
           {pickError && <p className="mt-1 text-xs text-red-600">{pickError}</p>}
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Свой файл PDF, до 25 МБ. В демо файл остаётся в браузере; распознавание полей демонстрационное.
+            Свой файл PDF, до 25 МБ. Файл сохраняется на сервере приватно, поля распознаются из текста документа.
           </p>
         </div>
       )}
 
-      {(doc.status === "needs_review" || doc.status === "confirmed") && doc.fields.length > 0 && (
+      {(doc.status === "needs_review" || doc.status === "confirmed") && (
         <div className="mt-3 space-y-2">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="h-8">Поле</TableHead>
-                <TableHead className="h-8">Значение</TableHead>
-                <TableHead className="h-8 text-right">Увер.</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {doc.fields.map((f) => (
-                <TableRow key={f.key}>
-                  <TableCell className="py-1.5 text-xs text-muted-foreground">{f.label}</TableCell>
-                  <TableCell className="py-1.5 text-xs font-medium">{String(f.value)}</TableCell>
-                  <TableCell className="py-1.5 text-right">
-                    <span
-                      className={cn(
-                        "text-xs font-semibold",
-                        f.confidence < 0.7 ? "text-red-600" : f.confidence < 0.95 ? "text-amber-600" : "text-emerald-600",
-                      )}
-                    >
-                      {Math.round(f.confidence * 100)}%
-                    </span>
-                  </TableCell>
+          {doc.fields.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-8">Поле</TableHead>
+                  <TableHead className="h-8">Значение</TableHead>
+                  <TableHead className="h-8 text-right">Увер.</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {doc.fields.map((f) => (
+                  <TableRow key={f.key}>
+                    <TableCell className="py-1.5 text-xs text-muted-foreground">{f.label}</TableCell>
+                    <TableCell className="py-1.5 text-xs font-medium">{String(f.value)}</TableCell>
+                    <TableCell className="py-1.5 text-right">
+                      <span
+                        className={cn(
+                          "text-xs font-semibold",
+                          f.confidence < 0.7 ? "text-red-600" : f.confidence < 0.95 ? "text-amber-600" : "text-emerald-600",
+                        )}
+                      >
+                        {Math.round(f.confidence * 100)}%
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          {(doc.gates?.length || doc.notes?.length) ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50/70 p-2 text-[11px] text-amber-800">
+              {doc.notes && doc.notes.length > 0 && (
+                <ul className="list-inside list-disc space-y-0.5">
+                  {doc.notes.map((n, i) => <li key={`n${i}`}>{n}</li>)}
+                </ul>
+              )}
+              {doc.gates && doc.gates.length > 0 && (
+                <ul className="mt-1 list-inside list-disc space-y-0.5 opacity-90">
+                  {doc.gates.map((g, i) => <li key={`g${i}`}>{g}</li>)}
+                </ul>
+              )}
+            </div>
+          ) : null}
 
           {doc.status === "needs_review" && lowConfidence.length > 0 && (
             <ManualCorrection doc={which} field={lowConfidence[0]} h={h} />

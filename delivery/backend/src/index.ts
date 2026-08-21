@@ -103,6 +103,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // (см. middleware/csrf.middleware.ts). Стоит после cookieParser и до роутов.
 app.use('/api', csrfGuard(allowedOrigins));
 app.use(auditMiddleware);
+// Приватные ипотечные документы (кредитная история / ЕНПФ) — персональные
+// данные. Их подпапка НЕ раздаётся статикой: доступ только через авторизованный
+// /api/mortgage-workspace/documents/:id/file. Блок стоит ДО express.static.
+app.use('/uploads/mortgage-private', (_req, res) => { res.status(404).end(); });
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Which commit is actually serving traffic. Railway injects this at build

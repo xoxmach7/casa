@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { extractCreditHistory, extractPension, extractDocument } from '../lib/mortgage-workspace/extraction';
+import {
+  extractCreditHistory, extractPension, extractDocument,
+  estimateIncomeFromOpv, availableMortgagePayment,
+} from '../lib/mortgage-workspace/extraction';
 
 const ENPF_SAMPLE = `
 Государственная корпорация «Правительство для граждан»
@@ -36,14 +39,14 @@ describe('ЕНПФ extraction — жёсткие инварианты специ
     expect(type?.normalizedValue).toBe('OPV');
   });
 
-  it('НЕ показывает угаданный доход из ОПВ (UNKNOWN_RATE_CONTEXT, база=null)', () => {
-    const income = r.fields.find((f) => f.key === 'estimated_income_from_opv');
-    expect(income).toBeTruthy();
-    expect(income?.presence).toBe('UNKNOWN');
-    expect(income?.normalizedValue).toBeNull();
-    // нигде не всплыл угаданный 100000
-    const anyGuessed = r.fields.some((f) => f.normalizedValue === 100000);
-    expect(anyGuessed).toBe(false);
+  it('оценивает доход из ОПВ по правилу CASA (ОПВ/10%, окно 6 мес)', () => {
+    // 6 × 10 000 ОПВ → средний 10 000 → доход 100 000 → лимит 50 000
+    expect(r.derived.estimated_avg_opv).toBe(10000);
+    expect(r.derived.estimated_monthly_income).toBe(100000);
+    expect(r.derived.estimated_payment_limit).toBe(50000);
+    const income = r.fields.find((f) => f.key === 'estimated_monthly_income');
+    expect(income?.presence).toBe('PRESENT');
+    expect(income?.normalizedValue).toBe(100000);
   });
 
   it('covered_month_count = null (UNKNOWN), но наблюдаемые месяцы посчитаны', () => {
@@ -75,6 +78,23 @@ describe('Кредитная история extraction', () => {
   it('подлинность не авто-подтверждается (MANUAL_REVIEW_REQUIRED)', () => {
     expect(r.statuses.authenticity).toBe('MANUAL_REVIEW_REQUIRED');
     expect(r.reviewRequired).toBe(true);
+  });
+});
+
+describe('формула дохода из ОПВ (пример пользователя)', () => {
+  it('∑ОПВ 360000 за 6 мес → доход 600000, лимит 300000, доступный 220000', () => {
+    const six = [60000, 60000, 60000, 60000, 60000, 60000]; // ∑ = 360 000
+    const est = estimateIncomeFromOpv(six, 'OPV');
+    expect(est.avgOpv).toBe(60000);
+    expect(est.monthlyIncome).toBe(600000);
+    expect(est.paymentLimit).toBe(300000);
+    expect(availableMortgagePayment(est.paymentLimit!, 80000)).toBe(220000);
+  });
+
+  it('ОПВР работодателя (не OPV) не даёт оценку дохода', () => {
+    const est = estimateIncomeFromOpv([10000, 10000], 'OPVR');
+    expect(est.monthlyIncome).toBeNull();
+    expect(est.reason).toMatch(/не ОПВ работника/);
   });
 });
 

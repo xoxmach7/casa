@@ -98,6 +98,36 @@ function fld(p: Partial<FieldValue> & Pick<FieldValue, 'key' | 'label' | 'presen
   } as FieldValue;
 }
 
+/**
+ * Оценка дохода из ОПВ — правило CASA Pro (Соц. кодекс РК + разъяснение АРРФР).
+ * Доход = средний ОПВ работника (КНП 010) / 10%; окно — последние 6 месяцев.
+ * Лимит кредитных платежей = доход × 50% (предельный КДН 0.5).
+ * Только ОПВ работника (010), НЕ ОПВР работодателя (089) и не пени.
+ * Результат — предварительная оценка, не банковское решение.
+ */
+export function estimateIncomeFromOpv(
+  opvAmounts: number[],
+  knpType: string | null,
+): { avgOpv: number | null; monthlyIncome: number | null; paymentLimit: number | null; reason: string } {
+  if (knpType && knpType !== 'OPV') {
+    return { avgOpv: null, monthlyIncome: null, paymentLimit: null, reason: 'взносы не ОПВ работника (КНП 010)' };
+  }
+  const window = opvAmounts.filter((a) => a > 0).slice(-6); // последние 6 месяцев
+  if (window.length === 0) {
+    return { avgOpv: null, monthlyIncome: null, paymentLimit: null, reason: 'нет положительных взносов ОПВ' };
+  }
+  const sum = window.reduce((s, a) => s + a, 0);
+  const avgOpv = Math.round(sum / window.length);
+  const monthlyIncome = Math.round(avgOpv / 0.1);
+  const paymentLimit = Math.round(monthlyIncome * 0.5);
+  return { avgOpv, monthlyIncome, paymentLimit, reason: '' };
+}
+
+/** Доступный платёж по новой ипотеке = лимит − действующие ежемесячные платежи. */
+export function availableMortgagePayment(paymentLimit: number, existingMonthlyPayments: number): number {
+  return Math.max(0, paymentLimit - Math.max(0, existingMonthlyPayments));
+}
+
 // ============================================================================
 // Кредитная история (ПКБ = FCB / ГКБ = SCB)
 // ============================================================================
@@ -245,7 +275,11 @@ export function extractPension(rawText: string): DocumentExtraction {
   // строки взносов: ищем КНП-коды и рядом суммы/периоды/статусы
   const knpCodes = Array.from(text.matchAll(/\b(0\d{2}|\d{3})\b/g)).map((m) => m[1]);
   const knpFound = knpCodes.filter((c) => KNP_REGISTRY[c]);
-  const amounts = Array.from(text.matchAll(/(\d[\d ]{2,}[.,]\d{2})/g)).map((m) => parseMoney(m[1])).filter((v): v is number => v !== null && v > 0);
+  // Формат KZ-денег: тысячи через пробел, копейки через запятую («10 000,00», «4 737 798,64»).
+  // Строгий, чтобы не «склеиться» с кодом КНП или датой.
+  const amounts = Array.from(text.matchAll(/\b(\d{1,3}(?: \d{3})*,\d{2})\b/g))
+    .map((m) => parseMoney(m[1]))
+    .filter((v): v is number => v !== null && v > 0);
   const processed = /обработанн/i.test(text);
   const months = Array.from(text.matchAll(/\b(0[1-9]|1[0-2])[.\-/](20\d{2})\b/g)).map((m) => `${m[2]}-${m[1]}`);
   const uniqueMonths = Array.from(new Set(months));
@@ -280,16 +314,33 @@ export function extractPension(rawText: string): DocumentExtraction {
     normalizedValue: avg, confidence: avg !== null ? 0.5 : 0, critical: false, level: 'CASA_DERIVED',
   }));
 
-  // ОЦЕНКА ДОХОДА — критический продуктовый запрет (5.8): OPV(010) => UNKNOWN_RATE_CONTEXT, null
-  let estimateStatus = 'NOT_APPLICABLE';
-  if (knpInfo?.type === 'OPV') estimateStatus = 'UNKNOWN_RATE_CONTEXT';
-  else if (knpInfo?.cls === 'CONTRIBUTION') estimateStatus = 'UNKNOWN_RATE_CONTEXT';
+  // ОЦЕНКА ДОХОДА из ОПВ — по продуктовому правилу CASA Pro (Соц. кодекс РК + АРРФР):
+  // среднемесячный доход = средний ОПВ работника (КНП 010) / 10%; окно 6 месяцев.
+  // Берётся ИМЕННО ОПВ работника (010), НЕ ОПВР работодателя (089). Это
+  // предварительная оценка — банк может учитывать нестабильные поступления,
+  // пропуски и самостоятельные взносы иначе.
+  const est = estimateIncomeFromOpv(knpInfo?.type === 'OPV' ? amounts : [], knpInfo?.type ?? null);
   fields.push(fld({
-    key: 'estimated_income_from_opv', label: 'Оценка дохода из ОПВ',
-    presence: 'UNKNOWN', rawValue: null, normalizedValue: null, confidence: 0, critical: true, level: 'CASA_DERIVED',
-    evidence: `estimate_status=${estimateStatus}`,
+    key: 'estimated_avg_opv', label: 'Средний ОПВ в мес. (работника), ₸',
+    presence: est.avgOpv !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: est.avgOpv,
+    confidence: est.avgOpv !== null ? 0.5 : 0, critical: false, level: 'CASA_DERIVED',
   }));
-  notes.push('Доход из ОПВ НЕ показывается: по КНП 010 режим плательщика (наёмный/ИП/платформа) из выписки не доказывается — estimate_status=UNKNOWN_RATE_CONTEXT, база=null (запрет спецификации до RG-04). Никаких «100 000 ₸» из 10 000 ОПВ.');
+  fields.push(fld({
+    key: 'estimated_monthly_income', label: 'Оценка среднемес. дохода (ОПВ/10%), ₸',
+    presence: est.monthlyIncome !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: est.monthlyIncome,
+    confidence: est.monthlyIncome !== null ? 0.5 : 0, critical: true, level: 'CASA_DERIVED',
+    evidence: est.monthlyIncome !== null ? `${est.avgOpv} / 0.10` : est.reason,
+  }));
+  fields.push(fld({
+    key: 'estimated_payment_limit', label: 'Лимит кредитных платежей (доход×50%), ₸',
+    presence: est.paymentLimit !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: est.paymentLimit,
+    confidence: est.paymentLimit !== null ? 0.5 : 0, critical: false, level: 'CASA_DERIVED',
+  }));
+  if (est.monthlyIncome !== null) {
+    notes.push(`Предварительная оценка CASA Pro: среднемес. доход = средний ОПВ ${est.avgOpv} ₸ / 10% = ${est.monthlyIncome} ₸; лимит всех кредитных платежей = доход × 50% (КДН 0.5) = ${est.paymentLimit} ₸. Доступный платёж по новой ипотеке = лимит − действующие платежи. Основание: Соц. кодекс РК и разъяснение АРРФР. Банк может учитывать нестабильные поступления/пропуски/самостоятельные взносы иначе.`);
+  } else {
+    notes.push(`Доход из ОПВ не оценён: ${est.reason}. Формула применяется только к ОПВ работника (КНП 010), не к ОПВР (089) и не к пеням.`);
+  }
 
   if (template.includes('?') || template === 'UNKNOWN') {
     gates.push('SAMPLE_REQUIRED: точный разбор строк ЕНПФ подтверждён только на золотом образце шаблона GOVCORP; на произвольной выписке распознавание частичное.');
@@ -313,6 +364,9 @@ export function extractPension(rawText: string): DocumentExtraction {
       observed_amount_avg: avg,
       knp_contribution_rows: knpFound.length || null,
       covered_month_count: null, // UNKNOWN до подтверждения покрытия
+      estimated_avg_opv: est.avgOpv,
+      estimated_monthly_income: est.monthlyIncome,
+      estimated_payment_limit: est.paymentLimit,
     },
     gates,
     notes,

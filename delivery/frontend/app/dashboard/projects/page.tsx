@@ -235,7 +235,7 @@ export default function ProjectsCatalogPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex flex-col md:flex-row justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Каталог новостроек</h1>
@@ -285,7 +285,7 @@ export default function ProjectsCatalogPage() {
       {/* Filters */}
       <Card>
         <CardContent className="p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Фильтры</h3>
+          <h3 className="text-lg font-bold text-foreground">Фильтры</h3>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -568,7 +568,7 @@ export default function ProjectsCatalogPage() {
                 {project.developerName && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mb-3 line-clamp-1">
                     <Building2 className="h-3 w-3 shrink-0" />
-                    <span className="truncate">Застройщик: {project.developerName}</span>
+                    <span className="truncate">Застройщик: <span className="font-semibold text-foreground">{project.developerName}</span></span>
                   </p>
                 )}
 

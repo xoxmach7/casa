@@ -270,7 +270,7 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r border-sidebar-border">
       {/* Header — Logo */}
-      <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
+      <SidebarHeader className="border-b border-sidebar-border pl-5 pr-2.5 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img

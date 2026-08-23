@@ -46,6 +46,10 @@ function ensureDir(): void {
   fs.mkdirSync(PRIVATE_DIR, { recursive: true });
 }
 
+/** Fail-closed access rule for private mortgage documents. */
+export function canAccessDocument(meta: StoredDocumentMeta, user: { userId: string; role: string } | undefined): boolean {
+  return Boolean(user && (user.role === 'ADMIN' || meta.uploadedBy === user.userId));
+}
 export function sha256Of(buffer: Buffer): string {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }

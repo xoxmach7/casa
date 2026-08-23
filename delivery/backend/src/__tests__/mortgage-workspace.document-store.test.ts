@@ -4,6 +4,7 @@ import path from 'path';
 import {
   saveDocument, readMeta, readPdf, updateMeta, isValidId, newDocumentId, sha256Of,
   type StoredDocumentMeta,
+  canAccessDocument,
 } from '../lib/mortgage-workspace/document-store';
 
 const ids: string[] = [];
@@ -38,6 +39,16 @@ describe('document-store — приватное хранение roundtrip', () 
     expect(isValidId('nope.pdf')).toBe(false);
   });
 
+  it('denies foreign access and allows owner/admin for metadata, download and confirm', () => {
+    const meta: StoredDocumentMeta = {
+      id: 'a'.repeat(32), type: 'credit_history', fileName: 'x.pdf', size: 1,
+      sha256: 'x', status: 'needs_review', uploadedBy: 'owner_1', storedAt: new Date().toISOString(), extraction: {},
+    };
+    expect(canAccessDocument(meta, { userId: 'other_1', role: 'BROKER' })).toBe(false);
+    expect(canAccessDocument(meta, { userId: 'owner_1', role: 'BROKER' })).toBe(true);
+    expect(canAccessDocument(meta, { userId: 'admin_1', role: 'ADMIN' })).toBe(true);
+    expect(canAccessDocument({ ...meta, uploadedBy: undefined }, { userId: 'other_1', role: 'BROKER' })).toBe(false);
+  });
   it('несуществующий документ → null', () => {
     expect(readMeta('deadbeefdeadbeefdeadbeefdeadbeef')).toBeNull();
     expect(readPdf('deadbeefdeadbeefdeadbeefdeadbeef')).toBeNull();

@@ -173,33 +173,9 @@ uploadRouter.delete('/:fileName(*)', async (req: Request, res: Response): Promis
 });
 
 // GET /api/upload/presigned/:fileName - Get presigned URL for direct upload
-uploadRouter.get('/presigned/:category', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { category } = req.params;
-    const { filename } = req.query;
-    
-    if (!filename) {
-      res.status(400).json({ error: 'Имя файла обязательно' });
-      return;
-    }
-
-    const ext = path.extname(filename as string);
-    const objectName = `${category}/${uuidv4()}${ext}`;
-
-    // Generate presigned URL valid for 1 hour
-    const presignedUrl = await minioClient!.presignedPutObject(
-      MINIO_BUCKET,
-      objectName,
-      60 * 60 // 1 hour
-    );
-
-    res.json({
-      presignedUrl,
-      objectName,
-      publicUrl: getPublicUrl(objectName),
-    });
-  } catch (error) {
-    console.error('Presigned URL error:', error);
-    res.status(500).json({ error: 'Ошибка получения URL для загрузки' });
-  }
+// Direct-to-MinIO uploads are disabled until the server can inspect uploaded
+// bytes before making a public object available. The regular /single endpoint
+// performs MIME and storage validation server-side.
+uploadRouter.get('/presigned/:category', async (_req: Request, res: Response): Promise<void> => {
+  res.status(501).json({ error: 'Прямые загрузки временно отключены; используйте /api/upload/single' });
 });

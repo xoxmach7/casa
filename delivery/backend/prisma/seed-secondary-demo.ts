@@ -8,7 +8,7 @@
 //
 // Идемпотентно: всё пишется по фиксированным id с префиксом `demo_`, поэтому
 // повторный запуск обновляет те же записи, а --purge вычищает ровно их и
-// ничего больше. Демо-пользователи ходят с паролем demo1234.
+// ничего больше. Пароль демо-пользователей берётся из DEMO_SEED_PASSWORD.
 // =========================================
 
 import { PrismaClient, UserRole } from '@prisma/client';
@@ -17,7 +17,8 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 const P = 'demo_'; // префикс, по которому демо-записи отличаются от боевых
-const DEMO_PASSWORD = 'demo1234';
+const DEMO_PASSWORD = process.env.DEMO_SEED_PASSWORD;
+if (!DEMO_PASSWORD) throw new Error('DEMO_SEED_PASSWORD is required to run demo seed');
 
 // Даты фиксированные, чтобы повторный запуск не «двигал» историю.
 const DAY = 24 * 60 * 60 * 1000;
@@ -76,7 +77,7 @@ async function main() {
   const broker = await upsertUser(
     `${P}user_broker`, 'broker.demo@casa.kz', 'Асель', 'Брокерова', UserRole.BROKER
   );
-  console.log('👥 Пользователи: coordinator@casa.kz, analyst@casa.kz, broker.demo@casa.kz (пароль demo1234)');
+  console.log('👥 Демо-пользователи созданы; пароль не выводится в лог.');
 
   const seller = await prisma.seller.create({
     data: {
@@ -445,9 +446,9 @@ async function main() {
   console.log('📐 Оценок: 4 (подтверждённая, ручной разбор, предварительная, новая заявка)');
 
   console.log('\n✅ Готово. Войти можно так:');
-  console.log('   coordinator@casa.kz / demo1234  — видит и двигает сделки');
-  console.log('   analyst@casa.kz     / demo1234  — видит, но двигать не может');
-  console.log('   broker.demo@casa.kz / demo1234  — контур вторички ему не виден');
+  console.log('   coordinator@casa.kz / пароль из DEMO_SEED_PASSWORD  — видит и двигает сделки');
+  console.log('   analyst@casa.kz     / пароль из DEMO_SEED_PASSWORD  — видит, но двигать не может');
+  console.log('   broker.demo@casa.kz / пароль из DEMO_SEED_PASSWORD  — контур вторички ему не виден');
 }
 
 main()

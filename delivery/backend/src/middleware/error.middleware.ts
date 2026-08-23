@@ -19,7 +19,11 @@ export const errorHandler = (
     return;
   }
 
-  console.error('Error:', err);
+  if (process.env.NODE_ENV === 'production') {
+    console.error('Request failed', { status: err.status || 500, type: err.type });
+  } else {
+    console.error('Error:', err);
+  }
 
   const statusCode = err.status || 500;
   if (statusCode >= 500 && process.env.SENTRY_DSN) {

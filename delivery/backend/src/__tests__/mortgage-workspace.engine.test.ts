@@ -9,6 +9,7 @@ import {
   DEMO_EXISTING_PAYMENT,
   type WhatIfInput,
 } from '../lib/mortgage-workspace/engine';
+import { isConclusionExpired } from '../lib/mortgage-workspace/store';
 
 // Базовый ввод «Что если» для демо-клиента (30 млн / 5 млн взнос / 240 мес).
 function baseInput(overrides: Partial<WhatIfInput> = {}): WhatIfInput {
@@ -99,6 +100,14 @@ describe('buildConclusionPayload', () => {
   });
 });
 
+describe('public conclusion expiry', () => {
+  it('expires at the boundary and rejects malformed dates', () => {
+    const payload = { expiresAt: '2026-08-23T12:00:00.000Z' } as any;
+    expect(isConclusionExpired(payload, Date.parse('2026-08-23T12:00:00.000Z'))).toBe(true);
+    expect(isConclusionExpired(payload, Date.parse('2026-08-23T11:59:59.000Z'))).toBe(false);
+    expect(isConclusionExpired({ expiresAt: 'not-a-date' } as any)).toBe(true);
+  });
+});
 describe('demo-данные зеркалят фронтенд', () => {
   it('анализ, сценарии и подбор непустые', () => {
     expect(demoAnalysis().programResults).toHaveLength(4);

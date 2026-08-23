@@ -116,6 +116,10 @@ export function createConclusion(token: string, payload: ConclusionPayload): voi
   conclusions.set(token, payload);
 }
 
+export function isConclusionExpired(payload: ConclusionPayload, now = Date.now()): boolean {
+  const expiresAt = Date.parse(payload.expiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt <= now;
+}
 export function getConclusion(token: string): ConclusionPayload | undefined {
   return conclusions.get(token);
 }

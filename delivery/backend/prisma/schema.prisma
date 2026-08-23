@@ -963,6 +963,7 @@ model Payment {
   description String
   createdAt   DateTime    @default(now()) @map("created_at")
   userId      String      @map("user_id")
+  idempotencyKey String?  @unique @map("idempotency_key")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

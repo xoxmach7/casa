@@ -31,9 +31,9 @@ async function main() {
   console.log('🧹 Database completely cleaned');
 
   // 2. Create Admin User
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-  if (process.env.NODE_ENV === 'production' && adminPassword === 'admin123') {
-    console.warn('⚠️  WARNING: Using default admin password in production! Set ADMIN_PASSWORD env variable.');
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword || adminPassword === 'admin123') {
+    throw new Error('ADMIN_PASSWORD must be set to a non-default value before running production seed');
   }
   const passwordHash = await bcrypt.hash(adminPassword, 12);
 

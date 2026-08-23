@@ -11,10 +11,15 @@ vi.mock('../middleware/auth.middleware', () => ({
   },
 }));
 
+const prismaMock = vi.hoisted(() => ({
+  payment: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
+  user: { findUnique: vi.fn(), update: vi.fn() },
+}));
+
 vi.mock('../lib/prisma', () => ({
   prisma: {
-    payment: { findMany: vi.fn(), create: vi.fn() },
-    user: { findUnique: vi.fn(), update: vi.fn() },
+    ...prismaMock,
+    $transaction: vi.fn(async (callback: any) => callback(prismaMock)),
   },
 }));
 
@@ -123,6 +128,37 @@ describe('POST /api/payments (admin create)', () => {
     });
   });
 
+  it('replays the same payment without changing the balance twice', async () => {
+    (prisma.payment.findUnique as any).mockResolvedValue({
+      id: 'pay_1', userId: 'broker_2', amount: 5000, type: 'INCOME', description: 'Комиссия',
+    });
+    currentUser = { userId: 'admin_1', role: 'ADMIN' };
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/payments')
+      .set('Idempotency-Key', 'payment-123')
+      .send({ brokerId: 'broker_2', amount: 5000, type: 'income', description: 'Комиссия' });
+
+    expect(res.status).toBe(200);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects reusing an idempotency key for different payment data', async () => {
+    currentUser = { userId: 'admin_1', role: 'ADMIN' };
+    (prisma.payment.findUnique as any).mockResolvedValue({
+      id: 'pay_1', userId: 'broker_2', amount: 5000, type: 'INCOME', description: 'Комиссия',
+    });
+    const app = buildApp();
+    const res = await request(app)
+      .post('/api/payments')
+      .set('Idempotency-Key', 'payment-123')
+      .send({ brokerId: 'broker_2', amount: 6000, type: 'income', description: 'Другая операция' });
+
+    expect(res.status).toBe(409);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
   it('400s when required fields are missing', async () => {
     currentUser = { userId: 'admin_1', role: 'ADMIN' };
 
@@ -134,6 +170,26 @@ describe('POST /api/payments (admin create)', () => {
   });
 });
 
+describe('POST /api/payments validation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentUser = { userId: 'admin_1', role: 'ADMIN' };
+  });
+
+  it('400s when amount is negative or not a number', async () => {
+    const app = buildApp();
+    const negative = await request(app).post('/api/payments').send({
+      brokerId: 'broker_2', amount: -1, type: 'income', description: 'invalid',
+    });
+    const nonNumeric = await request(app).post('/api/payments').send({
+      brokerId: 'broker_2', amount: '1000', type: 'income', description: 'invalid',
+    });
+
+    expect(negative.status).toBe(400);
+    expect(nonNumeric.status).toBe(400);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+});
 describe('GET /api/payments/broker/:brokerId', () => {
   beforeEach(() => {
     vi.clearAllMocks();

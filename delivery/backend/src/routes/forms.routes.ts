@@ -35,7 +35,6 @@ formsRouter.post('/', authenticate, async (req: Request, res: Response): Promise
             return;
         }
 
-        console.log('Create form body:', JSON.stringify(req.body, null, 2));
         const data = createFormSchema.parse(req.body);
 
         const form = await prisma.leadForm.create({
@@ -52,7 +51,7 @@ formsRouter.post('/', authenticate, async (req: Request, res: Response): Promise
         res.status(201).json(form);
     } catch (error) {
         if (error instanceof z.ZodError) {
-            console.error('Form validation error:', JSON.stringify(error.errors, null, 2));
+            console.error('Form validation failed');
             res.status(400).json({ error: 'Ошибка валидации', details: error.errors });
             return;
         }

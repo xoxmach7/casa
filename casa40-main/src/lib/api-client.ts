@@ -1,23 +1,7 @@
-// Thin fetch client to the real CASA backend — replaces the standalone
-// Supabase project casa40-main used to talk to. Mirrors the pattern already
-// used by the Next.js public site (lib/api/procasa-client.ts): one base URL
-// env var, plain fetch, JSON in/out.
-
+// Cookie-only fetch client for the real CASA backend.
+// The backend stores the JWT in an httpOnly cookie; this client never reads,
+// stores, or sends the token from JavaScript.
 const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
-
-const TOKEN_STORAGE_KEY = 'casa_admin_token';
-
-export function getAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
-}
-
-export function setAuthToken(token: string | null): void {
-  if (token) {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-  }
-}
 
 export class ApiError extends Error {
   status: number;
@@ -28,18 +12,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAuthToken();
   const isFormData = options.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string> | undefined),
   };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
-
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: 'include' });
   if (!res.ok) {
     let message = res.statusText;
     try {
@@ -50,11 +28,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(res.status, typeof message === 'string' ? message : JSON.stringify(message));
   }
-
-  if (res.status === 204) {
-    return undefined as T;
-  }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+export async function logout(): Promise<void> {
+  await request('/api/auth/logout', { method: 'POST' });
 }
 
 export const api = {
@@ -63,12 +42,8 @@ export const api = {
     request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
-  upload: <T>(path: string, formData: FormData) => {
-    const token = getAuthToken();
-    const headers: Record<string, string> = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    return request<T>(path, { method: 'POST', body: formData, headers });
-  },
+  upload: <T>(path: string, formData: FormData) =>
+    request<T>(path, { method: 'POST', body: formData }),
 };
 
 export { API_BASE_URL };

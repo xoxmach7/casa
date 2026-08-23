@@ -10,14 +10,20 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { demoEndpointsEnabled } from '../lib/demo-mode';
 import {
   getConsent,
   updateConsent,
   getConclusion,
   MAX_CONSENT_ATTEMPTS,
+  isConclusionExpired,
 } from '../lib/mortgage-workspace/store';
 
 export const publicMortgageRouter = Router();
+publicMortgageRouter.use((_req: Request, res: Response, next): void => {
+  if (!demoEndpointsEnabled()) { res.status(404).json({ error: 'Not found' }); return; }
+  next();
+});
 
 // --- Согласие ----------------------------------------------------------------
 
@@ -119,6 +125,10 @@ publicMortgageRouter.get('/conclusion/:token', (req: Request, res: Response): vo
   const payload = getConclusion(req.params.token);
   if (!payload) {
     res.status(404).json({ error: 'Заключение не найдено' });
+    return;
+  }
+  if (isConclusionExpired(payload)) {
+    res.status(410).json({ error: 'Срок действия заключения истёк' });
     return;
   }
   res.json(payload);

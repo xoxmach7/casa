@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight, LayoutGrid, Users, Banknote, Eye, Loader2, LogOut } from 'lucide-react';
-import { setAuthToken } from '@/lib/api-client';
+import { logout } from '@/lib/api-client';
 import { useAllProperties, mapPropertyStatus } from '@/hooks/useProperties';
 import { useLeads, mapLeadStatus } from '@/hooks/useLeads';
 import casaLogo from '@/assets/casa-logo.webp';
@@ -66,13 +66,13 @@ const AdminDashboard = () => {
             Заявки
           </button>
           <button
-            onClick={() => {
-              setAuthToken(null);
+            onClick={async () => {
+              await logout().catch(() => undefined);
               navigate('/admin/login', { replace: true });
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent text-xs font-medium text-muted-foreground active:scale-95 transition-transform"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut aria-label="Выйти" className="w-3.5 h-3.5" />
           </button>
         </div>
       </header>

@@ -196,7 +196,14 @@ app.use('/api/admin/listings', adminListingsRouter);
 app.use('/api/public/buyer-leads', publicBuyerLeadsRouter);
 app.use('/api/public/landing-leads', publicLandingLeadsRouter);
 app.use('/api/public/selections', publicSelectionsRouter);
-app.use('/api/public/uploads', publicUploadsRouter);
+const publicUploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'test' ? 10_000 : 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Слишком много загрузок. Попробуйте позже.' },
+});
+app.use('/api/public/uploads', publicUploadLimiter, publicUploadsRouter);
 app.use('/api/public/mortgage', publicMortgageRouter);
 
 // CASA CRM Routes

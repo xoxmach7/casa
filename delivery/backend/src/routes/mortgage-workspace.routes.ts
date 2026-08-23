@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import multer from 'multer';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
+import { demoEndpointsEnabled } from '../lib/demo-mode';
 import {
   computeWhatIf,
   demoAnalysis,
@@ -29,6 +30,7 @@ import {
   readPdf,
   updateMeta,
   isValidId,
+  canAccessDocument,
   newDocumentId,
   sha256Of,
   type MortgageDocType,
@@ -37,6 +39,10 @@ import {
 
 export const mortgageWorkspaceRouter = Router();
 mortgageWorkspaceRouter.use(authenticate);
+mortgageWorkspaceRouter.use((_req: Request, res: Response, next): void => {
+  if (!demoEndpointsEnabled()) { res.status(404).json({ error: 'Not found' }); return; }
+  next();
+});
 
 // Приём PDF: только application/pdf, до 25 МБ (спека: max_file_size_mb 25).
 const pdfUpload = multer({
@@ -261,7 +267,7 @@ mortgageWorkspaceRouter.get('/documents/:id', (req: Request, res: Response): voi
   const { id } = req.params;
   if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
   const meta = readMeta(id);
-  if (!meta) { res.status(404).json({ error: 'Документ не найден' }); return; }
+  if (!meta || !canAccessDocument(meta, req.user)) { res.status(404).json({ error: 'Документ не найден' }); return; }
   res.json(meta);
 });
 
@@ -270,8 +276,9 @@ mortgageWorkspaceRouter.get('/documents/:id/file', (req: Request, res: Response)
   const { id } = req.params;
   if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
   const meta = readMeta(id);
+  if (!meta || !canAccessDocument(meta, req.user)) { res.status(404).json({ error: 'Документ не найден' }); return; }
   const bytes = readPdf(id);
-  if (!meta || !bytes) { res.status(404).json({ error: 'Документ не найден' }); return; }
+  if (!bytes) { res.status(404).json({ error: 'Документ не найден' }); return; }
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(meta.fileName)}"`);
   res.setHeader('Cache-Control', 'private, no-store');
@@ -282,6 +289,8 @@ mortgageWorkspaceRouter.get('/documents/:id/file', (req: Request, res: Response)
 mortgageWorkspaceRouter.patch('/documents/:id/confirm', (req: Request, res: Response): void => {
   const { id } = req.params;
   if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
+  const meta = readMeta(id);
+  if (!meta || !canAccessDocument(meta, req.user)) { res.status(404).json({ error: 'Документ не найден' }); return; }
   const updated = updateMeta(id, { status: 'confirmed' });
   if (!updated) { res.status(404).json({ error: 'Документ не найден' }); return; }
   res.json({ id, status: updated.status });

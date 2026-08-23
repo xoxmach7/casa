@@ -35,7 +35,9 @@ async function main() {
   console.log('🧹 Database cleaned');
 
   // 2. Create Users (Admin, Developers, Brokers)
-  const passwordHash = await bcrypt.hash('admin123', 10);
+  const seedPassword = process.env.SEED_PASSWORD || (process.env.NODE_ENV === 'test' ? 'admin123' : undefined);
+  if (!seedPassword) throw new Error('SEED_PASSWORD is required outside test environments');
+  const passwordHash = await bcrypt.hash(seedPassword, 10);
 
   const admin = await prisma.user.create({
     data: {

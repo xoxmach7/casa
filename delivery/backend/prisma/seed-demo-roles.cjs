@@ -18,12 +18,13 @@ const p = new PrismaClient();
 
   // 2. Известные демо-пароли на 5 канонических аккаунтов (по одному на роль).
   const accounts = [
-    ['admin@casa.kz', 'Casa-Admin-2026'],
-    ['agent@casa.kz', 'Casa-Agent-2026'],    // Агент (роль BROKER)
-    ['agency@casa.kz', 'Casa-Agency-2026'],
-    ['analyst@casa.kz', 'Casa-Analyst-2026'],
-    ['developer@casa.kz', 'Casa-Dev-2026'],
+    ['admin@casa.kz', process.env.DEMO_ADMIN_PASSWORD],
+    ['agent@casa.kz', process.env.DEMO_AGENT_PASSWORD],
+    ['agency@casa.kz', process.env.DEMO_AGENCY_PASSWORD],
+    ['analyst@casa.kz', process.env.DEMO_ANALYST_PASSWORD],
+    ['developer@casa.kz', process.env.DEMO_DEVELOPER_PASSWORD],
   ];
+  if (accounts.some(([, password]) => !password)) throw new Error('All DEMO_*_PASSWORD variables are required');
   for (const [email, pw] of accounts) {
     const hash = await bcrypt.hash(pw, 10);
     const r = await p.user.updateMany({ where: { email }, data: { password: hash, isActive: true } });

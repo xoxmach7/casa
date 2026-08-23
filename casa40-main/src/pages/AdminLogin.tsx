@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, setAuthToken, ApiError } from '@/lib/api-client';
+import { api, ApiError } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,18 +19,19 @@ const AdminLogin = () => {
     setLoading(true);
 
     try {
-      const { token, user } = await api.post<{ token: string; user: { role: string } }>('/api/auth/login', {
+      await api.post<{ user: { role: string } }>('/api/auth/login', {
         email: email.trim(),
         password,
       });
 
+      const user = await api.get<{ role: string }>('/api/auth/me');
+
       if (user.role !== 'ADMIN') {
         setError('У этого пользователя нет доступа к панели управления');
+        await api.post('/api/auth/logout').catch(() => undefined);
         setLoading(false);
         return;
       }
-
-      setAuthToken(token);
       navigate('/admin/objects', { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Ошибка входа');

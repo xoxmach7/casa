@@ -20,4 +20,4 @@ EXPOSE 3001
 # Запускаем через tsx (не компилируем, используем runtime env vars)
 # Без --accept-data-loss: при расхождении схемы push ОТКАЖЕТСЯ (безопасно),
 # а не применит молча с потерей данных. В синхроне — no-op, как и раньше.
-CMD ["sh", "-c", "npx prisma generate && npx prisma db push && npx tsx src/index.ts"]
+CMD ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && npx tsx src/index.ts"]

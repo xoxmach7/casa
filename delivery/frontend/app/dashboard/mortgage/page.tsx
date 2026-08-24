@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
+import { API_URL } from "@/lib/api-client";
 import { createMortgageCase, MortgageCase } from "@/lib/mortgage/case-api";
 import { calculateMortgage, MortgageCalculation, MortgageCalculationInput, uploadMortgageDocument } from "@/lib/mortgage/workspace-api";
 
@@ -16,8 +17,17 @@ const initialCalculation: MortgageCalculationInput = {
 
 const money = new Intl.NumberFormat("ru-KZ", { maximumFractionDigits: 0 });
 
+type ClientOption = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+};
+
 export default function MortgageWorkspacePage() {
   const [clientId, setClientId] = useState("");
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
   const [mortgageCase, setMortgageCase] = useState<MortgageCase | null>(null);
   const [calculation, setCalculation] = useState<MortgageCalculation | null>(null);
   const [values, setValues] = useState(initialCalculation);
@@ -26,10 +36,23 @@ export default function MortgageWorkspacePage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState<"case" | "calc" | "upload" | "pdf" | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_URL}/clients?limit=100`, { credentials: "include" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Не удалось загрузить клиентов");
+        return response.json() as Promise<{ clients?: ClientOption[] }>;
+      })
+      .then((body) => { if (active) setClients(body.clients || []); })
+      .catch(() => { if (active) setNotice("Не удалось загрузить список клиентов. Обновите страницу."); })
+      .finally(() => { if (active) setClientsLoading(false); });
+    return () => { active = false; };
+  }, []);
+
   const setNumber = (key: keyof MortgageCalculationInput, value: string) => setValues((current) => ({ ...current, [key]: Number(value) || 0 }));
 
   async function createCase() {
-    if (!clientId.trim()) { setNotice("Укажите ID существующего клиента."); return; }
+    if (!clientId.trim()) { setNotice("Выберите клиента."); return; }
     setBusy("case");
     setNotice("");
     try {
@@ -86,11 +109,15 @@ export default function MortgageWorkspacePage() {
 
     <section className="rounded-lg border p-5">
       <h2 className="font-semibold">1. Заявка</h2>
-      <label className="mt-3 block text-sm" htmlFor="client-id">ID клиента</label>
+      <label className="mt-3 block text-sm" htmlFor="client">Клиент</label>
       <div className="mt-1 flex flex-wrap gap-2">
-        <input id="client-id" value={clientId} onChange={(event) => setClientId(event.target.value)} className="min-w-64 rounded border p-2" placeholder="ID существующего клиента" />
-        <button type="button" onClick={createCase} disabled={busy === "case"} className="rounded bg-[#15325B] px-4 py-2 text-sm text-white disabled:opacity-50">{busy === "case" ? "Создаём…" : "Создать заявку"}</button>
+        <select id="client" value={clientId} onChange={(event) => setClientId(event.target.value)} disabled={clientsLoading} className="min-w-64 rounded border p-2 text-sm disabled:opacity-50">
+          <option value="">{clientsLoading ? "Загружаем клиентов…" : "Выберите клиента"}</option>
+          {clients.map((client) => <option key={client.id} value={client.id}>{client.firstName} {client.lastName} · {client.phone}</option>)}
+        </select>
+        <button type="button" onClick={createCase} disabled={busy === "case" || !clientId} className="rounded bg-[#15325B] px-4 py-2 text-sm text-white disabled:opacity-50">{busy === "case" ? "Создаём…" : "Создать заявку"}</button>
       </div>
+      {!clientsLoading && clients.length === 0 && <p className="mt-2 text-sm text-muted-foreground">В базе пока нет клиентов. Сначала создайте клиента в разделе «Клиенты».</p>}
       {mortgageCase && <p className="mt-3 text-sm text-emerald-700">Заявка создана: {mortgageCase.id} · {mortgageCase.status}</p>}
     </section>
 

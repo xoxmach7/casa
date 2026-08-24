@@ -1,6 +1,6 @@
 # Гэп-аудит: Mortgage Pre-Score v1.1 (AUDITED) vs текущая реализация
 
-**Источник требований:** `CASA_Mortgage_PreScore_Product_Technical_Spec_v1.1_AUDITED.docx` + `CASA_Mortgage_PreScore_Independent_Audit_v1.0.docx`, полученные от пользователя 2026-08-02, сохранены в `docs/handoff/CASA_Mortgage_PreScore_v1.1/`. Level 3 domain spec, подчинена тому же `01_Source_of_Truth_CASA_Product_Master_v1.1` SOT, что и [[project_casa_handoff_v2_pivot]].
+**Источник требований:** `CASA_Mortgage_PreScore_Product_Technical_Spec_v1.1_AUDITED.docx` + `CASA_Mortgage_PreScore_Independent_Audit_v1.0.docx`, полученные от пользователя 2026-08-02, сохранены в `docs/casa-pro-ipoteka/CASA_Mortgage_PreScore_v1.1/`. Level 3 domain spec, подчинена тому же `01_Source_of_Truth_CASA_Product_Master_v1.1` SOT, что и [[project_casa_handoff_v2_pivot]].
 
 **Вердикт спеки:** READY WITH BLOCKING DECISIONS BEFORE PILOT — 7 блокеров (BD-01…BD-07) с владельцами вне разработки (Legal, Bank Partner, DPO, CISO/CTO, Product Ops, CPO). До их закрытия **реальные PII клиентов в pilot/production запрещены**. Это не техническое решение — я (Claude) не могу закрыть эти блокеры, только подготовить фундамент.
 
@@ -35,3 +35,7 @@
 ## Открытые вопросы (не мои — Legal/DPO/CISO/Bank Partner/CPO/CEO)
 
 Ровно BD-01…BD-07 из спеки: applicability регуляторной формулы КДН (Legal+Underwriting), партнёрские карточки банков по пилотным программам (Mortgage Policy+Bank Partner), consent/retention/legal-hold текст (DPO/Legal), RK data residency + внешний LLM route (CISO/CTO), repository-level gap audit перед первой миграцией (Architect/Tech Lead — частично закрыт этим документом), freshness SLA (Product Ops), pilot scope (CPO). Ничего из этого не решается кодом.
+
+## Обновление реализации от 2026-08-24
+
+По новому прямому поручению пользователя Foundation расширен до безопасного backend-ядра: добавлены case API, участники и purpose-specific consent gates, идемпотентность и optimistic locking, append-only audit, документные ревизии и подтверждение полей, зашифрованные immutable snapshots с provenance, детерминированный Pre-Score, governance банковских правил и copy-on-write сценарии. Полный актуальный статус и границы интеграций находятся в `docs/superpowers/plans/2026-08-24-casa-mortgage-prescore-backend.md`; прежнее ограничение «не добавлять production mutation route» этим поручением отменено только для безопасного case-контура. Внешние PII/provider-интеграции по-прежнему fail-closed до решений BD-01…BD-07.

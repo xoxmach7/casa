@@ -67,6 +67,7 @@ import { importRouter } from './routes/import.routes';
 import { subscriptionsRouter } from './routes/subscriptions.routes';
 import { mortgageApplicationsRouter } from './routes/mortgage-applications.routes';
 import { mortgageWorkspaceRouter } from './routes/mortgage-workspace.routes';
+import { mortgageCasesRouter } from './routes/mortgage-cases.routes';
 import { publicMortgageRouter } from './routes/public-mortgage.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { auditMiddleware } from './middleware/audit.middleware';
@@ -232,6 +233,7 @@ app.use('/api/export', exportRouter);
 app.use('/api/import', importRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/mortgage-applications', mortgageApplicationsRouter);
+app.use('/api/v1/mortgage-cases', mortgageCasesRouter);
 app.use('/api/mortgage-workspace', mortgageWorkspaceRouter);
 app.use('/api/feedback', feedbackRouter);
 

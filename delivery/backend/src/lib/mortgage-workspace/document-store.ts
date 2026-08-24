@@ -38,6 +38,8 @@ export interface StoredDocumentMeta {
   uploadedBy?: string;
   caseRef?: string;
   storedAt: string;
+  sandbox?: true;
+  policyVersion?: string;
   // Результат извлечения (структура — из extraction.ts).
   extraction: unknown;
 }

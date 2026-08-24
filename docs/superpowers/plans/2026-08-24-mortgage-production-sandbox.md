@@ -23,7 +23,7 @@ Cover `%PDF-` magic validation, required text layer, valid Kazakhstan IIN detect
 ```ts
 inspectMortgageSandboxPdf({ buffer, extractedText, attestedSynthetic }):
   { allowed: true; policyVersion: '2026-08-24' }
-  | { allowed: false; code: 'PDF_SIGNATURE_INVALID' | 'TEXT_LAYER_REQUIRED' | 'REAL_IIN_DETECTED' | 'SYNTHETIC_ATTESTATION_REQUIRED' }
+  | { allowed: false; code: 'PDF_SIGNATURE_INVALID' | 'TEXT_LAYER_REQUIRED' | 'TEXT_LAYER_TOO_LARGE' | 'REAL_IIN_DETECTED' | 'SYNTHETIC_ATTESTATION_REQUIRED' }
 ```
 
 - [ ] **Step 2: Run RED**

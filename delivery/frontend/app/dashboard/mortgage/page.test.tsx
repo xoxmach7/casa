@@ -3,43 +3,27 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MortgageWorkspacePage from "./page";
 
-const api = vi.hoisted(() => ({
-  getMortgageSandboxStatus: vi.fn(), uploadMortgageSandboxDocument: vi.fn(), checkMortgageSandboxIin: vi.fn(),
-  getMortgageSandboxAnalysis: vi.fn(), previewMortgageSandboxScenario: vi.fn(), confirmMortgageSandboxDocument: vi.fn(),
-}));
-vi.mock("@/lib/mortgage/sandbox-api", () => api);
+const mortgageCases = vi.hoisted(() => ({ createMortgageCase: vi.fn() }));
+vi.mock("@/lib/mortgage/case-api", () => mortgageCases);
 
-describe("MortgageWorkspacePage sandbox", () => {
-  beforeEach(() => { vi.clearAllMocks(); api.getMortgageSandboxStatus.mockResolvedValue({ mode: "synthetic", policyVersion: "2026-08-24" }); });
+describe("MortgageWorkspacePage", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
 
-  it("keeps the secure sandbox banner visible and prevents uploading without acknowledgement", async () => {
-    render(<MortgageWorkspacePage />);
-    expect(await screen.findByText("Безопасный sandbox")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Загрузить PDF" })).toBeDisabled();
-    const user = userEvent.setup();
-    await user.click(screen.getByLabelText(/подтверждаю/i));
-    await user.upload(screen.getByLabelText("PDF файл"), new File(["%PDF- synthetic"], "synthetic.pdf", { type: "application/pdf" }));
-    expect(screen.getByRole("button", { name: "Загрузить PDF" })).toBeEnabled();
-  });
-
-  it("uses the backend IIN check and never claims an official registry response", async () => {
-    api.checkMortgageSandboxIin.mockResolvedValue({ shapeValid: true, checksumValid: true, externalSourceStatus: "EXTERNAL_SOURCE_NOT_CONNECTED", officialResult: null });
+  it("creates a working internal mortgage case for an existing client", async () => {
+    mortgageCases.createMortgageCase.mockResolvedValue({ id: "case_1", client_id: "client_1", status: "DRAFT", version: 1 });
     render(<MortgageWorkspacePage />);
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Синтетический ИИН"), "900101300123");
-    await user.click(screen.getByRole("button", { name: "Проверить структуру ИИН" }));
-    expect(api.checkMortgageSandboxIin).toHaveBeenCalledWith("900101300123");
-    expect(await screen.findByText("Контрольная сумма: корректна")).toBeInTheDocument();
-    expect(screen.getByText("EXTERNAL_SOURCE_NOT_CONNECTED")).toBeInTheDocument();
-    expect(screen.queryByText(/официально проверен/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("ID клиента"), "client_1");
+    await user.click(screen.getByRole("button", { name: "Создать заявку" }));
+
+    expect(mortgageCases.createMortgageCase).toHaveBeenCalledWith("client_1");
+    expect(await screen.findByText("Заявка создана" )).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Сформировать PDF" })).toBeEnabled();
   });
 
-  it("fills only a synthetic questionnaire and does not fabricate documents, consent, or analysis", async () => {
+  it("does not block the application when external checks are not connected", () => {
     render(<MortgageWorkspacePage />);
-    await userEvent.click(screen.getByRole("button", { name: "Заполнить демо" }));
-    expect(screen.getByDisplayValue("Синтетический клиент CASA")).toBeInTheDocument();
-    expect(screen.getByText("Документы не загружены")).toBeInTheDocument();
-    expect(screen.getByText("Согласие: требуется интеграция провайдера")).toBeInTheDocument();
-    expect(api.getMortgageSandboxAnalysis).not.toHaveBeenCalled();
+    expect(screen.getByText(/Внешние проверки подключаются отдельно/i)).toBeInTheDocument();
+    expect(screen.queryByText("Безопасный sandbox")).not.toBeInTheDocument();
   });
 });

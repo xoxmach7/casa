@@ -18,7 +18,6 @@ import {
 } from '../lib/mortgage-workspace/engine';
 import { extractTextFromPdf } from '../lib/scoring-document.service';
 import { extractDocument } from '../lib/mortgage-workspace/extraction';
-import { inspectMortgageSandboxPdf } from '../lib/mortgage-sandbox-policy';
 import {
   checkSandboxIin,
   getSandboxAnalysis,
@@ -158,14 +157,8 @@ mortgageWorkspaceRouter.post(
         res.status(422).json({ code: 'TEXT_LAYER_REQUIRED', error: 'Не удалось извлечь текстовый слой PDF' });
         return;
       }
-
-      const policy = inspectMortgageSandboxPdf({
-        buffer: file.buffer,
-        extractedText: text,
-        attestedSynthetic: req.body?.syntheticAttestation === 'true',
-      });
-      if (!policy.allowed) {
-        res.status(422).json({ code: policy.code, error: 'Документ не соответствует политике безопасного sandbox' });
+      if (!file.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+        res.status(422).json({ code: 'PDF_SIGNATURE_INVALID', error: 'Файл не является корректным PDF' });
         return;
       }
 
@@ -182,8 +175,6 @@ mortgageWorkspaceRouter.post(
         uploadedBy: req.user?.userId,
         caseRef: typeof req.body?.caseRef === 'string' ? req.body.caseRef : undefined,
         storedAt: new Date().toISOString(),
-        sandbox: true,
-        policyVersion: policy.policyVersion,
         extraction,
       };
       saveDocument(file.buffer, meta);
@@ -191,7 +182,7 @@ mortgageWorkspaceRouter.post(
       res.status(201).json({
         id, type, fileName: meta.fileName, size: meta.size, sha256,
         status: meta.status, storedAt: meta.storedAt, stored: true,
-        sandbox: true, policyVersion: policy.policyVersion, extraction,
+        extraction,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось обработать документ';

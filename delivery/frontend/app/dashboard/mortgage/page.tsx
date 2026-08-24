@@ -1,162 +1,119 @@
 "use client";
 
-import { ChangeEvent, useEffect, useState } from "react";
-import {
-  MortgageSandboxApiError,
-  checkMortgageSandboxIin,
-  confirmMortgageSandboxDocument,
-  getMortgageSandboxAnalysis,
-  getMortgageSandboxStatus,
-  previewMortgageSandboxScenario,
-  uploadMortgageSandboxDocument,
-  type MortgageSandboxDocument,
-  type MortgageSandboxIinCheck,
-  type MortgageSandboxStatus,
-} from "@/lib/mortgage/sandbox-api";
+import { ChangeEvent, useState } from "react";
+import { createMortgageCase, MortgageCase } from "@/lib/mortgage/case-api";
+import { calculateMortgage, MortgageCalculation, MortgageCalculationInput, uploadMortgageDocument } from "@/lib/mortgage/workspace-api";
 
-function errorText(error: unknown): string {
-  if (error instanceof MortgageSandboxApiError) return `${error.code ? `${error.code}: ` : ""}${error.message}`;
-  return "Не удалось подключиться к sandbox-серверу. Локальные результаты не показаны.";
-}
+const initialCalculation: MortgageCalculationInput = {
+  propertyPrice: 0,
+  downPayment: 0,
+  termMonths: 0,
+  rate: 0,
+  existingDebtPayment: 0,
+  additionalConfirmedIncome: 0,
+  baseIncome: 0,
+};
+
+const money = new Intl.NumberFormat("ru-KZ", { maximumFractionDigits: 0 });
 
 export default function MortgageWorkspacePage() {
-  const [status, setStatus] = useState<MortgageSandboxStatus | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
-  const [attested, setAttested] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [mortgageCase, setMortgageCase] = useState<MortgageCase | null>(null);
+  const [calculation, setCalculation] = useState<MortgageCalculation | null>(null);
+  const [values, setValues] = useState(initialCalculation);
   const [file, setFile] = useState<File | null>(null);
-  const [docType, setDocType] = useState<"credit_history" | "enpf_statement">("credit_history");
-  const [document, setDocument] = useState<MortgageSandboxDocument | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
-  const [syntheticIin, setSyntheticIin] = useState("");
-  const [iinResult, setIinResult] = useState<MortgageSandboxIinCheck | null>(null);
-  const [questionnaireName, setQuestionnaireName] = useState("");
-  const [analysis, setAnalysis] = useState<unknown>(null);
-  const [scenario, setScenario] = useState<unknown>(null);
+  const [documentType, setDocumentType] = useState<"credit_history" | "enpf_statement">("credit_history");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState<"case" | "calc" | "upload" | "pdf" | null>(null);
 
-  useEffect(() => {
-    void getMortgageSandboxStatus()
-      .then(setStatus)
-      .catch((error) => setStatusError(errorText(error)));
-  }, []);
+  const setNumber = (key: keyof MortgageCalculationInput, value: string) => setValues((current) => ({ ...current, [key]: Number(value) || 0 }));
 
-  const upload = async () => {
-    if (!file || !attested || !status) return;
-    setOperationError(null);
+  async function createCase() {
+    if (!clientId.trim()) { setNotice("Укажите ID существующего клиента."); return; }
+    setBusy("case");
+    setNotice("");
     try {
-      setDocument(await uploadMortgageSandboxDocument({ type: docType, file, syntheticAttestation: true }));
-    } catch (error) {
-      setOperationError(errorText(error));
-    }
-  };
+      const created = await createMortgageCase(clientId.trim());
+      setMortgageCase(created);
+      setNotice("Заявка создана");
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось создать заявку"); }
+    finally { setBusy(null); }
+  }
 
-  const confirm = async () => {
-    if (!document) return;
-    setOperationError(null);
+  async function calculate() {
+    setBusy("calc");
+    setNotice("");
+    try { setCalculation(await calculateMortgage(values)); setNotice("Расчёт обновлён"); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось выполнить расчёт"); }
+    finally { setBusy(null); }
+  }
+
+  async function upload() {
+    if (!file) { setNotice("Выберите PDF-файл."); return; }
+    setBusy("upload");
+    setNotice("");
+    try { const document = await uploadMortgageDocument(file, documentType); setNotice(`Документ «${document.fileName}» загружен приватно.`); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "Не удалось загрузить документ"); }
+    finally { setBusy(null); }
+  }
+
+  async function makePdf() {
+    setBusy("pdf");
     try {
-      const confirmed = await confirmMortgageSandboxDocument(document.id);
-      setDocument({ ...document, status: confirmed.status });
-    } catch (error) {
-      setOperationError(errorText(error));
-    }
-  };
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF();
+      pdf.setFontSize(16); pdf.text("CASA Pro — внутренний ипотечный расчёт", 14, 20);
+      pdf.setFontSize(11); pdf.text(`Заявка: ${mortgageCase?.id || "не создана"}`, 14, 32);
+      pdf.text(`Клиент: ${clientId || "не указан"}`, 14, 40);
+      if (calculation) {
+        pdf.text(`Сумма кредита: ${money.format(calculation.loanAmount)} ₸`, 14, 52);
+        pdf.text(`Ежемесячный платёж: ${money.format(calculation.monthlyPayment)} ₸`, 14, 60);
+        pdf.text(`КДН: ${calculation.kdn}%`, 14, 68);
+      }
+      pdf.setFontSize(9); pdf.text("Предварительный внутренний расчёт. Не является решением банка.", 14, 280);
+      pdf.save("mortgage-calculation.pdf");
+      setNotice("PDF сформирован");
+    } catch { setNotice("Не удалось сформировать PDF"); }
+    finally { setBusy(null); }
+  }
 
-  const checkIin = async () => {
-    setOperationError(null);
-    try {
-      setIinResult(await checkMortgageSandboxIin(syntheticIin));
-    } catch (error) {
-      setOperationError(errorText(error));
-    }
-  };
+  return <main className="mx-auto max-w-5xl space-y-6 pb-16">
+    <section className="rounded-lg border bg-white p-5">
+      <h1 className="text-2xl font-bold text-[#15325B]">Ипотечная заявка</h1>
+      <p className="mt-1 text-sm text-muted-foreground">Создайте заявку, добавьте приватные документы, рассчитайте платёж и сформируйте внутренний PDF.</p>
+      <p className="mt-2 text-sm text-slate-600">Внешние проверки подключаются отдельно и не блокируют заявку.</p>
+    </section>
 
-  const runAnalysis = async () => {
-    setOperationError(null);
-    try {
-      setAnalysis((await getMortgageSandboxAnalysis()).analysis);
-    } catch (error) {
-      setOperationError(errorText(error));
-    }
-  };
+    <section className="rounded-lg border p-5">
+      <h2 className="font-semibold">1. Заявка</h2>
+      <label className="mt-3 block text-sm" htmlFor="client-id">ID клиента</label>
+      <div className="mt-1 flex flex-wrap gap-2">
+        <input id="client-id" value={clientId} onChange={(event) => setClientId(event.target.value)} className="min-w-64 rounded border p-2" placeholder="ID существующего клиента" />
+        <button type="button" onClick={createCase} disabled={busy === "case"} className="rounded bg-[#15325B] px-4 py-2 text-sm text-white disabled:opacity-50">{busy === "case" ? "Создаём…" : "Создать заявку"}</button>
+      </div>
+      {mortgageCase && <p className="mt-3 text-sm text-emerald-700">Заявка создана: {mortgageCase.id} · {mortgageCase.status}</p>}
+    </section>
 
-  const runScenario = async () => {
-    setOperationError(null);
-    try {
-      setScenario((await previewMortgageSandboxScenario([{ type: "lower_property_budget", newPropertyPrice: "35000000" }])).scenario);
-    } catch (error) {
-      setOperationError(errorText(error));
-    }
-  };
+    <section className="rounded-lg border p-5">
+      <h2 className="font-semibold">2. Приватные документы</h2>
+      <p className="mt-1 text-sm text-muted-foreground">PDF хранится приватно и доступен только владельцу заявки и администраторам.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <select aria-label="Тип документа" value={documentType} onChange={(event) => setDocumentType(event.target.value as typeof documentType)} className="rounded border p-2 text-sm"><option value="credit_history">Кредитная история</option><option value="enpf_statement">Выписка ЕНПФ</option></select>
+        <input aria-label="PDF файл" type="file" accept="application/pdf,.pdf" onChange={(event: ChangeEvent<HTMLInputElement>) => setFile(event.target.files?.[0] || null)} className="text-sm" />
+        <button type="button" onClick={upload} disabled={busy === "upload"} className="rounded border px-4 py-2 text-sm disabled:opacity-50">{busy === "upload" ? "Загрузка…" : "Загрузить PDF"}</button>
+      </div>
+    </section>
 
-  const onFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const selected = event.target.files?.[0] ?? null;
-    setFile(selected);
-    setDocument(null);
-  };
+    <section className="rounded-lg border p-5">
+      <h2 className="font-semibold">3. Расчёт и сценарии</h2>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {([['propertyPrice','Стоимость объекта'], ['downPayment','Первоначальный взнос'], ['termMonths','Срок, месяцев'], ['rate','Ставка, %'], ['baseIncome','Подтверждённый доход'], ['existingDebtPayment','Текущие платежи']] as const).map(([key, label]) => <label key={key} className="text-sm">{label}<input type="number" min="0" value={values[key]} onChange={(event) => setNumber(key, event.target.value)} className="mt-1 w-full rounded border p-2" /></label>)}
+      </div>
+      <button type="button" onClick={calculate} disabled={busy === "calc"} className="mt-4 rounded bg-[#15325B] px-4 py-2 text-sm text-white disabled:opacity-50">{busy === "calc" ? "Считаем…" : "Рассчитать"}</button>
+      {calculation && <div className="mt-4 grid gap-3 rounded bg-slate-50 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4"><p>Кредит<br /><strong>{money.format(calculation.loanAmount)} ₸</strong></p><p>Платёж в месяц<br /><strong>{money.format(calculation.monthlyPayment)} ₸</strong></p><p>КДН<br /><strong>{calculation.kdn}%</strong></p><p>Принимаемый доход<br /><strong>{money.format(calculation.acceptedIncome)} ₸</strong></p></div>}
+    </section>
 
-  return (
-    <main className="mx-auto max-w-4xl space-y-6 pb-16">
-      <section className="rounded-lg border-2 border-amber-500 bg-amber-50 p-4 text-amber-950" aria-label="Безопасный sandbox">
-        <h1 className="text-xl font-bold">Безопасный sandbox</h1>
-        <p className="mt-1 text-sm">Только синтетические или обезличенные данные. Это не банковское решение и не проверка по государственным источникам.</p>
-        <p className="mt-2 text-xs">{status ? `Режим: ${status.mode}; политика ${status.policyVersion}.` : "Проверяем доступность sandbox…"}</p>
-        {statusError && <p role="alert" className="mt-2 text-sm">{statusError}</p>}
-      </section>
-
-      <section className="rounded-lg border p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Синтетическая анкета</h2>
-            <p className="text-sm text-muted-foreground">Демо заполняет только анкету; документы, согласие, ИИН и расчёты не подделываются.</p>
-          </div>
-          <button type="button" className="rounded bg-[#15325B] px-3 py-2 text-sm text-white" onClick={() => setQuestionnaireName("Синтетический клиент CASA")}>Заполнить демо</button>
-        </div>
-        <label className="mt-3 block text-sm" htmlFor="synthetic-name">Имя в синтетической анкете</label>
-        <input id="synthetic-name" value={questionnaireName} onChange={(event) => setQuestionnaireName(event.target.value)} className="mt-1 w-full rounded border p-2" />
-        <p className="mt-2 text-sm">Документы не загружены</p>
-        <p className="text-sm">Согласие: требуется интеграция провайдера</p>
-      </section>
-
-      <section className="rounded-lg border p-4">
-        <h2 className="font-semibold">Приватная загрузка PDF</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Сервер принимает только PDF с текстовым слоем до 25 МБ и отклоняет найденный валидный ИИН до сохранения.</p>
-        <label className="mt-3 flex items-start gap-2 text-sm">
-          <input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} />
-          <span>Подтверждаю, что документ синтетический или обезличенный и не содержит реальных персональных данных.</span>
-        </label>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <select aria-label="Тип документа" value={docType} onChange={(event) => setDocType(event.target.value as typeof docType)} className="rounded border p-2 text-sm">
-            <option value="credit_history">Кредитная история</option>
-            <option value="enpf_statement">Выписка ЕНПФ</option>
-          </select>
-          <input aria-label="PDF файл" type="file" accept="application/pdf,.pdf" onChange={onFile} />
-          <button type="button" disabled={!attested || !file || !status} onClick={upload} className="rounded border px-3 py-2 text-sm disabled:opacity-50">Загрузить PDF</button>
-        </div>
-        {document && <div className="mt-3 rounded bg-emerald-50 p-3 text-sm">Сохранён на сервере (приватно): {document.fileName} · {document.status}{document.status === "needs_review" && <button type="button" className="ml-3 underline" onClick={confirm}>Подтвердить поля</button>}</div>}
-      </section>
-
-      <section className="rounded-lg border p-4">
-        <h2 className="font-semibold">Проверка синтетического ИИН</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Проверяется только формат и контрольная сумма; официальный источник не подключён.</p>
-        <label htmlFor="synthetic-iin" className="mt-3 block text-sm">Синтетический ИИН</label>
-        <div className="mt-1 flex gap-2"><input id="synthetic-iin" value={syntheticIin} onChange={(event) => setSyntheticIin(event.target.value)} className="rounded border p-2" /><button type="button" onClick={checkIin} className="rounded border px-3 text-sm">Проверить структуру ИИН</button></div>
-        {iinResult && <div className="mt-3 text-sm"><p>Контрольная сумма: {iinResult.checksumValid ? "корректна" : "некорректна"}</p><p>{iinResult.externalSourceStatus}</p><p>Официальный результат: не получен.</p></div>}
-      </section>
-
-      <section className="rounded-lg border p-4">
-        <h2 className="font-semibold">Серверный анализ и сценарии</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Результаты поступают только из детерминированного sandbox-core.</p>
-        <div className="mt-3 flex gap-2"><button type="button" onClick={runAnalysis} className="rounded border px-3 py-2 text-sm">Запустить анализ</button><button type="button" onClick={runScenario} className="rounded border px-3 py-2 text-sm">Проверить сценарий</button></div>
-        {analysis !== null && <pre className="mt-3 overflow-auto rounded bg-muted p-2 text-xs">{JSON.stringify(analysis, null, 2)}</pre>}
-        {scenario !== null && <pre className="mt-3 overflow-auto rounded bg-muted p-2 text-xs">{JSON.stringify(scenario, null, 2)}</pre>}
-      </section>
-
-      <section className="rounded-lg border p-4">
-        <h2 className="font-semibold">Клиентские ссылки и PDF</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Требуется интеграция провайдера и юридическая политика. Публичные ссылки и PDF в sandbox не создаются.</p>
-        <button type="button" disabled className="mt-3 rounded border px-3 py-2 text-sm">Создать публичную ссылку</button>
-        <button type="button" disabled className="mt-3 ml-2 rounded border px-3 py-2 text-sm">Сформировать PDF</button>
-      </section>
-      {operationError && <p role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{operationError}</p>}
-    </main>
-  );
+    <section className="rounded-lg border p-5"><h2 className="font-semibold">4. Внутренний PDF</h2><p className="mt-1 text-sm text-muted-foreground">Файл содержит текущий расчёт для работы с клиентом; это не публичная ссылка и не решение банка.</p><button type="button" onClick={makePdf} disabled={busy === "pdf" || !mortgageCase} className="mt-3 rounded border px-4 py-2 text-sm disabled:opacity-50">{busy === "pdf" ? "Формируем…" : "Сформировать PDF"}</button></section>
+    {notice && <p role="status" className="rounded border p-3 text-sm">{notice}</p>}
+  </main>;
 }

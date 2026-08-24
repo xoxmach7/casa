@@ -88,7 +88,7 @@ describe('mortgage workspace production sandbox routes', () => {
 
   it('rejects an unsafe upload before persistence', async () => {
     const response = await request(buildApp()).post('/api/mortgage-workspace/documents')
-      .field('type', 'credit_history').field('syntheticAttestation', 'true')
+      .field('type', 'credit_history')
       .attach('file', Buffer.from('not-pdf'), { filename: 'unsafe.pdf', contentType: 'application/pdf' });
     expect(response.status).toBe(422);
     expect(response.body.code).toBe('PDF_SIGNATURE_INVALID');
@@ -96,13 +96,13 @@ describe('mortgage workspace production sandbox routes', () => {
     expect(documentStore.newDocumentId).not.toHaveBeenCalled();
   });
 
-  it('persists accepted synthetic PDF with sandbox policy metadata', async () => {
+  it('persists accepted private PDF with hash-only diagnostics', async () => {
     const response = await request(buildApp()).post('/api/mortgage-workspace/documents')
-      .field('type', 'credit_history').field('syntheticAttestation', 'true')
+      .field('type', 'credit_history')
       .attach('file', Buffer.from('%PDF-1.7 synthetic'), { filename: 'synthetic.pdf', contentType: 'application/pdf' });
     expect(response.status).toBe(201);
     expect(documentStore.saveDocument).toHaveBeenCalledWith(expect.any(Buffer), expect.objectContaining({
-      sandbox: true, policyVersion: '2026-08-24', uploadedBy: 'owner_1', sha256: 'hash-only-diagnostic',
+      uploadedBy: 'owner_1', sha256: 'hash-only-diagnostic',
     }));
   });
 
@@ -122,4 +122,15 @@ describe('mortgage workspace production sandbox routes', () => {
     currentUser = { userId: 'admin_1', role: 'ADMIN' };
     expect((await request(buildApp()).get(`/api/mortgage-workspace/documents/${'a'.repeat(32)}`)).status).toBe(200);
   });
+});
+
+it('accepts a normal private PDF without a synthetic attestation', async () => {
+  const response = await request(buildApp()).post('/api/mortgage-workspace/documents')
+    .field('type', 'credit_history')
+    .attach('file', Buffer.from('%PDF-1.7 client document'), { filename: 'client.pdf', contentType: 'application/pdf' });
+
+  expect(response.status).toBe(201);
+  expect(documentStore.saveDocument).toHaveBeenCalledWith(expect.any(Buffer), expect.objectContaining({
+    sha256: 'hash-only-diagnostic',
+  }));
 });

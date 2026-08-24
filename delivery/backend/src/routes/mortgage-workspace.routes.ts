@@ -1,29 +1,31 @@
 /**
- * CASA Pro Ипотека — приватные эндпоинты «ипотечного рабочего экрана» (demo).
+ * Authenticated CASA Pro mortgage workspace.
  *
- * DEMO-режим (production-safe): состояния хранятся во in-memory Map (см.
- * lib/mortgage-workspace/store.ts), движки — чистая логика (engine.ts). Реальные
- * PII/SMS/скоринг здесь не задействованы. Все ответы — предварительные.
- * Требует авторизации специалиста CASA (authenticate).
+ * The production route is a synthetic-data sandbox backed by deterministic
+ * mortgage core services. Public demo routes remain separately fail-closed.
  */
 
 import { Router, Request, Response } from 'express';
-import crypto from 'crypto';
 import multer from 'multer';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
-import { demoEndpointsEnabled } from '../lib/demo-mode';
 import {
   computeWhatIf,
   demoAnalysis,
   demoProperties,
-  buildConclusionPayload,
   DEMO_BASE_INCOME,
   DEMO_EXISTING_PAYMENT,
 } from '../lib/mortgage-workspace/engine';
-import { createConsent, getConsent, createConclusion } from '../lib/mortgage-workspace/store';
 import { extractTextFromPdf } from '../lib/scoring-document.service';
 import { extractDocument } from '../lib/mortgage-workspace/extraction';
+import { inspectMortgageSandboxPdf } from '../lib/mortgage-sandbox-policy';
+import {
+  checkSandboxIin,
+  getSandboxAnalysis,
+  getSandboxStatus,
+  previewSandboxScenario,
+} from '../lib/mortgage-sandbox-adapter';
+import type { MortgageScenarioChange } from '../lib/mortgage-scenario.service';
 import {
   saveDocument,
   readMeta,
@@ -39,12 +41,7 @@ import {
 
 export const mortgageWorkspaceRouter = Router();
 mortgageWorkspaceRouter.use(authenticate);
-mortgageWorkspaceRouter.use((_req: Request, res: Response, next): void => {
-  if (!demoEndpointsEnabled()) { res.status(404).json({ error: 'Not found' }); return; }
-  next();
-});
 
-// Приём PDF: только application/pdf, до 25 МБ (спека: max_file_size_mb 25).
 const pdfUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
@@ -54,19 +51,65 @@ const pdfUpload = multer({
   },
 });
 
-// --- Демо-данные -------------------------------------------------------------
+const providerRequired = (_req: Request, res: Response): void => {
+  res.status(501).json({
+    code: 'PROVIDER_INTEGRATION_REQUIRED',
+    error: 'Для операции требуется подключение внешнего провайдера',
+  });
+};
 
-// GET /api/mortgage-workspace/demo/analysis — вердикты программ демо-клиента
+const iinSchema = z.object({ iin: z.string().trim().min(1).max(64) }).strict();
+const scenarioChangeSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('increase_down_payment'), additionalDownPayment: z.string().min(1).max(64) }).strict(),
+  z.object({ type: z.literal('close_obligation'), facilityFingerprint: z.string().min(1).max(200), payoffVerified: z.boolean() }).strict(),
+  z.object({ type: z.literal('refinance_high_rate_debt'), facilityFingerprint: z.string().min(1).max(200), verifiedOffer: z.boolean(), newMonthlyPayment: z.string().min(1).max(64), totalCostDifference: z.string().min(1).max(64) }).strict(),
+  z.object({ type: z.literal('partial_early_repayment'), facilityFingerprint: z.string().min(1).max(200), verifiedSchedule: z.boolean(), recalculationMode: z.enum(['reduce_payment', 'reduce_term']), newMonthlyPayment: z.string().min(1).max(64) }).strict(),
+  z.object({ type: z.literal('increase_confirmed_income'), fingerprint: z.string().min(1).max(200), amount: z.string().min(1).max(64), verified: z.boolean(), programAcceptanceStatus: z.enum(['ACCEPTED', 'REJECTED', 'UNKNOWN']) }).strict(),
+  z.object({ type: z.literal('lower_property_budget'), newPropertyPrice: z.string().min(1).max(64) }).strict(),
+  z.object({ type: z.literal('wait_for_history'), targetDate: z.string().datetime(), reason: z.string().min(1).max(500) }).strict(),
+]);
+const scenarioSchema = z.object({ changes: z.array(scenarioChangeSchema).max(3) }).strict();
+
+mortgageWorkspaceRouter.get('/sandbox/status', (_req: Request, res: Response): void => {
+  res.json(getSandboxStatus());
+});
+
+mortgageWorkspaceRouter.post('/sandbox/iin-check', (req: Request, res: Response): void => {
+  const parsed = iinSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ code: 'VALIDATION_ERROR', error: 'Некорректный формат запроса' });
+    return;
+  }
+  res.json(checkSandboxIin(parsed.data.iin));
+});
+
+mortgageWorkspaceRouter.get('/sandbox/analysis', (_req: Request, res: Response): void => {
+  res.json(getSandboxAnalysis());
+});
+
+mortgageWorkspaceRouter.post('/sandbox/scenarios', (req: Request, res: Response): void => {
+  const parsed = scenarioSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ code: 'SCENARIO_INPUT_INVALID', error: 'Некорректные параметры сценария' });
+    return;
+  }
+  try {
+    res.json(previewSandboxScenario(parsed.data.changes as MortgageScenarioChange[]));
+  } catch (error) {
+    res.status(400).json({
+      code: 'SCENARIO_INPUT_INVALID',
+      error: error instanceof Error ? error.message : 'Некорректные параметры сценария',
+    });
+  }
+});
+
+// Backward-compatible synthetic calculations. They contain no external claims.
 mortgageWorkspaceRouter.get('/demo/analysis', (_req: Request, res: Response): void => {
   res.json(demoAnalysis());
 });
-
-// GET /api/mortgage-workspace/demo/properties — подбор новостроек демо-клиента
 mortgageWorkspaceRouter.get('/demo/properties', (_req: Request, res: Response): void => {
   res.json(demoProperties());
 });
-
-// --- Что-если ----------------------------------------------------------------
 
 const whatIfSchema = z.object({
   propertyPrice: z.number().nonnegative(),
@@ -78,120 +121,20 @@ const whatIfSchema = z.object({
   baseIncome: z.number().positive().default(DEMO_BASE_INCOME),
 });
 
-// POST /api/mortgage-workspace/whatif — live-пересчёт параметров
 mortgageWorkspaceRouter.post('/whatif', (req: Request, res: Response): void => {
-  try {
-    const input = whatIfSchema.parse(req.body);
-    res.json(computeWhatIf(input));
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Ошибка валидации', details: error.errors });
-      return;
-    }
-    console.error('WhatIf compute error:', error);
-    res.status(500).json({ error: 'Не удалось выполнить расчёт' });
-  }
-});
-
-// --- Согласия ----------------------------------------------------------------
-
-const createConsentSchema = z.object({
-  clientName: z.string().min(1, 'Укажите имя клиента').max(200),
-  phone: z.string().min(1, 'Укажите телефон').max(32),
-});
-
-// POST /api/mortgage-workspace/consents — создать заявку на согласие (demo SMS)
-mortgageWorkspaceRouter.post('/consents', (req: Request, res: Response): void => {
-  try {
-    const data = createConsentSchema.parse(req.body);
-    const record = createConsent(data);
-    res.status(201).json({
-      consentId: record.consentId,
-      token: record.token,
-      link: `/consent/${record.token}`,
-      status: record.status,
-      // DEMO: SMS не отправляется, код возвращаем специалисту для показа/проверки.
-      demoCode: record.code,
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Ошибка валидации', details: error.errors });
-      return;
-    }
-    console.error('Create consent error:', error);
-    res.status(500).json({ error: 'Не удалось создать согласие' });
-  }
-});
-
-// GET /api/mortgage-workspace/consents/:token — статус согласия (для поллинга)
-mortgageWorkspaceRouter.get('/consents/:token', (req: Request, res: Response): void => {
-  const record = getConsent(req.params.token);
-  if (!record) {
-    res.status(404).json({ error: 'Согласие не найдено' });
+  const parsed = whatIfSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ code: 'VALIDATION_ERROR', error: 'Ошибка валидации', details: parsed.error.errors });
     return;
   }
-  res.json({ status: record.status });
+  res.json(computeWhatIf(parsed.data));
 });
 
-// --- Заключения --------------------------------------------------------------
+// SMS consent and public conclusion links require real providers/contracts.
+mortgageWorkspaceRouter.post('/consents', providerRequired);
+mortgageWorkspaceRouter.get('/consents/:token', providerRequired);
+mortgageWorkspaceRouter.post('/conclusions', providerRequired);
 
-const whatIfBodySchema = z.object({
-  propertyPrice: z.number().nonnegative(),
-  downPayment: z.number().nonnegative(),
-  termMonths: z.number().int().positive(),
-  rate: z.number().nonnegative(),
-  existingDebtPayment: z.number().nonnegative().default(DEMO_EXISTING_PAYMENT),
-  additionalConfirmedIncome: z.number().default(0),
-  baseIncome: z.number().positive().default(DEMO_BASE_INCOME),
-});
-
-const createConclusionSchema = z.object({
-  displayName: z.string().max(200).optional(),
-  whatIf: whatIfBodySchema,
-  selectedScenarioId: z.string().nullable().optional(),
-  selectedPropertyIds: z.array(z.string()).optional(),
-});
-
-// POST /api/mortgage-workspace/conclusions — собрать безопасное клиентское
-// заключение и получить публичную ссылку /z/:token (живёт 7 дней).
-mortgageWorkspaceRouter.post('/conclusions', (req: Request, res: Response): void => {
-  try {
-    const data = createConclusionSchema.parse(req.body);
-    const token = crypto.randomBytes(16).toString('hex');
-    const createdAt = new Date();
-    const expiresAt = new Date(createdAt.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    const payload = buildConclusionPayload({
-      token,
-      createdAt: createdAt.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-      displayName: data.displayName,
-      whatIf: data.whatIf,
-      selectedScenarioId: data.selectedScenarioId ?? null,
-      selectedPropertyIds: data.selectedPropertyIds,
-    });
-    createConclusion(token, payload);
-
-    res.status(201).json({
-      conclusionId: payload.token,
-      token,
-      link: `/z/${token}`,
-      expiresAt: expiresAt.toISOString(),
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Ошибка валидации', details: error.errors });
-      return;
-    }
-    console.error('Create conclusion error:', error);
-    res.status(500).json({ error: 'Не удалось сформировать заключение' });
-  }
-});
-
-// --- Документы: приватная загрузка, хранение и распознавание ------------------
-
-// POST /api/mortgage-workspace/documents — загрузить PDF (credit_history|enpf_statement),
-// сохранить приватно на сервере и распознать поля по спецификации.
 mortgageWorkspaceRouter.post(
   '/documents',
   pdfUpload.single('file'),
@@ -200,69 +143,63 @@ mortgageWorkspaceRouter.post(
       const file = req.file;
       const type = String(req.body?.type || '') as MortgageDocType;
       if (!file) {
-        res.status(400).json({ error: 'Файл не получен (поле file)' });
+        res.status(400).json({ code: 'FILE_REQUIRED', error: 'Файл не получен (поле file)' });
         return;
       }
       if (type !== 'credit_history' && type !== 'enpf_statement') {
-        res.status(400).json({ error: 'Укажите type: credit_history или enpf_statement' });
+        res.status(400).json({ code: 'DOCUMENT_TYPE_INVALID', error: 'Укажите type: credit_history или enpf_statement' });
         return;
       }
 
-      const buffer = file.buffer;
-      const sha256 = sha256Of(buffer);
-      const id = newDocumentId();
-
-      // Реальное извлечение текстового слоя PDF, затем распознавание по спеке.
-      let extraction;
-      let extractionFailed = false;
+      let text: string;
       try {
-        const text = await extractTextFromPdf(buffer);
-        extraction = extractDocument(type, text);
-      } catch (e) {
-        extractionFailed = true;
-        extraction = {
-          docType: type, template: 'UNKNOWN', supported: false,
-          statuses: { file_integrity: 'UNREADABLE', authenticity: 'MANUAL_REVIEW_REQUIRED', extraction: 'FAILED' },
-          fields: [], derived: {}, gates: ['SAMPLE_REQUIRED'],
-          notes: ['Не удалось извлечь текстовый слой PDF (возможно скан/фото — нужен OCR, вне текущего контура).'],
-          reviewRequired: true, textChars: 0,
-        };
+        text = await extractTextFromPdf(file.buffer);
+      } catch {
+        res.status(422).json({ code: 'TEXT_LAYER_REQUIRED', error: 'Не удалось извлечь текстовый слой PDF' });
+        return;
       }
 
+      const policy = inspectMortgageSandboxPdf({
+        buffer: file.buffer,
+        extractedText: text,
+        attestedSynthetic: req.body?.syntheticAttestation === 'true',
+      });
+      if (!policy.allowed) {
+        res.status(422).json({ code: policy.code, error: 'Документ не соответствует политике безопасного sandbox' });
+        return;
+      }
+
+      const extraction = extractDocument(type, text);
+      const sha256 = sha256Of(file.buffer);
+      const id = newDocumentId();
       const meta: StoredDocumentMeta = {
         id,
         type,
         fileName: file.originalname || `${type}.pdf`,
         size: file.size,
         sha256,
-        status: extractionFailed ? 'processing_failed' : 'needs_review',
+        status: 'needs_review',
         uploadedBy: req.user?.userId,
         caseRef: typeof req.body?.caseRef === 'string' ? req.body.caseRef : undefined,
         storedAt: new Date().toISOString(),
+        sandbox: true,
+        policyVersion: policy.policyVersion,
         extraction,
       };
-      saveDocument(buffer, meta);
+      saveDocument(file.buffer, meta);
 
       res.status(201).json({
-        id,
-        type,
-        fileName: meta.fileName,
-        size: meta.size,
-        sha256,
-        status: meta.status,
-        storedAt: meta.storedAt,
-        stored: true,
-        extraction,
+        id, type, fileName: meta.fileName, size: meta.size, sha256,
+        status: meta.status, storedAt: meta.storedAt, stored: true,
+        sandbox: true, policyVersion: policy.policyVersion, extraction,
       });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Не удалось обработать документ';
-      console.error('Mortgage document upload error:', msg);
-      res.status(500).json({ error: msg });
+      const message = error instanceof Error ? error.message : 'Не удалось обработать документ';
+      res.status(500).json({ error: message });
     }
   },
 );
 
-// GET /api/mortgage-workspace/documents/:id — метаданные + распознанные поля (без байтов)
 mortgageWorkspaceRouter.get('/documents/:id', (req: Request, res: Response): void => {
   const { id } = req.params;
   if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
@@ -271,7 +208,6 @@ mortgageWorkspaceRouter.get('/documents/:id', (req: Request, res: Response): voi
   res.json(meta);
 });
 
-// GET /api/mortgage-workspace/documents/:id/file — приватная выдача PDF (только авторизованным)
 mortgageWorkspaceRouter.get('/documents/:id/file', (req: Request, res: Response): void => {
   const { id } = req.params;
   if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
@@ -285,12 +221,27 @@ mortgageWorkspaceRouter.get('/documents/:id/file', (req: Request, res: Response)
   res.send(bytes);
 });
 
-// PATCH /api/mortgage-workspace/documents/:id/confirm — подтвердить данные документа
+function hasUnresolvedCriticalFields(extraction: unknown): boolean {
+  if (!extraction || typeof extraction !== 'object') return true;
+  const fields = (extraction as { fields?: unknown }).fields;
+  if (!Array.isArray(fields)) return true;
+  const resolved = new Set(['PRESENT', 'EXPLICIT_ZERO', 'NOT_APPLICABLE']);
+  return fields.some((field) => {
+    if (!field || typeof field !== 'object') return true;
+    const item = field as { critical?: unknown; presence?: unknown };
+    return item.critical === true && (typeof item.presence !== 'string' || !resolved.has(item.presence));
+  });
+}
+
 mortgageWorkspaceRouter.patch('/documents/:id/confirm', (req: Request, res: Response): void => {
   const { id } = req.params;
   if (!isValidId(id)) { res.status(400).json({ error: 'Некорректный id' }); return; }
   const meta = readMeta(id);
   if (!meta || !canAccessDocument(meta, req.user)) { res.status(404).json({ error: 'Документ не найден' }); return; }
+  if (hasUnresolvedCriticalFields(meta.extraction)) {
+    res.status(409).json({ code: 'CRITICAL_FIELDS_UNRESOLVED', error: 'Критичные поля требуют проверки' });
+    return;
+  }
   const updated = updateMeta(id, { status: 'confirmed' });
   if (!updated) { res.status(404).json({ error: 'Документ не найден' }); return; }
   res.json({ id, status: updated.status });

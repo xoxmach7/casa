@@ -71,6 +71,13 @@ model User {
   authoredMortgageRules  MortgageRuleVersion[] @relation("MortgageRuleAuthor")
   approvedMortgageRules  MortgageRuleVersion[] @relation("MortgageRuleApprover")
   favorites              Favorite[]
+  mortgageCasesOwned     MortgageCase[]              @relation("MortgageCaseOwner")
+  mortgageIdempotency    MortgageIdempotencyRecord[] @relation("MortgageIdempotencyActor")
+  mortgageAuditEvents    MortgageAuditEvent[]        @relation("MortgageAuditActor")
+  mortgageDocuments      MortgageDocument[]          @relation("MortgageDocumentUploader")
+  mortgageDocRevisions   MortgageDocumentRevision[]  @relation("MortgageDocumentRevisionCreator")
+  mortgageFieldReviews   MortgageFieldReview[]        @relation("MortgageFieldReviewer")
+  mortgageSnapshots      MortgageVerifiedSnapshot[]   @relation("MortgageSnapshotConfirmer")
 
   @@map("users")
 }
@@ -108,6 +115,8 @@ model Client {
   fixations            Fixation[]
   propertyLinks        ClientPropertyLink[]
   consents             ClientConsent[]
+  mortgageCases        MortgageCase[]
+  mortgageCaseParties  MortgageCaseParty[]
 
   @@index([brokerId])
   @@index([status])
@@ -2257,7 +2266,9 @@ model ConsentRevision {
   supersedesId       String?               @map("supersedes_id")
   createdAt          DateTime              @default(now()) @map("created_at")
 
-  consent ClientConsent @relation(fields: [consentId], references: [id], onDelete: Cascade)
+  consent                 ClientConsent            @relation(fields: [consentId], references: [id], onDelete: Cascade)
+  mortgageCaseParties     MortgageCaseParty[]
+  mortgageRecipientGrants MortgageRecipientGrant[]
 
   @@index([consentId])
   @@index([purposeCode, status])
@@ -2342,6 +2353,352 @@ model ReasonCode {
   @@map("reason_codes")
 }
 
+// =========================================
+// MORTGAGE PRE-SCORE PERSISTENCE FOUNDATION
+// Audited v1.1: case ownership, party consent, recipient grants,
+// actor-scoped idempotency and append-only PII-safe audit.
+// =========================================
+
+enum MortgageCaseStatus {
+  DRAFT
+  CONSENT_PENDING
+  DOCUMENTS_PENDING
+  PROCESSING
+  REVIEW_REQUIRED
+  READY_TO_CALCULATE
+  ACTIVE
+  CONSENT_REVOKED
+  CANCELLED
+  ARCHIVED
+}
+
+enum MortgagePartyRole {
+  PRIMARY
+  CO_BORROWER
+  GUARANTOR
+}
+
+enum MortgageRecipientType {
+  BANK
+  DEVELOPER
+  OTHER
+}
+
+enum MortgageRecipientGrantStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+model MortgageCase {
+  id               String             @id @default(cuid())
+  clientId         String             @map("client_id")
+  ownerId          String             @map("owner_id")
+  status           MortgageCaseStatus @default(DRAFT)
+  version          Int                @default(1)
+  latestSnapshotId String?            @map("latest_snapshot_id")
+  latestResultId   String?            @map("latest_result_id")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  client      Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  owner       User                     @relation("MortgageCaseOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  parties     MortgageCaseParty[]
+  grants      MortgageRecipientGrant[]
+  auditEvents MortgageAuditEvent[]
+
+  @@index([clientId])
+  @@index([ownerId, status])
+  @@map("mortgage_cases")
+}
+
+model MortgageCaseParty {
+  id                String            @id @default(cuid())
+  caseId            String            @map("case_id")
+  clientId          String            @map("client_id")
+  role              MortgagePartyRole
+  consentRevisionId String?           @map("consent_revision_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  mortgageCase    MortgageCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  client          Client           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  consentRevision ConsentRevision? @relation(fields: [consentRevisionId], references: [id], onDelete: SetNull)
+  documents       MortgageDocument[]
+  snapshots       MortgageVerifiedSnapshot[]
+
+  @@unique([caseId, clientId, role])
+  @@unique([id, caseId, clientId])
+  @@index([clientId])
+  @@index([consentRevisionId])
+  @@map("mortgage_case_parties")
+}
+
+model MortgageRecipientGrant {
+  id                 String                       @id @default(cuid())
+  caseId             String                       @map("case_id")
+  consentRevisionId  String                       @map("consent_revision_id")
+  recipientType      MortgageRecipientType        @map("recipient_type")
+  recipientId        String                       @map("recipient_id")
+  recipientLegalName String                       @map("recipient_legal_name")
+  purpose            String
+  dataCategories     String[]                     @map("data_categories")
+  allowedOperations  String[]                     @map("allowed_operations")
+  status             MortgageRecipientGrantStatus @default(ACTIVE)
+  grantedAt          DateTime                     @default(now()) @map("granted_at")
+  expiresAt          DateTime?                    @map("expires_at")
+  revokedAt          DateTime?                    @map("revoked_at")
+  createdAt          DateTime                     @default(now()) @map("created_at")
+
+  mortgageCase    MortgageCase    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  consentRevision ConsentRevision @relation(fields: [consentRevisionId], references: [id], onDelete: Restrict)
+
+  @@index([caseId, status])
+  @@index([consentRevisionId])
+  @@index([recipientType, recipientId])
+  @@map("mortgage_recipient_grants")
+}
+
+model MortgageIdempotencyRecord {
+  id             String   @id @default(cuid())
+  actorId        String   @map("actor_id")
+  operation      String
+  key            String
+  requestHash    String   @map("request_hash")
+  responseStatus Int?     @map("response_status")
+  responseBody   Json?    @map("response_body")
+  resourceId     String?  @map("resource_id")
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  actor User @relation("MortgageIdempotencyActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@unique([actorId, operation, key])
+  @@index([expiresAt])
+  @@map("mortgage_idempotency_records")
+}
+
+model MortgageAuditEvent {
+  id           String   @id @default(cuid())
+  caseId       String?  @map("case_id")
+  actorId      String?  @map("actor_id")
+  action       String
+  objectType   String   @map("object_type")
+  objectId     String   @map("object_id")
+  purpose      String?
+  result       String
+  reasonCode   String?  @map("reason_code")
+  metadataHash String?  @map("metadata_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  mortgageCase MortgageCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  actor        User?         @relation("MortgageAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([caseId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([objectType, objectId])
+  @@map("mortgage_audit_events")
+}
+// =========================================
+// MORTGAGE DOCUMENT + VERIFIED SNAPSHOT WORKFLOW
+// Upload state stays mutable on MortgageDocument. A revision is created only
+// after scan/extraction and is append-only; corrections create a new revision.
+// Snapshot payloads are encrypted by an approved adapter before persistence.
+// =========================================
+
+enum MortgageDocumentType {
+  CREDIT_HISTORY
+  ENPF_STATEMENT
+  IDENTITY
+  OTHER
+}
+
+enum MortgageDocumentStatus {
+  UPLOAD_PENDING
+  UPLOADED
+  SCAN_PENDING
+  SCAN_CLEAN
+  SCAN_REJECTED
+  EXTRACTION_PENDING
+  MANUAL_REVIEW_REQUIRED
+  CONFIRMED
+  PROCESSING_FAILED
+}
+
+enum MortgageFieldPresence {
+  PRESENT
+  EXPLICIT_ZERO
+  BLANK
+  NOT_APPLICABLE
+  UNREADABLE
+  UNKNOWN
+  NOT_IN_TEMPLATE
+}
+
+enum MortgageFieldReviewStatus {
+  UNREVIEWED
+  AUTO_ACCEPTED
+  MANUAL_REVIEW_REQUIRED
+  CONFIRMED
+  REJECTED
+}
+
+enum MortgageFieldValueType {
+  MONEY
+  DECIMAL
+  INTEGER
+  BOOLEAN
+  DATE
+  DATETIME
+  CODE
+  HASH_ONLY
+}
+
+enum MortgageEncryptionAlgorithm {
+  AES_256_GCM
+}
+
+model MortgageDocument {
+  id                String                 @id @default(cuid())
+  caseId            String                 @map("case_id")
+  clientId          String                 @map("client_id")
+  partyId           String                 @map("party_id")
+  type              MortgageDocumentType
+  status            MortgageDocumentStatus @default(UPLOAD_PENDING)
+  currentRevisionId String?                @map("current_revision_id")
+  uploadedById      String                 @map("uploaded_by_id")
+  issuedAt          DateTime?              @map("issued_at")
+  validUntil        DateTime?              @map("valid_until")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  party           MortgageCaseParty          @relation(fields: [partyId, caseId, clientId], references: [id, caseId, clientId], onDelete: Restrict)
+  uploadedBy      User                       @relation("MortgageDocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  revisions       MortgageDocumentRevision[] @relation("MortgageDocumentRevisions")
+  currentRevision MortgageDocumentRevision?  @relation("CurrentMortgageDocumentRevision", fields: [id, currentRevisionId], references: [documentId, id], onDelete: Restrict)
+
+  @@index([caseId, status])
+  @@unique([id, currentRevisionId])
+  @@index([clientId, type])
+  @@map("mortgage_documents")
+}
+
+model MortgageDocumentRevision {
+  id               String                 @id @default(cuid())
+  documentId       String                 @map("document_id")
+  version          Int
+  objectKey        String                 @map("object_key")
+  sha256           String
+  mimeType         String                 @map("mime_type")
+  sizeBytes        BigInt                 @map("size_bytes")
+  pageCount        Int?                   @map("page_count")
+  status           MortgageDocumentStatus
+  extractorVersion String?                @map("extractor_version")
+  extractionHash   String?                @map("extraction_hash")
+  createdById      String                 @map("created_by_id")
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  document        MortgageDocument                 @relation("MortgageDocumentRevisions", fields: [documentId], references: [id], onDelete: Restrict)
+  currentFor      MortgageDocument?                @relation("CurrentMortgageDocumentRevision")
+  createdBy       User                             @relation("MortgageDocumentRevisionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  fields          MortgageFieldReview[]
+  snapshotSources MortgageSnapshotDocumentSource[]
+
+  @@unique([documentId, version])
+  @@unique([documentId, id])
+  @@index([sha256])
+  @@map("mortgage_document_revisions")
+}
+
+model MortgageFieldReview {
+  id                 String                    @id @default(cuid())
+  documentRevisionId String                    @map("document_revision_id")
+  fieldKey           String                    @map("field_key")
+  version            Int
+  isCritical         Boolean                   @default(false) @map("is_critical")
+  valueType          MortgageFieldValueType?   @map("value_type")
+  normalizedDecimal  Decimal?                  @map("normalized_decimal") @db.Decimal(20, 6)
+  normalizedCode     String?                   @map("normalized_code") @db.VarChar(64)
+  normalizedDate     DateTime?                 @map("normalized_date")
+  normalizedBoolean  Boolean?                  @map("normalized_boolean")
+  valueHash          String?                   @map("value_hash")
+  presence           MortgageFieldPresence
+  confidence         Decimal?                  @db.Decimal(5, 4)
+  sourcePage         Int?                      @map("source_page")
+  sourceBboxX        Decimal?                  @map("source_bbox_x") @db.Decimal(10, 6)
+  sourceBboxY        Decimal?                  @map("source_bbox_y") @db.Decimal(10, 6)
+  sourceBboxWidth    Decimal?                  @map("source_bbox_width") @db.Decimal(10, 6)
+  sourceBboxHeight   Decimal?                  @map("source_bbox_height") @db.Decimal(10, 6)
+  evidenceHash       String?                   @map("evidence_hash")
+  reviewStatus       MortgageFieldReviewStatus @default(UNREVIEWED) @map("review_status")
+  reviewedById       String?                   @map("reviewed_by_id")
+  reviewedAt         DateTime?                 @map("reviewed_at")
+  supersedesReviewId String?                   @map("supersedes_review_id")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+
+  documentRevision MortgageDocumentRevision       @relation(fields: [documentRevisionId], references: [id], onDelete: Restrict)
+  reviewedBy       User?                          @relation("MortgageFieldReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  supersedes       MortgageFieldReview?           @relation("MortgageFieldReviewSupersession", fields: [supersedesReviewId], references: [id], onDelete: Restrict)
+  supersededBy     MortgageFieldReview[]           @relation("MortgageFieldReviewSupersession")
+  snapshotSources  MortgageSnapshotReviewSource[]
+
+  @@unique([documentRevisionId, fieldKey, version])
+  @@index([documentRevisionId, fieldKey])
+  @@index([reviewStatus])
+  @@map("mortgage_field_reviews")
+}
+
+model MortgageVerifiedSnapshot {
+  id                   String   @id @default(cuid())
+  caseId               String   @map("case_id")
+  clientId             String   @map("client_id")
+  partyId              String   @map("party_id")
+  version              Int
+  payloadSchemaVersion String   @map("payload_schema_version")
+  encryptedPayload     Bytes    @map("encrypted_payload")
+  encryptionKeyRef     String   @map("encryption_key_ref")
+  encryptionAlgorithm  MortgageEncryptionAlgorithm @map("encryption_algorithm")
+  encryptionIv         Bytes    @map("encryption_iv")
+  encryptionAuthTag    Bytes    @map("encryption_auth_tag")
+  contentHash          String   @map("content_hash")
+  confirmedById        String   @map("confirmed_by_id")
+  confirmedAt          DateTime @default(now()) @map("confirmed_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  party           MortgageCaseParty                @relation(fields: [partyId, caseId, clientId], references: [id, caseId, clientId], onDelete: Restrict)
+  confirmedBy     User                             @relation("MortgageSnapshotConfirmer", fields: [confirmedById], references: [id], onDelete: Restrict)
+  documentSources MortgageSnapshotDocumentSource[]
+  reviewSources   MortgageSnapshotReviewSource[]
+
+  @@unique([caseId, version])
+  @@unique([encryptionKeyRef, encryptionIv])
+  @@index([clientId, confirmedAt])
+  @@index([contentHash])
+  @@map("mortgage_verified_snapshots")
+}
+
+model MortgageSnapshotDocumentSource {
+  snapshotId String @map("snapshot_id")
+  revisionId String @map("revision_id")
+
+  snapshot MortgageVerifiedSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  revision MortgageDocumentRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+
+  @@id([snapshotId, revisionId])
+  @@index([revisionId])
+  @@map("mortgage_snapshot_document_sources")
+}
+
+model MortgageSnapshotReviewSource {
+  snapshotId String @map("snapshot_id")
+  reviewId   String @map("review_id")
+
+  snapshot MortgageVerifiedSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  review   MortgageFieldReview      @relation(fields: [reviewId], references: [id], onDelete: Restrict)
+
+  @@id([snapshotId, reviewId])
+  @@index([reviewId])
+  @@map("mortgage_snapshot_review_sources")
+}
 // =========================================
 // PUBLIC LISTING OPS (casa40-main integration, 2026-08-02)
 // Лёгкая админка сайта casa.kz (простой статус-флоу new→published→showing→

@@ -219,7 +219,9 @@ mortgageCasesRouter.post('/', async (req: Request, res: Response): Promise<void>
   }
 });
 
-mortgageCasesRouter.post('/:id/parties', async (req: Request, res: Response): Promise<void> => {
+// canonical DEC-API-001: /participants — основной путь (API-M01-002 / M05-003);
+// /parties сохранён как алиас для обратной совместимости.
+mortgageCasesRouter.post(['/:id/participants', '/:id/parties'], async (req: Request, res: Response): Promise<void> => {
   const parsed = addPartySchema.safeParse(req.body);
   if (!parsed.success) {
     apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());

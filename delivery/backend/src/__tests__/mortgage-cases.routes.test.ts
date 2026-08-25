@@ -197,6 +197,14 @@ describe('mortgage case API', () => {
     expect(txMock.mortgageCaseParty.create).not.toHaveBeenCalled();
   });
 
+  it('canonical-алиас /participants маршрутизируется в тот же обработчик (не 404)', async () => {
+    const response = await request(app())
+      .post('/api/v2/cases/case_1/participants')
+      .send({ client_id: '', role: 'BAD_ROLE', consent_revision_id: '', expected_version: 0 });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('validation_error');
+  });
+
   it('atomically adds a consented party and advances the case version', async () => {
     txMock.mortgageCase.findUnique
       .mockResolvedValueOnce(createdCase)

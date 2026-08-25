@@ -2408,6 +2408,8 @@ model MortgageCase {
   auditEvents          MortgageAuditEvent[]
   calculationRuns      MortgageCalculationRun[]
   calculationSnapshots MortgageCalculationSnapshot[]
+  clientProfile        MortgageClientProfile?
+  profileSnapshots     MortgageClientProfileSnapshot[]
 
   @@index([clientId])
   @@index([ownerId, status])
@@ -2543,6 +2545,131 @@ model MortgageCalculationSnapshot {
 
   @@index([caseId, createdAt])
   @@map("mortgage_calculation_snapshots")
+}
+
+// =========================================
+// M05 CLIENT PROFILE — агрегат анкеты + под-ресурсы + иммутабельный снапшот.
+// Каждое денежное поле несёт СТАТУС (DECLARED/VERIFIED/UNKNOWN/CONFLICT):
+// UNKNOWN ≠ 0. available_now_total (вход для M06) считается из источников взноса.
+// =========================================
+
+enum MortgageProfileFieldStatus {
+  DECLARED
+  VERIFIED
+  UNKNOWN
+  CONFLICT
+}
+
+model MortgageClientProfile {
+  id               String   @id @default(cuid())
+  caseId           String   @unique @map("case_id")
+  version          Int      @default(1)
+  latestSnapshotId String?  @map("latest_snapshot_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  mortgageCase         MortgageCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  employments          MortgageEmployment[]
+  incomeSources        MortgageIncomeSource[]
+  assets               MortgageAsset[]
+  downPaymentSources   MortgageDownPaymentSource[]
+  nonCreditCommitments MortgageNonCreditCommitment[]
+
+  @@map("mortgage_client_profiles")
+}
+
+model MortgageEmployment {
+  id            String                     @id @default(cuid())
+  profileId     String                     @map("profile_id")
+  partyId       String?                    @map("party_id")
+  employerName  String                     @map("employer_name")
+  employmentKind String                    @map("employment_kind")
+  status        MortgageProfileFieldStatus @default(DECLARED)
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("mortgage_employments")
+}
+
+model MortgageIncomeSource {
+  id            String                     @id @default(cuid())
+  profileId     String                     @map("profile_id")
+  partyId       String?                    @map("party_id")
+  kind          String
+  monthlyAmount Decimal?                   @map("monthly_amount") @db.Decimal(20, 2)
+  currency      String                     @default("KZT")
+  status        MortgageProfileFieldStatus @default(DECLARED)
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("mortgage_income_sources")
+}
+
+model MortgageAsset {
+  id        String                     @id @default(cuid())
+  profileId String                     @map("profile_id")
+  partyId   String?                    @map("party_id")
+  kind      String
+  value     Decimal?                   @db.Decimal(20, 2)
+  currency  String                     @default("KZT")
+  status    MortgageProfileFieldStatus @default(DECLARED)
+  createdAt DateTime                   @default(now()) @map("created_at")
+
+  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("mortgage_assets")
+}
+
+model MortgageDownPaymentSource {
+  id        String                     @id @default(cuid())
+  profileId String                     @map("profile_id")
+  partyId   String?                    @map("party_id")
+  kind      String
+  amount    Decimal?                   @db.Decimal(20, 2)
+  currency  String                     @default("KZT")
+  status    MortgageProfileFieldStatus @default(DECLARED)
+  createdAt DateTime                   @default(now()) @map("created_at")
+
+  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("mortgage_down_payment_sources")
+}
+
+model MortgageNonCreditCommitment {
+  id            String                     @id @default(cuid())
+  profileId     String                     @map("profile_id")
+  partyId       String?                    @map("party_id")
+  kind          String
+  monthlyAmount Decimal?                   @map("monthly_amount") @db.Decimal(20, 2)
+  currency      String                     @default("KZT")
+  status        MortgageProfileFieldStatus @default(DECLARED)
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("mortgage_non_credit_commitments")
+}
+
+model MortgageClientProfileSnapshot {
+  id          String   @id @default(cuid())
+  caseId      String   @map("case_id")
+  profileId   String   @map("profile_id")
+  version     Int
+  payloadJson Json     @map("payload_json")
+  contentHash String   @map("content_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  mortgageCase MortgageCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@map("mortgage_client_profile_snapshots")
 }
 // =========================================
 // MORTGAGE DOCUMENT + VERIFIED SNAPSHOT WORKFLOW

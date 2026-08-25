@@ -16,6 +16,7 @@ import {
   M06_DECIMAL_CONTEXT_VERSION,
 } from '../lib/mortgage-workspace/mortgage-calc.service';
 import type { StatusedMoney, InputStatus } from '../lib/mortgage-workspace/m06-calc';
+import { aggregateMoney, profileContentHash, type MoneySource } from '../lib/mortgage-workspace/mortgage-profile.service';
 
 export const mortgageCasesRouter = Router();
 mortgageCasesRouter.use(authenticate);
@@ -628,6 +629,179 @@ mortgageCasesRouter.get('/:caseId/calculation-snapshots/:snapshotId', async (req
     res.json({ data: calcSnapshotResponse(null, snap) });
   } catch {
     apiError(res, 500, 'internal_error', 'Не удалось получить снапшот');
+  }
+});
+
+// =========================================================================
+// M05 Client Profile — canonical эндпоинты (API-M05-001,004..008,010).
+// Денежные поля несут статус; UNKNOWN ≠ 0; available_now_total → вход M06.
+// =========================================================================
+
+const FIELD_STATUS = ['DECLARED', 'VERIFIED', 'UNKNOWN', 'CONFLICT'] as const;
+const moneySubSchema = z.object({
+  kind: z.string().min(1).max(64),
+  amount: z.union([z.number(), z.string(), z.null()]).optional(),
+  currency: z.string().length(3).default('KZT'),
+  status: z.enum(FIELD_STATUS).default('DECLARED'),
+  party_id: z.string().max(128).optional(),
+}).strict();
+const employmentSchema = z.object({
+  employer_name: z.string().min(1).max(256),
+  employment_kind: z.string().min(1).max(64),
+  status: z.enum(FIELD_STATUS).default('DECLARED'),
+  party_id: z.string().max(128).optional(),
+}).strict();
+
+async function loadCaseForProfile(caseId: string, user: any) {
+  const current = await prisma.mortgageCase.findUnique({ where: { id: caseId } });
+  if (!current || !canAccessMortgageCase(current, user)) return null;
+  return current;
+}
+
+async function ensureProfileId(caseId: string): Promise<string> {
+  const existing = await prisma.mortgageClientProfile.findUnique({ where: { caseId } });
+  if (existing) return existing.id;
+  const created = await prisma.mortgageClientProfile.upsert({
+    where: { caseId },
+    update: {},
+    create: { caseId },
+  });
+  return created.id;
+}
+
+function moneySourceRow(r: { amount?: any; monthlyAmount?: any; value?: any; status: string }): MoneySource {
+  const amount = r.amount ?? r.monthlyAmount ?? r.value ?? null;
+  return { amount, status: r.status as any };
+}
+
+// GET /api/v2/cases/{caseId}/client-profile (API-M05-001) — авто-создание + агрегаты
+mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    await ensureProfileId(current.id);
+    const profile = await prisma.mortgageClientProfile.findUnique({
+      where: { caseId: current.id },
+      include: {
+        employments: true, incomeSources: true, assets: true,
+        downPaymentSources: true, nonCreditCommitments: true,
+      },
+    });
+    if (!profile) { apiError(res, 500, 'internal_error', 'Профиль не создан'); return; }
+
+    const availableNow = aggregateMoney(profile.downPaymentSources.map(moneySourceRow));
+    const monthlyIncome = aggregateMoney(profile.incomeSources.map(moneySourceRow));
+    const monthlyCommitments = aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow));
+
+    res.json({ data: {
+      id: profile.id, case_id: profile.caseId, version: profile.version,
+      down_payment_sources: profile.downPaymentSources,
+      income_sources: profile.incomeSources,
+      assets: profile.assets,
+      employments: profile.employments,
+      non_credit_commitments: profile.nonCreditCommitments,
+      aggregates: {
+        available_now_total: availableNow, // вход M06 CALC-F-001
+        monthly_income_total: monthlyIncome,
+        monthly_commitments_total: monthlyCommitments,
+      },
+    } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось получить профиль');
+  }
+});
+
+// Общий обработчик создания денежного под-ресурса профиля.
+function makeMoneySubHandler(
+  model: 'mortgageDownPaymentSource' | 'mortgageIncomeSource' | 'mortgageAsset' | 'mortgageNonCreditCommitment',
+  amountField: 'amount' | 'monthlyAmount' | 'value',
+  action: string,
+) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const parsed = moneySubSchema.safeParse(req.body);
+    if (!parsed.success) { apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten()); return; }
+    try {
+      const current = await loadCaseForProfile(req.params.caseId, req.user!);
+      if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+      const profileId = await ensureProfileId(current.id);
+      const data: any = {
+        profileId, partyId: parsed.data.party_id, kind: parsed.data.kind,
+        currency: parsed.data.currency, status: parsed.data.status,
+        [amountField]: parsed.data.amount ?? null,
+      };
+      const row = await (prisma as any)[model].create({ data });
+      await prisma.mortgageAuditEvent.create({ data: {
+        caseId: current.id, actorId: req.user!.userId, action,
+        objectType: model, objectId: row.id, purpose: 'mortgage_prescore',
+        result: 'SUCCESS', reasonCode: parsed.data.status,
+      } });
+      res.status(201).json({ data: row });
+    } catch {
+      apiError(res, 500, 'internal_error', 'Не удалось создать запись профиля');
+    }
+  };
+}
+
+// POST под-ресурсы (API-M05-004..008)
+mortgageCasesRouter.post('/:caseId/down-payment-sources', makeMoneySubHandler('mortgageDownPaymentSource', 'amount', 'mortgage_profile.down_payment_added'));
+mortgageCasesRouter.post('/:caseId/income-sources', makeMoneySubHandler('mortgageIncomeSource', 'monthlyAmount', 'mortgage_profile.income_added'));
+mortgageCasesRouter.post('/:caseId/assets', makeMoneySubHandler('mortgageAsset', 'value', 'mortgage_profile.asset_added'));
+mortgageCasesRouter.post('/:caseId/non-credit-commitments', makeMoneySubHandler('mortgageNonCreditCommitment', 'monthlyAmount', 'mortgage_profile.commitment_added'));
+
+// POST /:caseId/employments (API-M05-004)
+mortgageCasesRouter.post('/:caseId/employments', async (req: Request, res: Response): Promise<void> => {
+  const parsed = employmentSchema.safeParse(req.body);
+  if (!parsed.success) { apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten()); return; }
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    const profileId = await ensureProfileId(current.id);
+    const row = await prisma.mortgageEmployment.create({ data: {
+      profileId, partyId: parsed.data.party_id, employerName: parsed.data.employer_name,
+      employmentKind: parsed.data.employment_kind, status: parsed.data.status,
+    } });
+    res.status(201).json({ data: row });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось создать запись о занятости');
+  }
+});
+
+// POST /:caseId/client-profile/publish-snapshot (API-M05-010) — иммутабельный снапшот
+mortgageCasesRouter.post('/:caseId/client-profile/publish-snapshot', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    const profile = await prisma.mortgageClientProfile.findUnique({
+      where: { caseId: current.id },
+      include: { employments: true, incomeSources: true, assets: true, downPaymentSources: true, nonCreditCommitments: true },
+    });
+    if (!profile) { apiError(res, 409, 'profile_empty', 'Профиль ещё не создан'); return; }
+
+    const payload = {
+      case_id: profile.caseId, version: profile.version,
+      available_now_total: aggregateMoney(profile.downPaymentSources.map(moneySourceRow)),
+      monthly_income_total: aggregateMoney(profile.incomeSources.map(moneySourceRow)),
+      monthly_commitments_total: aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow)),
+      counts: {
+        down_payment: profile.downPaymentSources.length, income: profile.incomeSources.length,
+        assets: profile.assets.length, employments: profile.employments.length,
+        commitments: profile.nonCreditCommitments.length,
+      },
+    };
+    const contentHash = profileContentHash(payload);
+    const snapshot = await prisma.mortgageClientProfileSnapshot.create({ data: {
+      caseId: profile.caseId, profileId: profile.id, version: profile.version,
+      payloadJson: payload as any, contentHash,
+    } });
+    await prisma.mortgageClientProfile.update({ where: { id: profile.id }, data: { latestSnapshotId: snapshot.id } });
+    await prisma.mortgageAuditEvent.create({ data: {
+      caseId: profile.caseId, actorId: req.user!.userId, action: 'mortgage_profile.snapshot_published',
+      objectType: 'MortgageClientProfileSnapshot', objectId: snapshot.id, purpose: 'mortgage_prescore',
+      result: 'SUCCESS', metadataHash: contentHash,
+    } });
+    res.status(201).json({ data: { id: snapshot.id, case_id: snapshot.caseId, version: snapshot.version, content_hash: contentHash, payload, created_at: snapshot.createdAt } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось опубликовать снапшот профиля');
   }
 });
 

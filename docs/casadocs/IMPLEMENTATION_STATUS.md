@@ -56,21 +56,23 @@ Prisma `MortgageCase`, participants, consent revisions, idempotency,
 optimistic concurrency, audit) — но смонтировала его на **`/api/v1/mortgage-cases`**,
 что расходится с FROZEN-решением DEC-API-001 (canonical = `/api/v2/cases`).
 
-Приведено к утверждённому контракту:
+Приведено к утверждённому контракту — **одна версия, без параллельных**:
 
-- Основной canonical маунт: `app.use('/api/v2/cases', mortgageCasesRouter)` —
+- **Единственный** маунт: `app.use('/api/v2/cases', mortgageCasesRouter)` —
   это и есть «base case resource, M01 owns» из DEC-API-001.
-- `/api/v1/mortgage-cases` оставлен **временным транзит-алиасом** (тот же
-  роутер) ради безопасной миграции; `TODO(migration)` к удалению.
-- Фронт `lib/mortgage/case-api.ts` и тесты переведены на `/v2/cases`.
+- Прежний `/api/v1/mortgage-cases` (от PR #7) **удалён** — не осталось второй
+  версии; фронт `lib/mortgage/case-api.ts` и тесты на `/v2/cases`. Заказчик
+  подтвердил: работа Codex не в приоритете, приводим к утверждённым докам.
 - **Демо-рабочий экран** (`mortgage-workspace.routes.ts`: whatif/documents/
   conclusions/demo) — отдельная demo-поверхность, НЕ canonical case-ресурс:
-  остаётся на `/api/mortgage-workspace` (перенос его на `/api/v2/cases` дал бы
+  остаётся на `/api/mortgage-workspace` (перенос на `/api/v2/cases` дал бы
   коллизию с реальным case-роутером). Фронт ипотечного экрана без изменений.
 
-> Флаг для заказчика: PR #7 использовал `/api/v1/mortgage-cases` вопреки
-> DEC-API-001. Здесь исправлено на canonical `/api/v2/cases` (v1 — транзит).
-> Если команда сознательно хочет v1 — вернуть решение на согласование.
+**Схема БД ↔ код не разъезжаются:** `Dockerfile CMD` при старте выполняет
+`prisma generate && prisma migrate deploy` — миграции (включая таблицы M01
+case-ресурса) накатываются автоматически на каждом деплое. Прод-проверка:
+`POST /api/v2/cases` с несуществующим клиентом → `404 client_not_found`
+(а не 500) — значит таблицы применены, эндпоинт исправен.
 
 ## 5. Хранение доков («Docker»)
 

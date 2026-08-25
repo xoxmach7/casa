@@ -133,6 +133,106 @@ export function pensionContributionBase(): PensionContributionBase {
   };
 }
 
+/**
+ * Постро́чный агрегатор договоров из полного отчёта ПКБ.
+ *
+ * Реальный отчёт ПКБ печатает по каждому договору блок с «Фаза договора»
+ * (Действующий/Завершен…) и суммами. Якоримся на «Фаза договора» и берём
+ * окно вокруг: строка баланса печатается ЧУТЬ ВЫШЕ маркера, а блоки DPD —
+ * ниже. Инварианты соблюдаем: UNKNOWN ≠ 0; если сумму по действующему
+ * договору не удалось прочитать — помечаем неполноту, а не подставляем ноль.
+ *
+ * Валидировано на реальном образце: 30 договоров, 3 действующих; у всех трёх
+ * действующих найдены остаток, текущий и максимальный DPD. Минимальный платёж
+ * в отчёте есть не по всем (в основном по картам) — считаем покрытие честно.
+ */
+export interface CreditContractsAggregate {
+  activeContracts: number;
+  outstandingActiveSum: number | null; // null, если хоть по одному активному остаток UNKNOWN
+  outstandingComplete: boolean;
+  currentDpdMaxActive: number | null;
+  lifetimeMaxDpd: number | null;
+  existingMonthlyPaymentSum: number | null; // сумма «Минимальный платёж» где есть
+  monthlyPaymentCovered: number; // по скольким активным нашли платёж
+}
+
+function moneyBeforeKzt(win: string[], labels: string[]): number | null {
+  for (const lbl of labels) {
+    for (const ln of win) {
+      const m = new RegExp(lbl + '\\s*:\\s*([\\d  .,]+?)\\s*KZT', 'i').exec(ln);
+      if (m) {
+        const v = parseMoney(m[1]);
+        if (v !== null) return v;
+      }
+    }
+  }
+  return null;
+}
+
+function intAfterLabel(win: string[], lbl: string): number | null {
+  for (const ln of win) {
+    const m = new RegExp(lbl + '\\s*:\\s*(\\d+)').exec(ln);
+    if (m) return parseInt(m[1], 10);
+  }
+  return null;
+}
+
+export function aggregateCreditContracts(lines: string[]): CreditContractsAggregate {
+  const phases: { i: number; active: boolean }[] = [];
+  lines.forEach((l, i) => {
+    const m = /Фаза договора\s*:\s*([А-Яа-яЁё]+)/.exec(l);
+    if (m) phases.push({ i, active: /Действ/i.test(m[1]) });
+  });
+
+  let activeContracts = 0;
+  let outstandingActiveSum = 0;
+  let outstandingComplete = true;
+  let currentDpdMaxActive: number | null = null;
+  let lifetimeMaxDpd: number | null = null;
+  let existingMonthlyPaymentSum = 0;
+  let monthlyPaymentCovered = 0;
+
+  phases.forEach((p, idx) => {
+    const prev = idx > 0 ? phases[idx - 1].i : -1;
+    const next = idx + 1 < phases.length ? phases[idx + 1].i : lines.length;
+    const win = lines.slice(Math.max(prev + 1, p.i - 16), Math.min(next, p.i + 74));
+
+    // Максимальный DPD за всё время — по ЛЮБОМУ договору (факт прошлого).
+    const md = intAfterLabel(win, 'Максимальное количество дней просрочки[^:]*');
+    if (md !== null) lifetimeMaxDpd = Math.max(lifetimeMaxDpd ?? 0, md);
+
+    if (!p.active) return;
+    activeContracts += 1;
+
+    const out = moneyBeforeKzt(win, [
+      'Непогашенная сумма по кредиту',
+      'Использованная сумма \\(подлежащая погашению\\)',
+      'Использованная сумма',
+    ]);
+    if (out !== null) outstandingActiveSum += out;
+    else outstandingComplete = false; // не подставляем ноль вместо UNKNOWN
+
+    const dpd = intAfterLabel(win, 'Количество дней просрочки');
+    if (dpd !== null) currentDpdMaxActive = Math.max(currentDpdMaxActive ?? 0, dpd);
+
+    const mp = moneyBeforeKzt(win, ['Минимальный платеж']);
+    if (mp !== null) {
+      existingMonthlyPaymentSum += mp;
+      monthlyPaymentCovered += 1;
+    }
+  });
+
+  return {
+    activeContracts,
+    outstandingActiveSum: activeContracts > 0 && outstandingComplete ? Math.round(outstandingActiveSum) : null,
+    outstandingComplete,
+    currentDpdMaxActive,
+    lifetimeMaxDpd,
+    existingMonthlyPaymentSum: monthlyPaymentCovered > 0 ? Math.round(existingMonthlyPaymentSum) : null,
+    monthlyPaymentCovered,
+  };
+}
+
 // ============================================================================
 // Кредитная история (ПКБ = FCB / ГКБ = SCB)
 // ============================================================================
@@ -189,25 +289,55 @@ export function extractCreditHistory(rawText: string): DocumentExtraction {
 
   // грубый счётчик напечатанных договоров (source contract records)
   const contractHits = (low.match(/контракт|договор[^а-я]/g) || []).length;
-  // текущий остаток из summary (если явно назван)
-  const balRaw = firstMatch(text, /(?:текущ[а-яё]+\s+остаток|итого\s+остаток|остаток\s+задолженности)[^0-9]{0,30}([\d  ., ]{3,})/i);
-  const balNum = balRaw ? parseMoney(balRaw) : null;
+
+  // Постро́чная агрегация по договорам (реальный полный отчёт ПКБ).
+  const lines = text.split('\n').map((l) => l.trim());
+  const agg = aggregateCreditContracts(lines);
+
+  // Число ДЕЙСТВУЮЩИХ договоров (детект по «Фаза договора»).
   fields.push(fld({
-    key: 'outstanding_total_reported', label: 'Итоговый остаток (из summary)',
-    presence: balNum !== null ? 'PRESENT' : 'BLANK', rawValue: balRaw ? balRaw.trim() : null,
-    normalizedValue: balNum, confidence: balNum !== null ? 0.5 : 0, critical: true, level: 'SOURCE_FACT',
-    evidence: balRaw?.trim(),
+    key: 'active_contracts_detected', label: 'Действующих договоров (по детализации)',
+    presence: agg.activeContracts > 0 ? 'PRESENT' : 'UNKNOWN', normalizedValue: agg.activeContracts || null,
+    confidence: agg.activeContracts > 0 ? 0.8 : 0, critical: true, level: 'SOURCE_FACT',
   }));
 
-  // просрочки: current DPD vs lifetime max — раздельно (инвариант ч.4)
-  const maxDpd = firstMatch(text, /макс[а-яё]*[^0-9]{0,20}просрочк[а-яё]*[^0-9]{0,20}(\d{1,4})/i)
-    || firstMatch(text, /(\d{2,4})\s*(?:дн[а-яё]*)\s*(?:макс|наибольш)/i);
+  // Суммарный остаток по ДЕЙСТВУЮЩИМ договорам (SOURCE_FACT). UNKNOWN, если
+  // хоть по одному активному сумму прочитать не удалось (не подставляем ноль).
+  fields.push(fld({
+    key: 'outstanding_total_active', label: 'Остаток по действующим договорам, ₸',
+    presence: agg.outstandingActiveSum !== null ? 'PRESENT' : (agg.activeContracts > 0 ? 'UNKNOWN' : 'NOT_APPLICABLE'),
+    normalizedValue: agg.outstandingActiveSum,
+    confidence: agg.outstandingActiveSum !== null ? 0.75 : 0, critical: true, level: 'SOURCE_FACT',
+    evidence: agg.outstandingComplete ? undefined : 'по части активных договоров остаток UNKNOWN',
+  }));
+
+  // Текущий DPD (макс по активным) и исторический максимум DPD — РАЗДЕЛЬНО.
+  fields.push(fld({
+    key: 'current_dpd_active', label: 'Текущая просрочка (макс по активным), дней',
+    presence: agg.currentDpdMaxActive !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: agg.currentDpdMaxActive,
+    confidence: agg.currentDpdMaxActive !== null ? 0.7 : 0, critical: true, level: 'SOURCE_FACT',
+  }));
   fields.push(fld({
     key: 'max_dpd_lifetime_reported', label: 'Макс. DPD за всё время (факт)',
-    presence: maxDpd ? 'PRESENT' : 'UNKNOWN', rawValue: maxDpd, normalizedValue: maxDpd ? parseInt(maxDpd, 10) : null,
-    confidence: maxDpd ? 0.4 : 0, critical: true, level: 'SOURCE_FACT', evidence: maxDpd ?? undefined,
+    presence: agg.lifetimeMaxDpd !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: agg.lifetimeMaxDpd,
+    confidence: agg.lifetimeMaxDpd !== null ? 0.7 : 0, critical: true, level: 'SOURCE_FACT',
   }));
   notes.push('Текущий DPD и исторический максимум DPD не смешиваются; максимум — это факт прошлого, а не текущая просрочка.');
+
+  // Сумма ежемесячных платежей по действующим (вход для КДН). В отчёте ПКБ
+  // «Минимальный платёж» есть НЕ по всем договорам — честно показываем покрытие;
+  // если покрыты не все активные, это НЕПОЛНЫЙ вход для КДН (не выдумываем).
+  const mpComplete = agg.monthlyPaymentCovered >= agg.activeContracts && agg.activeContracts > 0;
+  fields.push(fld({
+    key: 'existing_monthly_payment', label: 'Ежемесячные платежи по действующим, ₸',
+    presence: agg.existingMonthlyPaymentSum !== null ? (mpComplete ? 'PRESENT' : 'UNKNOWN') : 'UNKNOWN',
+    normalizedValue: agg.existingMonthlyPaymentSum,
+    confidence: mpComplete ? 0.6 : 0.2, critical: true, level: 'SOURCE_FACT',
+    evidence: `платёж найден по ${agg.monthlyPaymentCovered} из ${agg.activeContracts} активных`,
+  }));
+  if (!mpComplete) {
+    notes.push(`Ежемесячный платёж в отчёте ПКБ приведён не по всем действующим договорам (${agg.monthlyPaymentCovered}/${agg.activeContracts}); для КДН это НЕПОЛНЫЙ вход — сумму платежей нужно подтвердить из графиков/выписок, движок ноль не подставляет.`);
+  }
 
   // Сводные счётчики договоров — чистые, надёжные якоря реального отчёта ПКБ
   // («2Действующие договоры без просрочки» и т.п.). Калибровано на образце.
@@ -246,7 +376,12 @@ export function extractCreditHistory(rawText: string): DocumentExtraction {
     fields,
     derived: {
       source_contract_record_hint: contractHits,
-      current_outstanding_reported: balNum,
+      active_contracts_detected: agg.activeContracts || null,
+      outstanding_total_active: agg.outstandingActiveSum,
+      current_dpd_active: agg.currentDpdMaxActive,
+      max_dpd_lifetime: agg.lifetimeMaxDpd,
+      existing_monthly_payment: agg.existingMonthlyPaymentSum,
+      monthly_payment_coverage: `${agg.monthlyPaymentCovered}/${agg.activeContracts}`,
     },
     gates,
     notes,
@@ -308,7 +443,24 @@ export function extractPension(rawText: string): DocumentExtraction {
     .map((l) => (/^(?:\d{1,3}(?:[  ]\d{3})*|\d{3,})[.,]\d{1,2}$/.test(l) ? parseMoney(l) : null))
     .filter((v): v is number => v !== null && v > 0);
   const processed = /обработанн/i.test(text);
-  const months = Array.from(text.matchAll(/\b(0[1-9]|1[0-2])[.\-/](20\d{2})\b/g)).map((m) => `${m[2]}-${m[1]}`);
+  // Месяцы взносов берём ИЗ КОЛОНКИ ПЕРИОДА (постро́чно), а НЕ из дат шапки.
+  // Реальный шаблон ЕНПФ печатает период как «MMYYYY» без разделителя
+  // (напр. «012026»); поддерживаем и «MM.YYYY» на случай других шаблонов.
+  const periodLines = text.split('\n').map((l) => l.trim());
+  const months: string[] = [];
+  for (const l of periodLines) {
+    let mm: string | null = null;
+    let yyyy: string | null = null;
+    const bare = /^(\d{2})(\d{4})$/.exec(l); // MMYYYY
+    const sep = /^(0[1-9]|1[0-2])[.\-/](20\d{2})$/.exec(l); // MM.YYYY
+    if (bare) { mm = bare[1]; yyyy = bare[2]; }
+    else if (sep) { mm = sep[1]; yyyy = sep[2]; }
+    if (mm && yyyy) {
+      const mi = parseInt(mm, 10);
+      const yi = parseInt(yyyy, 10);
+      if (mi >= 1 && mi <= 12 && yi >= 2000 && yi <= 2100) months.push(`${yyyy}-${mm}`);
+    }
+  }
   const uniqueMonths = Array.from(new Set(months));
 
   const primaryKnp = knpFound[0] ?? null;

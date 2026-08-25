@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   extractCreditHistory, extractPension, extractDocument,
-  pensionContributionBase,
+  pensionContributionBase, aggregateCreditContracts,
 } from '../lib/mortgage-workspace/extraction';
 
 // Структура повторяет реальный вывод pdf-parse по шаблону GOVCORP ЕНПФ:
@@ -106,11 +106,8 @@ describe('Кредитная история extraction', () => {
     expect(r.fields.find((f) => f.key === 'report_kind')?.normalizedValue).toBe('FULL_PERSONAL');
   });
 
-  it('извлекает дату формирования и текущий остаток', () => {
+  it('извлекает дату формирования', () => {
     expect(r.fields.find((f) => f.key === 'report_generated_at')?.presence).toBe('PRESENT');
-    const bal = r.fields.find((f) => f.key === 'outstanding_total_reported');
-    expect(bal?.presence).toBe('PRESENT');
-    expect(bal?.normalizedValue).toBe(4737798.64);
   });
 
   it('извлекает сводные счётчики договоров (реальные якоря ПКБ)', () => {
@@ -129,6 +126,79 @@ describe('Кредитная история extraction', () => {
   it('подлинность не авто-подтверждается (MANUAL_REVIEW_REQUIRED)', () => {
     expect(r.statuses.authenticity).toBe('MANUAL_REVIEW_REQUIRED');
     expect(r.reviewRequired).toBe(true);
+  });
+});
+
+// Синтетика по разметке реального полного отчёта ПКБ: строка баланса печатается
+// ЧУТЬ ВЫШЕ маркера «Вид финансирования», «Фаза договора» — статус; блоки DPD —
+// ниже. Значения фейковые. Между договорами — паддинг (в реальном отчёте блоки
+// далеко друг от друга), чтобы окна агрегатора не перекрывались.
+function pad(n: number): string[] { return Array(n).fill('   прочая строка отчёта'); }
+const PKB_CONTRACTS_LINES: string[] = [
+  // Договор 1 — действующий заём
+  'Общая сумма кредита / валюта :5 000 000.00KZTСумма просроченных взносов:0 KZT',
+  'Информация по состоянию на:01.08.2026Непогашенная сумма по кредиту :3 200 000.00 KZTКоличество дней просрочки :0',
+  'Вид финансирования:Займ',
+  'Фаза договора :Действующий',
+  'Максимальное количество дней просрочки с начала действия договора :12',
+  'Количество дней просрочки :0',
+  ...pad(20),
+  // Договор 2 — действующая карта с минимальным платежом
+  'Информация по состоянию на:01.08.2026Использованная сумма (подлежащая погашению) :400 000.00 KZT',
+  'Вид финансирования:Кредитная карта',
+  'Фаза договора :Действующий',
+  'Количество дней просрочки :5',
+  'Минимальный платеж :40 000 KZT',
+  'Максимальное количество дней просрочки с начала действия договора :5',
+  ...pad(20),
+  // Договор 3 — завершённый (в сумму действующих не входит; в макс.DPD — да)
+  'Вид финансирования:Займ',
+  'Фаза договора :Завершен',
+  'Максимальное количество дней просрочки с начала действия договора :3',
+];
+
+describe('ПКБ агрегатор договоров — постро́чный разбор действующих', () => {
+  const agg = aggregateCreditContracts(PKB_CONTRACTS_LINES);
+
+  it('считает число действующих договоров по «Фаза договора»', () => {
+    expect(agg.activeContracts).toBe(2);
+  });
+  it('суммирует остаток ТОЛЬКО по действующим (3.2M + 400k = 3.6M)', () => {
+    expect(agg.outstandingActiveSum).toBe(3_600_000);
+    expect(agg.outstandingComplete).toBe(true);
+  });
+  it('текущий DPD = макс по действующим; макс.DPD за всё время — по всем', () => {
+    expect(agg.currentDpdMaxActive).toBe(5);
+    expect(agg.lifetimeMaxDpd).toBe(12); // 12 из завершённого договора учитывается
+  });
+  it('ежемесячный платёж — только там где есть; покрытие честное (1 из 2)', () => {
+    expect(agg.existingMonthlyPaymentSum).toBe(40_000);
+    expect(agg.monthlyPaymentCovered).toBe(1);
+  });
+  it('если по активному остаток UNKNOWN — сумма не выдумывается (null)', () => {
+    const partial = aggregateCreditContracts([
+      'Вид финансирования:Займ',
+      'Фаза договора :Действующий', // без строки остатка
+      'Количество дней просрочки :0',
+    ]);
+    expect(partial.activeContracts).toBe(1);
+    expect(partial.outstandingActiveSum).toBeNull();
+    expect(partial.outstandingComplete).toBe(false);
+  });
+});
+
+describe('ЕНПФ — месяцы из колонки периода (MMYYYY без разделителя)', () => {
+  // Реальный шаблон: период печатается как «012026», а не «01.2026».
+  const sample = [
+    'ТТК/КНП', '010', '10000,00', '012026', 'ОБРАБОТАННЫЕ',
+    '010', '10000,00', '022026', 'ОБРАБОТАННЫЕ',
+    '010', '10000,00', '032026', 'ОБРАБОТАННЫЕ',
+    // строки-даты шапки НЕ должны попадать в месяцы
+    '08.02.2026', '26.03.2026',
+  ].join('\n');
+  const r = extractPension(sample);
+  it('считает 3 уникальных месяца из периода, не из дат шапки', () => {
+    expect(r.derived.observed_month_count).toBe(3);
   });
 });
 

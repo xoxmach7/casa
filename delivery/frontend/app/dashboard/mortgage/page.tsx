@@ -1,583 +1,311 @@
 "use client";
 
 /**
- * CASA Pro Ипотека — единый рабочий экран (single_workspace).
- * Phase 0: интерфейс и контракты, все состояния на мок-данных.
+ * CASA Pro Ипотека — рабочий экран по КАНОНИЧЕСКОЙ структуре (M01→M06).
  *
- * Оркестратор держит WorkspaceState и реализует переходы (contracts.ts).
- * Ни одна цифра здесь не является банковским решением — CASA формирует
- * предварительное заключение (product_definition.decision_boundary).
+ * Демо-режим 1.1 (выдуманные КДН/принимаемый доход/число программ/сценарии)
+ * УДАЛЁН. Экран показывает только то, что разрешено спекой релиза 1.0:
+ *  - профиль клиента (M05): available_now_total из источников взноса (UNKNOWN≠0);
+ *  - расчёт (M06): required_financing = max(цена − взнос, 0) и аннуитетный платёж
+ *    (CALC-F-001/002), со статусом и кодами §19;
+ *  - реальная загрузка документов (КИ/ЕНПФ) с распознаванием полей.
+ * Банковский/регуляторный КДН (REG-F-001) НЕ считается. Ни одна цифра — не
+ * банковское решение; CASA формирует предварительное заключение.
+ *
+ * Данные клиента/профиля — демо-моки в форме канонических ответов /api/v2/cases.
  */
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Calculator,
-  ArrowRight,
-  RotateCcw,
-  Wand2,
-  TriangleAlert,
-  User2,
-  Clock,
+  Calculator, RotateCcw, TriangleAlert, User2, ShieldCheck, FileUp, Wrench, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { API_URL } from "@/lib/config";
 
-import type { WorkspaceState, MortgageClient, WhatIfInputs } from "@/lib/mortgage/types";
-import { formatDateTime } from "@/lib/mortgage/calc";
-import {
-  createInitialWorkspace,
-  DEMO_CLIENT,
-  DEFAULT_WHAT_IF,
-  CREDIT_HISTORY_FIELDS,
-  ENPF_FIELDS,
-  MOCK_OBLIGATIONS,
-  buildDemoAnalysis,
-  buildDemoScenarios,
-  buildDemoProperties,
-} from "@/lib/mortgage/mock";
-import type { WorkspaceHandlers } from "@/components/mortgage/workspace/contracts";
-import { SectionClientConsent, SectionDocuments, SectionAnalysis } from "@/components/mortgage/workspace/sections-early";
-import { SectionScenarios, SectionWhatIf, SectionProperties, SectionConclusion } from "@/components/mortgage/workspace/sections-late";
-import { ClientPickerModal, ConsentModal } from "@/components/mortgage/workspace/modals";
+// --- Канонический клиентский расчёт M06 (зеркало m06-calc.ts) ---------------
 
-const CASE_STATUS_LABEL: Record<WorkspaceState["caseStatus"], string> = {
-  new: "Новый",
-  consent_required: "Нужно согласие",
-  waiting_for_consent: "Ждём согласие",
-  documents_required: "Нужны документы",
-  documents_processing: "Обработка документов",
-  data_review_required: "Проверка данных",
-  ready_for_analysis: "Готов к анализу",
-  analysis_ready: "Анализ готов",
-  scenario_selected: "Сценарий выбран",
-  property_selection_ready: "Подборка готова",
-  ready_for_application: "Готов к заявке",
-  on_hold: "На паузе",
-  closed: "Закрыт",
-};
+type CalcStatus = "COMPLETED" | "COMPLETED_WITH_LIMITATIONS" | "BLOCKED" | "INVALID_INPUT";
+interface CalcResult { value: number | null; status: CalcStatus; codes: string[]; }
 
-const nowIso = () => new Date().toISOString();
-
-function scrollToSection(order: number) {
-  document.getElementById(`mortgage-section-${order}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+function requiredFinancing(P: number | null, A: number | null): CalcResult {
+  if (P === null || A === null) return { value: null, status: "BLOCKED", codes: ["MISSING_INPUT"] };
+  if (P < 0 || A < 0) return { value: null, status: "INVALID_INPUT", codes: ["NEGATIVE_AMOUNT"] };
+  const codes = A >= P ? ["DOWN_PAYMENT_COVERS_TARGET"] : [];
+  return { value: Math.max(P - A, 0), status: "COMPLETED", codes };
 }
 
-export default function MortgageWorkspacePage() {
-  const [st, setSt] = useState<WorkspaceState>(createInitialWorkspace);
+function annuity(P: number | null, aPct: number | null, n: number | null): CalcResult {
+  if (P === null || aPct === null || n === null) return { value: null, status: "BLOCKED", codes: ["MISSING_INPUT"] };
+  if (!Number.isInteger(n) || n <= 0 || n > 1200) return { value: null, status: "INVALID_INPUT", codes: ["INVALID_TERM"] };
+  if (aPct < 0 || aPct > 100) return { value: null, status: "INVALID_INPUT", codes: ["INVALID_RATE"] };
+  const r = aPct / 100 / 12;
+  let raw: number;
+  const codes: string[] = [];
+  if (P === 0) raw = 0;
+  else if (r === 0) { raw = P / n; codes.push("ZERO_RATE_BRANCH"); }
+  else { const f = Math.pow(1 + r, n); raw = (P * r * f) / (f - 1); }
+  return { value: raw, status: "COMPLETED", codes };
+}
+
+const money = (v: number | null): string =>
+  v === null ? "—" : `${new Intl.NumberFormat("ru-RU").format(Math.round(v))} ₸`;
+
+// --- Демо-моки в форме канонических ответов ---------------------------------
+
+type FieldStatus = "VERIFIED" | "DECLARED" | "UNKNOWN";
+interface MoneySource { kind: string; amount: number | null; status: FieldStatus; }
+
+const DEMO_CASE = { id: "case-demo", clientName: "Айдос М.", status: "READY_TO_CALCULATE" as const };
+const DEMO_DOWN_PAYMENT: MoneySource[] = [
+  { kind: "Накопления", amount: 5_000_000, status: "VERIFIED" },
+  { kind: "Продажа автомобиля", amount: 2_000_000, status: "DECLARED" },
+];
+const DEMO_INCOME: MoneySource[] = [
+  { kind: "Зарплата (заявлено)", amount: 650_000, status: "DECLARED" },
+];
+
+/** Агрегат available_now_total: UNKNOWN/пустая сумма ≠ 0 → агрегат неполон. */
+function aggregate(sources: MoneySource[]): { value: number | null; status: FieldStatus; complete: boolean } {
+  let sum = 0; let sawDeclared = false; let incomplete = false;
+  for (const s of sources) {
+    if (s.status === "UNKNOWN" || s.amount === null) { incomplete = true; continue; }
+    sum += s.amount; if (s.status === "DECLARED") sawDeclared = true;
+  }
+  return { value: incomplete ? null : sum, status: incomplete ? "UNKNOWN" : sawDeclared ? "DECLARED" : "VERIFIED", complete: !incomplete };
+}
+
+const STATUS_LABEL: Record<CalcStatus, string> = {
+  COMPLETED: "Рассчитано",
+  COMPLETED_WITH_LIMITATIONS: "Рассчитано (не подтверждено)",
+  BLOCKED: "Заблокировано (нет данных)",
+  INVALID_INPUT: "Некорректный ввод",
+};
+const FIELD_LABEL: Record<FieldStatus, string> = { VERIFIED: "подтверждено", DECLARED: "заявлено", UNKNOWN: "неизвестно" };
+
+// --- UI-примитивы -----------------------------------------------------------
+
+function Card({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <section className={cn("rounded-xl border border-border bg-card text-card-foreground shadow-sm", className)}>{children}</section>;
+}
+function CardHead({ icon, title, sub }: { icon: React.ReactNode; title: string; sub?: string }) {
+  return (
+    <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+      <div className="mt-0.5 text-primary">{icon}</div>
+      <div>
+        <h2 className="text-base font-semibold leading-tight">{title}</h2>
+        {sub && <p className="mt-0.5 text-sm text-muted-foreground">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+function StatusPill({ status }: { status: CalcStatus }) {
+  const tone = status === "COMPLETED" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+    : status === "COMPLETED_WITH_LIMITATIONS" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+    : "bg-rose-500/15 text-rose-600 dark:text-rose-400";
+  return <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", tone)}>{STATUS_LABEL[status]}</span>;
+}
+
+// --- Страница ---------------------------------------------------------------
+
+const DEFAULTS = { targetPrice: 30_000_000, rate: 12.5, termMonths: 240 };
+
+export default function MortgagePage() {
   const { toast } = useToast();
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [consentOpen, setConsentOpen] = useState(false);
+  const availableNow = useMemo(() => aggregate(DEMO_DOWN_PAYMENT), []);
+  const incomeAgg = useMemo(() => aggregate(DEMO_INCOME), []);
 
-  const patch = useCallback((p: Partial<WorkspaceState>) => setSt((prev) => ({ ...prev, ...p })), []);
+  const [targetPrice, setTargetPrice] = useState<number>(DEFAULTS.targetPrice);
+  const [rate, setRate] = useState<number>(DEFAULTS.rate);
+  const [termMonths, setTermMonths] = useState<number>(DEFAULTS.termMonths);
 
-  // --- Секция 1: клиент и согласие ------------------------------------------
+  const rf = useMemo(() => requiredFinancing(targetPrice, availableNow.value), [targetPrice, availableNow.value]);
+  const payment = useMemo(() => annuity(rf.value, rate, termMonths), [rf.value, rate, termMonths]);
+  const overallStatus: CalcStatus = availableNow.complete === false ? "BLOCKED"
+    : incomeAgg.status === "DECLARED" || availableNow.status === "DECLARED" ? "COMPLETED_WITH_LIMITATIONS"
+    : rf.status === "BLOCKED" || payment.status === "BLOCKED" ? "BLOCKED"
+    : payment.status;
 
-  const selectClient = useCallback((client: MortgageClient) => {
-    setSt(() => {
-      const fresh = createInitialWorkspace();
-      const whatIf: WhatIfInputs = {
-        ...DEFAULT_WHAT_IF,
-        propertyPrice: client.desiredPropertyPrice ?? DEFAULT_WHAT_IF.propertyPrice,
-        downPayment: client.downPayment ?? DEFAULT_WHAT_IF.downPayment,
-        existingDebtPayment: client.existingMonthlyPayment ?? 0,
-        termMonths: client.desiredTermMonths ?? DEFAULT_WHAT_IF.termMonths,
-      };
-      return { ...fresh, client, caseStatus: "consent_required", whatIf };
-    });
-  }, []);
+  const reset = () => { setTargetPrice(DEFAULTS.targetPrice); setRate(DEFAULTS.rate); setTermMonths(DEFAULTS.termMonths); };
 
-  const sendConsent = useCallback(() => {
-    setSt((prev) => ({
-      ...prev,
-      consent: {
-        ...prev.consent,
-        status: "sms_pending",
-        audit: {
-          consentId: `cs-${Date.now().toString(36)}`,
-          phoneMasked: prev.client?.phone ?? "—",
-          consentTextVersion: "1.1",
-          method: "casa_sms_link_otp",
-          requestedAt: nowIso(),
-          purposes: ["questionnaire", "credit_history", "enpf", "iin_checks", "scoring", "share_conclusion"],
-          smsProviderMessageId: `demo-${Math.floor(Math.random() * 1e6)}`,
-        },
-      },
-      caseStatus: "waiting_for_consent",
-    }));
-    // Клиент «открыл ссылку»
-    setTimeout(() => {
-      setSt((prev) =>
-        prev.consent.status === "sms_pending"
-          ? { ...prev, consent: { ...prev.consent, status: "link_opened", audit: prev.consent.audit ? { ...prev.consent.audit, openedAt: nowIso() } : prev.consent.audit } }
-          : prev,
-      );
-    }, 1200);
-  }, []);
+  // --- Реальная загрузка документов (КИ/ЕНПФ) ---
+  type DocState = { fileName?: string; fields: { key: string; label: string; value: string | number; presence: string; confidence: number; critical?: boolean }[]; gates: string[]; notes: string[]; stored?: boolean; busy?: boolean };
+  const [docs, setDocs] = useState<Record<"credit_history" | "enpf_statement", DocState>>({
+    credit_history: { fields: [], gates: [], notes: [] },
+    enpf_statement: { fields: [], gates: [], notes: [] },
+  });
 
-  const clientConfirmConsent = useCallback(() => {
-    setSt((prev) => ({
-      ...prev,
-      consent: {
-        ...prev.consent,
-        status: "confirmed",
-        audit: prev.consent.audit ? { ...prev.consent.audit, confirmedAt: nowIso() } : prev.consent.audit,
-      },
-      caseStatus: "documents_required",
-    }));
-    setConsentOpen(false);
-    toast({ title: "Согласие подтверждено", description: "Чувствительные действия разблокированы." });
-  }, [toast]);
-
-  const clientRejectConsent = useCallback(() => {
-    setSt((prev) => ({ ...prev, consent: { ...prev.consent, status: "rejected" } }));
-    setConsentOpen(false);
-    toast({ title: "Согласие отклонено", variant: "destructive" });
-  }, [toast]);
-
-  const revokeConsent = useCallback(() => {
-    setSt((prev) => ({
-      ...createInitialWorkspace(),
-      client: prev.client,
-      whatIf: prev.whatIf,
-      consent: { ...prev.consent, status: "revoked" },
-      caseStatus: "consent_required",
-    }));
-    toast({ title: "Согласие отозвано", description: "Новая обработка и доступ заблокированы (AC-013)." });
-  }, [toast]);
-
-  // --- Секция 2: документы и ИИН --------------------------------------------
-
-  // Локальный демо-fallback (если сервер недоступен): показать демо-поля.
-  const runLocalDemoPipeline = useCallback((which: "creditHistory" | "enpf", name: string) => {
-    const fields = which === "creditHistory" ? CREDIT_HISTORY_FIELDS : ENPF_FIELDS;
-    setSt((prev) => ({
-      ...prev,
-      caseStatus: "documents_processing",
-      documents: {
-        ...prev.documents,
-        [which]: {
-          ...prev.documents[which],
-          status: "needs_review",
-          progress: 100,
-          fileName: name,
-          fields: fields.map((f) => ({ ...f })),
-          serverStored: false,
-          gates: [],
-          notes: ["Сервер недоступен — показаны демонстрационные поля, файл НЕ сохранён на сервере."],
-        },
-      },
-    }));
-  }, []);
-
-  const uploadDocument = useCallback(async (which: "creditHistory" | "enpf", file: File) => {
-    const backendType = which === "creditHistory" ? "credit_history" : "enpf_statement";
-    const name = file.name;
-    // состояние «загрузка/обработка»
-    setSt((prev) => ({
-      ...prev,
-      caseStatus: "documents_processing",
-      documents: {
-        ...prev.documents,
-        [which]: { ...prev.documents[which], status: "processing", progress: 55, fileName: name },
-      },
-    }));
+  const upload = useCallback(async (type: "credit_history" | "enpf_statement", file: File) => {
+    setDocs((p) => ({ ...p, [type]: { ...p[type], busy: true, fileName: file.name } }));
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("type", backendType);
-      const res = await fetch(`${API_URL}/mortgage-workspace/documents`, {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
+      fd.append("type", type);
+      const res = await fetch(`${API_URL}/mortgage-workspace/documents`, { method: "POST", credentials: "include", body: fd });
       if (!res.ok) throw new Error(String(res.status));
       const d = await res.json();
-      const serverFields = Array.isArray(d.extraction?.fields) ? d.extraction.fields : [];
-      const fields = serverFields.map((f: {
-        key: string; label: string; rawValue: unknown; normalizedValue: unknown; presence: string; confidence: number; critical?: boolean;
-      }) => {
-        const val =
-          f.normalizedValue ?? f.rawValue ??
-          (f.presence === "UNKNOWN" ? "нет данных" : f.presence === "BLANK" ? "—" : f.presence);
-        const low = f.confidence < 0.7 || f.presence === "UNKNOWN";
-        return {
-          key: f.key,
-          label: f.label,
-          value: val as string | number,
-          confidence: typeof f.confidence === "number" ? f.confidence : 0,
-          confirmed: false,
-          inconsistency: low && f.critical ? "Требует ручной проверки (критическое поле)" : undefined,
-        };
-      });
-      setSt((prev) => ({
-        ...prev,
-        documents: {
-          ...prev.documents,
-          [which]: {
-            ...prev.documents[which],
-            status: d.status === "processing_failed" ? "needs_review" : "needs_review",
-            progress: 100,
-            fileName: name,
-            fields,
-            serverStored: !!d.stored,
-            documentId: d.id,
-            storedAt: d.storedAt,
-            gates: d.extraction?.gates ?? [],
-            notes: d.extraction?.notes ?? [],
-            statuses: d.extraction?.statuses,
-          },
-        },
+      const fields = (Array.isArray(d.extraction?.fields) ? d.extraction.fields : []).map((f: any) => ({
+        key: f.key, label: f.label,
+        value: (f.normalizedValue ?? f.rawValue ?? (f.presence === "UNKNOWN" ? "нет данных" : f.presence)) as string | number,
+        presence: f.presence, confidence: typeof f.confidence === "number" ? f.confidence : 0, critical: f.critical,
       }));
-      toast({ title: "Документ загружен и сохранён", description: "Поля распознаны из текста PDF. Проверьте и подтвердите." });
+      setDocs((p) => ({ ...p, [type]: { fileName: file.name, fields, gates: d.extraction?.gates ?? [], notes: d.extraction?.notes ?? [], stored: !!d.stored, busy: false } }));
+      toast({ title: "Документ сохранён и распознан", description: "Поля извлечены из текстового слоя PDF." });
     } catch {
-      runLocalDemoPipeline(which, name);
-      toast({ title: "Сервер недоступен — демо-режим", description: "Файл не сохранён; показаны демонстрационные поля.", variant: "destructive" });
+      setDocs((p) => ({ ...p, [type]: { ...p[type], busy: false } }));
+      toast({ title: "Не удалось загрузить", description: "Сервер недоступен или файл не PDF.", variant: "destructive" });
     }
-  }, [toast, runLocalDemoPipeline]);
-
-  const confirmDocument = useCallback((which: "creditHistory" | "enpf") => {
-    setSt((prev) => {
-      const documents = {
-        ...prev.documents,
-        [which]: {
-          ...prev.documents[which],
-          status: "confirmed" as const,
-          fields: prev.documents[which].fields.map((f) => ({ ...f, confirmed: true, confidence: Math.max(f.confidence, 0.95), inconsistency: undefined })),
-        },
-      };
-      const bothConfirmed = documents.creditHistory.status === "confirmed" && documents.enpf.status === "confirmed";
-      const obligations = which === "creditHistory" || prev.obligations.length ? MOCK_OBLIGATIONS : prev.obligations;
-      return {
-        ...prev,
-        documents,
-        obligations: documents.creditHistory.status === "confirmed" ? MOCK_OBLIGATIONS : obligations,
-        caseStatus: bothConfirmed ? "ready_for_analysis" : "documents_required",
-      };
-    });
-  }, []);
-
-  const correctField = useCallback((which: "creditHistory" | "enpf", key: string, value: string) => {
-    setSt((prev) => ({
-      ...prev,
-      documents: {
-        ...prev.documents,
-        [which]: {
-          ...prev.documents[which],
-          fields: prev.documents[which].fields.map((f) =>
-            f.key === key ? { ...f, value, confidence: 1, confirmed: true, inconsistency: undefined } : f,
-          ),
-        },
-      },
-    }));
-    toast({ title: "Поле исправлено", description: "Значение подтверждено вручную." });
   }, [toast]);
-
-  const runIinCheck = useCallback(() => {
-    setSt((prev) => ({ ...prev, iinCheck: { status: "in_progress" } }));
-    setTimeout(() => {
-      setSt((prev) => ({
-        ...prev,
-        iinCheck: {
-          status: "verified_no_records",
-          checkedAt: nowIso(),
-          sourceUrl: "https://www.gov.kz/…/aisoip",
-        },
-      }));
-    }, 1500);
-  }, []);
-
-  // --- Секция 3: анализ ------------------------------------------------------
-
-  const runAnalysis = useCallback(() => {
-    setSt((prev) => ({
-      ...prev,
-      analysis: buildDemoAnalysis(),
-      scenarios: buildDemoScenarios(),
-      obligations: prev.obligations.length ? prev.obligations : MOCK_OBLIGATIONS,
-      caseStatus: "analysis_ready",
-      lastCalculationAt: nowIso(),
-    }));
-  }, []);
-
-  const confirmSnapshot = useCallback(() => {
-    setSt((prev) => ({ ...prev, snapshotConfirmed: true, caseStatus: "analysis_ready" }));
-    toast({ title: "Снимок зафиксирован", description: "Расчёт воспроизводим по этой версии данных (AC-012)." });
-  }, [toast]);
-
-  // --- Секция 4: сценарии ----------------------------------------------------
-
-  const selectScenario = useCallback((id: string) => {
-    setSt((prev) => ({ ...prev, selectedScenarioId: id, caseStatus: "scenario_selected", lastCalculationAt: nowIso() }));
-    const sc = st.scenarios.find((s) => s.id === id);
-    if (sc?.requiresVerifiedInput) {
-      toast({ title: "Нужны подтверждённые условия", description: "Введите проверенную ставку/предложение — итог показывается предварительным (AC-006)." });
-    }
-  }, [st.scenarios, toast]);
-
-  const acceptCurrentCase = useCallback(() => {
-    setSt((prev) => ({ ...prev, selectedScenarioId: null, caseStatus: "scenario_selected" }));
-  }, []);
-
-  // --- Секция 5: что если ----------------------------------------------------
-
-  const changeWhatIf = useCallback((p: Partial<WhatIfInputs>) => {
-    setSt((prev) => ({ ...prev, whatIf: { ...prev.whatIf, ...p }, lastCalculationAt: nowIso() }));
-  }, []);
-
-  const saveWhatIfScenario = useCallback(() => {
-    toast({ title: "Сценарий сохранён", description: "Добавлен в список сценариев клиента (демо)." });
-  }, [toast]);
-
-  // --- Секция 6: квартиры ----------------------------------------------------
-
-  const matchProperties = useCallback(() => {
-    setSt((prev) => ({ ...prev, properties: buildDemoProperties(), caseStatus: "property_selection_ready" }));
-  }, []);
-
-  const toggleSelection = useCallback((id: string) => {
-    setSt((prev) => ({
-      ...prev,
-      properties: prev.properties.map((p) => (p.id === id ? { ...p, inSelection: !p.inSelection } : p)),
-    }));
-  }, []);
-
-  // --- Секция 7: заключение --------------------------------------------------
-
-  const saveNextAction = useCallback((action: string, dueDate?: string) => {
-    setSt((prev) => ({ ...prev, nextAction: { action, dueDate, savedAt: nowIso() }, caseStatus: "ready_for_application" }));
-    toast({ title: "Решение сохранено" });
-  }, [toast]);
-
-  const generateLink = useCallback(async () => {
-    // Пытаемся создать заключение на бэкенде (demo-хранилище) и получить токен;
-    // если бэкенд недоступен — локальный fallback (страница /z/[token] сама
-    // покажет demo-заключение).
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://pro.casa.kz";
-    let token = `demo-${Math.random().toString(36).slice(2, 10)}`;
-    let expiresAt = "26.08.2026";
-    try {
-      const res = await fetch(`${API_URL}/mortgage-workspace/conclusions`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selectedScenarioId: st.selectedScenarioId, whatIf: st.whatIf }),
-      });
-      if (res.ok) {
-        const d = await res.json();
-        if (d.token) token = d.token;
-        if (d.expiresAt) expiresAt = new Date(d.expiresAt).toLocaleDateString("ru-RU");
-      }
-    } catch {
-      /* fallback ниже */
-    }
-    setSt((prev) => ({
-      ...prev,
-      conclusion: {
-        conclusionId: `cn-${Date.now().toString(36)}`,
-        version: (prev.conclusion?.version ?? 0) + 1,
-        publicLink: `${origin}/z/${token}`,
-        expiresAt,
-        createdAt: nowIso(),
-        pdfReady: prev.conclusion?.pdfReady,
-      },
-    }));
-    toast({ title: "Ссылка создана", description: "Без индексации, с истечением, ИИН и документы скрыты (AC-014)." });
-  }, [toast, st.selectedScenarioId, st.whatIf]);
-
-  const generatePdf = useCallback(() => {
-    setSt((prev) => ({
-      ...prev,
-      conclusion: {
-        conclusionId: prev.conclusion?.conclusionId ?? `cn-${Date.now().toString(36)}`,
-        version: prev.conclusion?.version ?? 1,
-        createdAt: prev.conclusion?.createdAt ?? nowIso(),
-        publicLink: prev.conclusion?.publicLink,
-        expiresAt: prev.conclusion?.expiresAt,
-        pdfReady: true,
-      },
-    }));
-    toast({ title: "PDF сформирован (демо)" });
-  }, [toast]);
-
-  const handlers: WorkspaceHandlers = useMemo(
-    () => ({
-      openClientPicker: () => setPickerOpen(true),
-      openConsent: () => setConsentOpen(true),
-      revokeConsent,
-      uploadDocument,
-      confirmDocument,
-      correctField,
-      runIinCheck,
-      runAnalysis,
-      confirmSnapshot,
-      selectScenario,
-      acceptCurrentCase,
-      changeWhatIf,
-      saveWhatIfScenario,
-      matchProperties,
-      toggleSelection,
-      saveNextAction,
-      generateLink,
-      generatePdf,
-    }),
-    [revokeConsent, uploadDocument, confirmDocument, correctField, runIinCheck, runAnalysis, confirmSnapshot, selectScenario, acceptCurrentCase, changeWhatIf, saveWhatIfScenario, matchProperties, toggleSelection, saveNextAction, generateLink, generatePdf],
-  );
-
-  // --- Демо: пройти весь путь одним кликом (для просмотра всех состояний) ----
-
-  const fillDemo = useCallback(() => {
-    setSt(() => {
-      const base = createInitialWorkspace();
-      const analysis = buildDemoAnalysis();
-      return {
-        ...base,
-        client: DEMO_CLIENT,
-        whatIf: {
-          ...DEFAULT_WHAT_IF,
-          propertyPrice: DEMO_CLIENT.desiredPropertyPrice!,
-          downPayment: DEMO_CLIENT.downPayment!,
-          existingDebtPayment: DEMO_CLIENT.existingMonthlyPayment!,
-        },
-        consent: {
-          status: "confirmed",
-          linkTtlMinutes: 30,
-          otpTtlMinutes: 5,
-          audit: {
-            consentId: "cs-demo",
-            phoneMasked: DEMO_CLIENT.phone,
-            consentTextVersion: "1.1",
-            method: "casa_sms_link_otp",
-            requestedAt: nowIso(),
-            openedAt: nowIso(),
-            confirmedAt: nowIso(),
-            purposes: ["questionnaire", "credit_history", "enpf", "iin_checks", "scoring", "share_conclusion"],
-            smsProviderMessageId: "demo-000001",
-          },
-        },
-        documents: {
-          creditHistory: { ...base.documents.creditHistory, status: "confirmed", fields: CREDIT_HISTORY_FIELDS.map((f) => ({ ...f, confirmed: true, confidence: Math.max(f.confidence, 0.95), inconsistency: undefined })) },
-          enpf: { ...base.documents.enpf, status: "confirmed", fields: ENPF_FIELDS.map((f) => ({ ...f, confirmed: true })) },
-        },
-        iinCheck: { status: "verified_no_records", checkedAt: nowIso() },
-        obligations: MOCK_OBLIGATIONS,
-        analysis,
-        snapshotConfirmed: true,
-        scenarios: buildDemoScenarios(),
-        selectedScenarioId: "sc-refi",
-        properties: buildDemoProperties(),
-        caseStatus: "property_selection_ready",
-        lastCalculationAt: nowIso(),
-      };
-    });
-    toast({ title: "Демо-данные заполнены", description: "Весь путь до подбора квартир (мок-данные)." });
-  }, [toast]);
-
-  const resetAll = useCallback(() => {
-    setSt(createInitialWorkspace());
-    toast({ title: "Экран сброшен" });
-  }, [toast]);
-
-  // --- Первичное действие для липкого контекста ------------------------------
-
-  const primary = useMemo(() => {
-    const s = st;
-    if (!s.client) return { label: "Выбрать клиента", onClick: () => setPickerOpen(true) };
-    if (s.consent.status !== "confirmed") return { label: "Отправить согласие", onClick: () => setConsentOpen(true) };
-    if (!(s.documents.creditHistory.status === "confirmed" && s.documents.enpf.status === "confirmed"))
-      return { label: "Загрузить документы", onClick: () => scrollToSection(2) };
-    if (!s.analysis) return { label: "Запустить анализ", onClick: runAnalysis };
-    if (!s.snapshotConfirmed) return { label: "Подтвердить данные", onClick: confirmSnapshot };
-    if (!s.selectedScenarioId && s.caseStatus !== "scenario_selected") return { label: "Выбрать сценарий", onClick: () => scrollToSection(4) };
-    if (s.properties.length === 0) return { label: "Подобрать квартиры", onClick: matchProperties };
-    if (!s.nextAction) return { label: "Сохранить действие", onClick: () => scrollToSection(7) };
-    return { label: "Готово", onClick: () => scrollToSection(7) };
-  }, [st, runAnalysis, confirmSnapshot, matchProperties]);
-
-  const sectionProps = { state: st, h: handlers };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 pb-16">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       {/* Заголовок */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Ипотечное решение клиента</h1>
-          <p className="text-sm text-muted-foreground">
-            Согласие → документы → анализ → сценарии → квартиры → заключение
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Профиль → расчёт → документы. Предварительно — итоговое решение принимает банк.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={fillDemo}>
-            <Wand2 className="mr-1.5 h-4 w-4" />
-            Демо
-          </Button>
-          <Button variant="ghost" size="sm" onClick={resetAll}>
-            <RotateCcw className="mr-1.5 h-4 w-4" />
-            Сброс
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/mortgage/tools">
-              <Calculator className="mr-1.5 h-4 w-4" />
-              Инструменты
-            </Link>
-          </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={reset}><RotateCcw className="mr-1.5 h-4 w-4" />Сброс</Button>
+          <Button asChild variant="outline" size="sm"><Link href="/dashboard/mortgage/tools"><Wrench className="mr-1.5 h-4 w-4" />Инструменты</Link></Button>
         </div>
+      </header>
+
+      {/* Демо-баннер */}
+      <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p className="text-muted-foreground">Данные клиента и профиля — демонстрационные, в форме канонических ответов <code className="rounded bg-muted px-1">/api/v2/cases</code>. Банковский КДН (REG-F-001) не рассчитывается; расчётная база дохода из ОПВ — UNKNOWN до закрытия регуляторных условий.</p>
       </div>
 
-      {/* Демо-предупреждение */}
-      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800">
-        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>
-          Демо-режим (Phase 0): все банковские условия, ставки, платежи и квартиры демонстрационные и требуют проверки
-          перед production. CASA формирует предварительное заключение — окончательное решение принимает банк.
-        </span>
-      </div>
-
-      {/* Липкий контекст */}
-      <div className="sticky top-2 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-card/95 p-3 shadow-sm backdrop-blur">
-        <div className="flex items-center gap-2">
-          <User2 className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">{st.client ? st.client.fullName : "Клиент не выбран"}</span>
+      {/* Кейс */}
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <User2 className="h-5 w-5 text-primary" />
+            <div>
+              <p className="font-semibold">{DEMO_CASE.clientName}</p>
+              <p className="text-sm text-muted-foreground">Кейс {DEMO_CASE.id}</p>
+            </div>
+          </div>
+          <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{DEMO_CASE.status}</span>
         </div>
-        <div className="hidden items-center gap-1.5 sm:flex">
-          <span className="text-xs text-muted-foreground">Статус:</span>
-          <span className="rounded-full bg-[#15325B]/10 px-2 py-0.5 text-xs font-medium text-[#15325B]">
-            {CASE_STATUS_LABEL[st.caseStatus]}
-          </span>
-        </div>
-        <div className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
-          <Clock className="h-3.5 w-3.5" />
-          Расчёт: {formatDateTime(st.lastCalculationAt)}
-        </div>
-        <Button size="sm" className={cn("ml-auto bg-[#15325B] hover:bg-[#15325B]/90")} onClick={primary.onClick}>
-          {primary.label}
-          <ArrowRight className="ml-1.5 h-4 w-4" />
-        </Button>
-      </div>
+      </Card>
 
-      {/* Секции */}
-      <SectionClientConsent {...sectionProps} />
-      <SectionDocuments {...sectionProps} />
-      <SectionAnalysis {...sectionProps} />
-      <SectionScenarios {...sectionProps} />
-      <SectionWhatIf {...sectionProps} />
-      <SectionProperties {...sectionProps} />
-      <SectionConclusion {...sectionProps} />
+      {/* Профиль клиента (M05) */}
+      <Card>
+        <CardHead icon={<ShieldCheck className="h-5 w-5" />} title="Профиль клиента (M05)" sub="Источники первоначального взноса и дохода. Пустая/неизвестная сумма не считается нулём." />
+        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Доступно на взнос (available_now_total)</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">{money(availableNow.value)}</p>
+            <p className="text-xs text-muted-foreground">статус: {FIELD_LABEL[availableNow.status]}</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {DEMO_DOWN_PAYMENT.map((s, i) => (
+                <li key={i} className="flex justify-between border-b border-border/60 pb-1">
+                  <span className="text-muted-foreground">{s.kind}</span>
+                  <span className="tabular-nums">{money(s.amount)} <span className="text-xs text-muted-foreground">· {FIELD_LABEL[s.status]}</span></span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Доход (заявлено)</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">{money(incomeAgg.value)}<span className="text-sm font-normal text-muted-foreground">/мес</span></p>
+            <p className="text-xs text-muted-foreground">Не используется как banked income: подтверждение и расчётная база — за регуляторными гейтами (RG-04).</p>
+          </div>
+        </div>
+      </Card>
 
-      {/* Модалки */}
-      <ClientPickerModal open={pickerOpen} onOpenChange={setPickerOpen} onSelect={selectClient} />
-      <ConsentModal
-        open={consentOpen}
-        onOpenChange={setConsentOpen}
-        client={st.client}
-        consentStatus={st.consent.status}
-        previewHref={st.consent.audit?.consentId ? `/consent/${st.consent.audit.consentId}` : undefined}
-        onSend={sendConsent}
-        onClientConfirm={clientConfirmConsent}
-        onClientReject={clientRejectConsent}
-      />
+      {/* Расчёт (M06) */}
+      <Card>
+        <CardHead icon={<Calculator className="h-5 w-5" />} title="Расчёт (M06)" sub="CALC-F-001 required_financing = max(цена − взнос, 0); CALC-F-002 аннуитетный платёж." />
+        <div className="grid gap-5 px-5 py-4 md:grid-cols-2">
+          <div className="space-y-4">
+            <label className="block">
+              <span className="text-sm text-muted-foreground">Целевая цена, ₸</span>
+              <input type="number" value={targetPrice} min={0} step={500_000}
+                onChange={(e) => setTargetPrice(Number(e.target.value))}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums" />
+            </label>
+            <div>
+              <span className="text-sm text-muted-foreground">Ставка: <b className="text-foreground">{rate.toFixed(1)}%</b></span>
+              <input type="range" min={0} max={30} step={0.5} value={rate} onChange={(e) => setRate(Number(e.target.value))} className="mt-1 w-full" />
+            </div>
+            <div>
+              <span className="text-sm text-muted-foreground">Срок: <b className="text-foreground">{termMonths} мес ({Math.round(termMonths / 12)} лет)</b></span>
+              <input type="range" min={12} max={360} step={12} value={termMonths} onChange={(e) => setTermMonths(Number(e.target.value))} className="mt-1 w-full" />
+            </div>
+            <p className="text-xs text-muted-foreground">Взнос берётся из профиля: {money(availableNow.value)} ({FIELD_LABEL[availableNow.status]}).</p>
+          </div>
+
+          <div className="space-y-3 rounded-lg bg-muted/40 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Статус расчёта</span>
+              <StatusPill status={overallStatus} />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Требуемое финансирование</p>
+              <p className="text-2xl font-bold tabular-nums">{money(rf.value)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Ежемесячный платёж (аннуитет)</p>
+              <p className="text-2xl font-bold tabular-nums">{money(payment.value)}</p>
+            </div>
+            {[...rf.codes, ...payment.codes].length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[...new Set([...rf.codes, ...payment.codes])].map((c) => (
+                  <span key={c} className="rounded bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{c}</span>
+                ))}
+              </div>
+            )}
+            <p className="pt-1 text-xs text-muted-foreground">Без банковского КДН (REG-F-001 DISABLED). Не является одобрением банка.</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Документы (реальная загрузка) */}
+      <Card>
+        <CardHead icon={<FileUp className="h-5 w-5" />} title="Документы (M03/M04)" sub="Кредитная история (ПКБ) и выписка ЕНПФ. PDF ≤ 25 МБ, распознавание из текстового слоя." />
+        <div className="grid gap-4 px-5 py-4 md:grid-cols-2">
+          {(["credit_history", "enpf_statement"] as const).map((type) => {
+            const doc = docs[type];
+            const title = type === "credit_history" ? "Кредитная история (ПКБ)" : "Выписка ЕНПФ";
+            return (
+              <div key={type} className="rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">{title}</p>
+                  {doc.stored && <span className="text-xs text-emerald-600 dark:text-emerald-400">сохранён на сервере</span>}
+                </div>
+                <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
+                  <FileUp className="h-4 w-4" />
+                  <span>{doc.busy ? "Загрузка…" : doc.fileName ?? "Выбрать PDF"}</span>
+                  <input type="file" accept="application/pdf" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(type, f); }} />
+                </label>
+                {doc.fields.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-sm">
+                    {doc.fields.slice(0, 8).map((f) => (
+                      <li key={f.key} className="flex justify-between gap-2 border-b border-border/60 pb-1">
+                        <span className="text-muted-foreground">{f.label}</span>
+                        <span className={cn("text-right tabular-nums", (f.confidence < 0.7 || f.presence === "UNKNOWN") && "text-amber-600 dark:text-amber-400")}>
+                          {String(f.value)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {doc.gates.length > 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground"><TriangleAlert className="mr-1 inline h-3 w-3" />{doc.gates[0].slice(0, 90)}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <p className="pb-4 text-center text-xs text-muted-foreground">Демонстрационный экран. Все значения предварительные; окончательное решение принимает банк.</p>
     </div>
   );
 }

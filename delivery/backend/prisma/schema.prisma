@@ -2401,11 +2401,13 @@ model MortgageCase {
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
 
-  client      Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  owner       User                     @relation("MortgageCaseOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  parties     MortgageCaseParty[]
-  grants      MortgageRecipientGrant[]
-  auditEvents MortgageAuditEvent[]
+  client               Client                        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  owner                User                          @relation("MortgageCaseOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  parties              MortgageCaseParty[]
+  grants               MortgageRecipientGrant[]
+  auditEvents          MortgageAuditEvent[]
+  calculationRuns      MortgageCalculationRun[]
+  calculationSnapshots MortgageCalculationSnapshot[]
 
   @@index([clientId])
   @@index([ownerId, status])
@@ -2497,6 +2499,50 @@ model MortgageAuditEvent {
   @@index([actorId, createdAt])
   @@index([objectType, objectId])
   @@map("mortgage_audit_events")
+}
+
+// =========================================
+// M06 CALCULATION ENGINE — run + immutable snapshot (spec v1.4).
+// INV-0032 "NO PDF": движок принимает только параметры/ссылки на снапшоты,
+// не документы. Snapshot иммутабелен: input_hash/output_hash по детерминированной
+// канонизации (сорт-ключи JSON → sha256); полный CASA-CJ-1 §29 подключится позже.
+// =========================================
+
+model MortgageCalculationRun {
+  id                    String   @id @default(cuid())
+  caseId                String   @map("case_id")
+  actorId               String   @map("actor_id")
+  engineVersion         String   @map("engine_version")
+  decimalContextVersion String   @map("decimal_context_version")
+  inputsJson            Json     @map("inputs_json")
+  inputHash             String   @map("input_hash")
+  status                String
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  mortgageCase MortgageCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  snapshot     MortgageCalculationSnapshot?
+
+  @@index([caseId, createdAt])
+  @@map("mortgage_calculation_runs")
+}
+
+model MortgageCalculationSnapshot {
+  id                    String   @id @default(cuid())
+  caseId                String   @map("case_id")
+  runId                 String   @unique @map("run_id")
+  engineVersion         String   @map("engine_version")
+  decimalContextVersion String   @map("decimal_context_version")
+  inputHash             String   @map("input_hash")
+  outputHash            String   @map("output_hash")
+  resultsJson           Json     @map("results_json")
+  status                String
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  run          MortgageCalculationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  mortgageCase MortgageCase           @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@map("mortgage_calculation_snapshots")
 }
 // =========================================
 // MORTGAGE DOCUMENT + VERIFIED SNAPSHOT WORKFLOW

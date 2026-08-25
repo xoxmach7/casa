@@ -10,6 +10,12 @@ import {
   isActiveMortgageConsent,
   mortgageRequestHash,
 } from '../lib/mortgage-case.service';
+import {
+  runCalculation,
+  M06_ENGINE_VERSION,
+  M06_DECIMAL_CONTEXT_VERSION,
+} from '../lib/mortgage-workspace/mortgage-calc.service';
+import type { StatusedMoney, InputStatus } from '../lib/mortgage-workspace/m06-calc';
 
 export const mortgageCasesRouter = Router();
 mortgageCasesRouter.use(authenticate);
@@ -434,4 +440,193 @@ mortgageCasesRouter.patch('/:id', async (req: Request, res: Response): Promise<v
     apiError(res, 500, 'internal_error', 'Не удалось изменить ипотечный кейс');
   }
 });
+// =========================================================================
+// M06 Calculation Engine — canonical эндпоинты (API-M06-001..003).
+// INV-0032 "NO PDF": на вход только параметры/статусы, не документы. Прогон
+// идемпотентен (Idempotency-Key), снапшот иммутабелен (input_hash/output_hash).
+// =========================================================================
+
+const INPUT_STATUS_VALUES = [
+  'CONFIRMED', 'DECLARED', 'EVIDENCE_REQUESTED', 'MISSING', 'UNKNOWN', 'STALE', 'CONFLICT',
+] as const;
+
+const calcMoney = z.union([z.number(), z.string(), z.null()]).optional();
+const calcRunSchema = z.object({
+  target_price_max: calcMoney,
+  available_now_total: calcMoney,
+  annual_nominal_rate_percent: calcMoney,
+  term_months: z.number().int().nullable().optional(),
+  input_statuses: z.object({
+    target_price_max: z.enum(INPUT_STATUS_VALUES).optional(),
+    available_now_total: z.enum(INPUT_STATUS_VALUES).optional(),
+    annual_nominal_rate_percent: z.enum(INPUT_STATUS_VALUES).optional(),
+  }).strict().optional(),
+}).strict();
+
+function toStatused(value: number | string | null | undefined, status?: InputStatus): StatusedMoney {
+  if (status) return { value: value ?? undefined, status };
+  return value ?? undefined;
+}
+
+function calcSnapshotResponse(run: any, snap: any) {
+  return {
+    id: snap.id,
+    run_id: snap.runId,
+    case_id: snap.caseId,
+    engine_version: snap.engineVersion,
+    decimal_context_version: snap.decimalContextVersion,
+    input_hash: snap.inputHash,
+    output_hash: snap.outputHash,
+    status: snap.status,
+    results: snap.resultsJson,
+    created_at: snap.createdAt,
+    ...(run ? { run: { id: run.id, status: run.status, created_at: run.createdAt } } : {}),
+  };
+}
+
+// POST /api/v2/cases/{caseId}/calculation-runs  (API-M06-001)
+mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: Response): Promise<void> => {
+  const key = idempotencyKey(req);
+  if (!key) {
+    apiError(res, 400, 'idempotency_key_required', 'Требуется корректный заголовок Idempotency-Key');
+    return;
+  }
+  const parsed = calcRunSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());
+    return;
+  }
+
+  const actorId = req.user!.userId;
+  const operation = 'mortgage_calculation.run';
+  const requestHash = mortgageRequestHash({ caseId: req.params.caseId, body: parsed.data });
+  const uniqueWhere = { actorId_operation_key: { actorId, operation, key } };
+
+  try {
+    const result = await runSerializable(async (tx) => {
+      const existing = await tx.mortgageIdempotencyRecord.findUnique({ where: uniqueWhere });
+      if (existing && existing.expiresAt > new Date()) {
+        if (existing.requestHash !== requestHash) return { kind: 'conflict' as const };
+        if (existing.responseStatus && existing.responseBody) {
+          return { kind: 'replay' as const, status: existing.responseStatus, body: existing.responseBody };
+        }
+        return { kind: 'in_progress' as const };
+      }
+      if (existing) await tx.mortgageIdempotencyRecord.delete({ where: uniqueWhere });
+
+      const current = await tx.mortgageCase.findUnique({ where: { id: req.params.caseId } });
+      if (!current || !canAccessMortgageCase(current, req.user!)) return { kind: 'not_found' as const };
+
+      const s = parsed.data.input_statuses ?? {};
+      const calc = runCalculation({
+        targetPriceMax: toStatused(parsed.data.target_price_max, s.target_price_max),
+        availableNowTotal: toStatused(parsed.data.available_now_total, s.available_now_total),
+        annualNominalRatePercent: toStatused(parsed.data.annual_nominal_rate_percent, s.annual_nominal_rate_percent),
+        termMonths: parsed.data.term_months ?? null,
+      });
+
+      const run = await tx.mortgageCalculationRun.create({
+        data: {
+          caseId: current.id,
+          actorId,
+          engineVersion: M06_ENGINE_VERSION,
+          decimalContextVersion: M06_DECIMAL_CONTEXT_VERSION,
+          inputsJson: parsed.data as Prisma.InputJsonValue,
+          inputHash: calc.inputHash,
+          status: calc.results.status,
+        },
+      });
+      const snapshot = await tx.mortgageCalculationSnapshot.create({
+        data: {
+          caseId: current.id,
+          runId: run.id,
+          engineVersion: M06_ENGINE_VERSION,
+          decimalContextVersion: M06_DECIMAL_CONTEXT_VERSION,
+          inputHash: calc.inputHash,
+          outputHash: calc.outputHash,
+          resultsJson: calc.results as unknown as Prisma.InputJsonValue,
+          status: calc.results.status,
+        },
+      });
+
+      await tx.mortgageAuditEvent.create({
+        data: {
+          caseId: current.id,
+          actorId,
+          action: 'mortgage_calculation.run',
+          objectType: 'MortgageCalculationSnapshot',
+          objectId: snapshot.id,
+          purpose: 'mortgage_prescore',
+          result: 'SUCCESS',
+          reasonCode: calc.results.status,
+          metadataHash: calc.outputHash,
+        },
+      });
+
+      const body = { data: calcSnapshotResponse(run, snapshot) };
+      await tx.mortgageIdempotencyRecord.create({
+        data: {
+          actorId, operation, key, requestHash,
+          responseStatus: 201, responseBody: body as Prisma.InputJsonValue,
+          resourceId: snapshot.id,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      return { kind: 'created' as const, status: 201, body };
+    });
+
+    if (result.kind === 'conflict') { apiError(res, 409, 'idempotency_conflict', 'Idempotency-Key уже использован с другим запросом'); return; }
+    if (result.kind === 'in_progress') { apiError(res, 409, 'request_in_progress', 'Запрос с этим Idempotency-Key ещё выполняется'); return; }
+    if (result.kind === 'not_found') { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    res.status(result.status).json(result.body);
+  } catch (error) {
+    const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : (error as { code?: string })?.code;
+    if (code === 'P2002') {
+      const winner = await prisma.mortgageIdempotencyRecord.findUnique({ where: uniqueWhere });
+      if (winner && winner.expiresAt > new Date() && winner.requestHash === requestHash && winner.responseStatus && winner.responseBody) {
+        res.status(winner.responseStatus).json(winner.responseBody); return;
+      }
+    }
+    console.error('Calculation run failed', { actorId, code: code ?? 'unknown' });
+    apiError(res, 500, 'internal_error', 'Не удалось выполнить расчёт');
+  }
+});
+
+// GET /api/v2/cases/{caseId}/calculation-runs/{runId}  (API-M06-002)
+mortgageCasesRouter.get('/:caseId/calculation-runs/:runId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const run = await prisma.mortgageCalculationRun.findUnique({
+      where: { id: req.params.runId },
+      include: { mortgageCase: true, snapshot: true },
+    });
+    if (!run || run.caseId !== req.params.caseId || !canAccessMortgageCase(run.mortgageCase, req.user!)) {
+      apiError(res, 404, 'not_found', 'Расчётный прогон не найден'); return;
+    }
+    res.json({ data: {
+      id: run.id, case_id: run.caseId, status: run.status,
+      engine_version: run.engineVersion, input_hash: run.inputHash,
+      inputs: run.inputsJson, created_at: run.createdAt,
+      snapshot: run.snapshot ? calcSnapshotResponse(null, run.snapshot) : null,
+    } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось получить прогон');
+  }
+});
+
+// GET /api/v2/cases/{caseId}/calculation-snapshots/{snapshotId}  (API-M06-003)
+mortgageCasesRouter.get('/:caseId/calculation-snapshots/:snapshotId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const snap = await prisma.mortgageCalculationSnapshot.findUnique({
+      where: { id: req.params.snapshotId },
+      include: { mortgageCase: true },
+    });
+    if (!snap || snap.caseId !== req.params.caseId || !canAccessMortgageCase(snap.mortgageCase, req.user!)) {
+      apiError(res, 404, 'not_found', 'Снапшот расчёта не найден'); return;
+    }
+    res.json({ data: calcSnapshotResponse(null, snap) });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось получить снапшот');
+  }
+});
+
 export default mortgageCasesRouter;

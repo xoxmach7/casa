@@ -805,4 +805,45 @@ mortgageCasesRouter.post('/:caseId/client-profile/publish-snapshot', async (req:
   }
 });
 
+// =========================================================================
+// M01 consent-preflight (API-M01-007): allow/deny операции по согласиям всех
+// участников кейса + причины отказа. Read-only решение + аудит (без PII).
+// =========================================================================
+
+const preflightSchema = z.object({
+  operation: z.string().min(1).max(128),
+}).strict();
+
+mortgageCasesRouter.post('/:caseId/consent-preflight', async (req: Request, res: Response): Promise<void> => {
+  const parsed = preflightSchema.safeParse(req.body);
+  if (!parsed.success) { apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten()); return; }
+  try {
+    const current = await prisma.mortgageCase.findUnique({
+      where: { id: req.params.caseId },
+      include: { parties: { include: { consentRevision: true } } },
+    });
+    if (!current || !canAccessMortgageCase(current, req.user!)) {
+      apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return;
+    }
+
+    const operation = parsed.data.operation;
+    const participants = current.parties.map((party) => {
+      if (!party.consentRevision) return { client_id: party.clientId, role: party.role, allowed: false, reason: 'NO_CONSENT' };
+      const allowed = isActiveMortgageConsent(party.consentRevision, operation);
+      return { client_id: party.clientId, role: party.role, allowed, reason: allowed ? null : 'CONSENT_INACTIVE' };
+    });
+    const allowed = participants.length > 0 && participants.every((p) => p.allowed);
+
+    await prisma.mortgageAuditEvent.create({ data: {
+      caseId: current.id, actorId: req.user!.userId, action: 'mortgage_consent.preflight',
+      objectType: 'MortgageCase', objectId: current.id, purpose: 'mortgage_prescore',
+      result: allowed ? 'ALLOW' : 'DENY', reasonCode: operation,
+    } });
+
+    res.json({ data: { allowed, operation, participants } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось выполнить проверку согласий');
+  }
+});
+
 export default mortgageCasesRouter;

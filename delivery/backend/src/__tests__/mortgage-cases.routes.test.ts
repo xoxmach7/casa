@@ -205,6 +205,41 @@ describe('mortgage case API', () => {
     expect(response.body.error.code).toBe('validation_error');
   });
 
+  it('consent-preflight: активное согласие всех участников → allowed=true', async () => {
+    txMock.mortgageCase.findUnique.mockResolvedValue({
+      ...createdCase,
+      parties: [{
+        clientId: 'client_1', role: 'PRIMARY',
+        consentRevision: {
+          status: 'ACTIVE', purposeCode: 'mortgage_prescore',
+          allowedOperations: ['calculate_preliminary_mortgage_options'],
+          grantedAt: new Date('2026-01-01'), expiresAt: new Date('2099-01-01'), revokedAt: null,
+        },
+      }],
+    });
+    txMock.mortgageAuditEvent.create.mockResolvedValue({});
+    const res = await request(app())
+      .post('/api/v2/cases/case_1/consent-preflight')
+      .send({ operation: 'calculate_preliminary_mortgage_options' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.allowed).toBe(true);
+    expect(res.body.data.participants[0].allowed).toBe(true);
+  });
+
+  it('consent-preflight: участник без согласия → allowed=false, reason NO_CONSENT', async () => {
+    txMock.mortgageCase.findUnique.mockResolvedValue({
+      ...createdCase,
+      parties: [{ clientId: 'client_1', role: 'PRIMARY', consentRevision: null }],
+    });
+    txMock.mortgageAuditEvent.create.mockResolvedValue({});
+    const res = await request(app())
+      .post('/api/v2/cases/case_1/consent-preflight')
+      .send({ operation: 'calculate_preliminary_mortgage_options' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.allowed).toBe(false);
+    expect(res.body.data.participants[0].reason).toBe('NO_CONSENT');
+  });
+
   it('atomically adds a consented party and advances the case version', async () => {
     txMock.mortgageCase.findUnique
       .mockResolvedValueOnce(createdCase)

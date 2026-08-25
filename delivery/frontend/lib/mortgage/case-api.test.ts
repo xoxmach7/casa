@@ -13,7 +13,7 @@ describe("mortgage case API", () => {
 
     await expect(createMortgageCase("client_1")).resolves.toMatchObject({ id: "case_1", status: "DRAFT" });
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/mortgage-cases"),
+      expect.stringContaining("/v2/cases"),
       expect.objectContaining({
         method: "POST",
         credentials: "include",

@@ -34,7 +34,7 @@ import { mortgageRequestHash } from '../lib/mortgage-case.service';
 function app() {
   const instance = express();
   instance.use(express.json());
-  instance.use('/api/v1/mortgage-cases', mortgageCasesRouter);
+  instance.use('/api/v2/cases', mortgageCasesRouter);
   return instance;
 }
 
@@ -61,9 +61,9 @@ describe('mortgage case API', () => {
   });
 
   it('requires an idempotency key and validates create input', async () => {
-    const missingKey = await request(app()).post('/api/v1/mortgage-cases').send({ client_id: 'client_1' });
+    const missingKey = await request(app()).post('/api/v2/cases').send({ client_id: 'client_1' });
     const invalid = await request(app())
-      .post('/api/v1/mortgage-cases')
+      .post('/api/v2/cases')
       .set('Idempotency-Key', 'create-1')
       .send({ client_id: '' });
 
@@ -79,7 +79,7 @@ describe('mortgage case API', () => {
     txMock.client.findUnique.mockResolvedValue({ id: 'client_1', brokerId: 'broker_2' });
 
     const response = await request(app())
-      .post('/api/v1/mortgage-cases')
+      .post('/api/v2/cases')
       .set('Idempotency-Key', 'foreign-client')
       .send({ client_id: 'client_1' });
 
@@ -90,7 +90,7 @@ describe('mortgage case API', () => {
 
   it('atomically creates a case, primary party, audit event and replay record', async () => {
     const response = await request(app())
-      .post('/api/v1/mortgage-cases')
+      .post('/api/v2/cases')
       .set('Idempotency-Key', 'create-1')
       .send({ client_id: 'client_1' });
 
@@ -115,7 +115,7 @@ describe('mortgage case API', () => {
     });
 
     const replay = await request(app())
-      .post('/api/v1/mortgage-cases')
+      .post('/api/v2/cases')
       .set('Idempotency-Key', 'create-1')
       .send({ client_id: 'client_1' });
 
@@ -130,7 +130,7 @@ describe('mortgage case API', () => {
       expiresAt: new Date('2099-01-01T00:00:00.000Z'),
     });
     const conflict = await request(app())
-      .post('/api/v1/mortgage-cases')
+      .post('/api/v2/cases')
       .set('Idempotency-Key', 'create-1')
       .send({ client_id: 'client_2' });
 
@@ -144,7 +144,7 @@ describe('mortgage case API', () => {
       .mockImplementationOnce(async (callback: any) => callback(txMock));
 
     const response = await request(app())
-      .post('/api/v1/mortgage-cases')
+      .post('/api/v2/cases')
       .set('Idempotency-Key', 'retry-serialization')
       .send({ client_id: 'client_1' });
 
@@ -162,7 +162,7 @@ describe('mortgage case API', () => {
     });
 
     const response = await request(app())
-      .post('/api/v1/mortgage-cases')
+      .post('/api/v2/cases')
       .set('Idempotency-Key', 'create-race')
       .send({ client_id: 'client_1' });
 
@@ -184,7 +184,7 @@ describe('mortgage case API', () => {
     });
 
     const response = await request(app())
-      .post('/api/v1/mortgage-cases/case_1/parties')
+      .post('/api/v2/cases/case_1/parties')
       .send({
         client_id: 'client_2',
         role: 'CO_BORROWER',
@@ -221,7 +221,7 @@ describe('mortgage case API', () => {
     });
 
     const response = await request(app())
-      .post('/api/v1/mortgage-cases/case_1/parties')
+      .post('/api/v2/cases/case_1/parties')
       .send({
         client_id: 'client_2',
         role: 'CO_BORROWER',
@@ -239,16 +239,16 @@ describe('mortgage case API', () => {
 
   it('hides a foreign case, while owner and ADMIN can read it', async () => {
     txMock.mortgageCase.findUnique.mockResolvedValue({ ...createdCase, ownerId: 'broker_2' });
-    const foreign = await request(app()).get('/api/v1/mortgage-cases/case_1');
+    const foreign = await request(app()).get('/api/v2/cases/case_1');
     expect(foreign.status).toBe(404);
 
     txMock.mortgageCase.findUnique.mockResolvedValue(createdCase);
-    const owner = await request(app()).get('/api/v1/mortgage-cases/case_1');
+    const owner = await request(app()).get('/api/v2/cases/case_1');
     expect(owner.status).toBe(200);
 
     currentUser = { userId: 'admin_1', role: 'ADMIN' };
     txMock.mortgageCase.findUnique.mockResolvedValue({ ...createdCase, ownerId: 'broker_2' });
-    const admin = await request(app()).get('/api/v1/mortgage-cases/case_1');
+    const admin = await request(app()).get('/api/v2/cases/case_1');
     expect(admin.status).toBe(200);
   });
 
@@ -259,7 +259,7 @@ describe('mortgage case API', () => {
     txMock.mortgageCase.updateMany.mockResolvedValue({ count: 1 });
 
     const response = await request(app())
-      .patch('/api/v1/mortgage-cases/case_1')
+      .patch('/api/v2/cases/case_1')
       .send({ expected_version: 1, status: 'CONSENT_PENDING' });
 
     expect(response.status).toBe(200);
@@ -277,7 +277,7 @@ describe('mortgage case API', () => {
     });
 
     const response = await request(app())
-      .patch('/api/v1/mortgage-cases/case_1')
+      .patch('/api/v2/cases/case_1')
       .send({ expected_version: 1, status: 'DOCUMENTS_PENDING' });
 
     expect(response.status).toBe(409);
@@ -294,7 +294,7 @@ describe('mortgage case API', () => {
     });
 
     const response = await request(app())
-      .patch('/api/v1/mortgage-cases/case_1')
+      .patch('/api/v2/cases/case_1')
       .send({ expected_version: 1, status: 'CONSENT_PENDING' });
 
     expect(response.status).toBe(409);
@@ -306,7 +306,7 @@ describe('mortgage case API', () => {
     txMock.mortgageCase.updateMany.mockResolvedValue({ count: 0 });
 
     const response = await request(app())
-      .patch('/api/v1/mortgage-cases/case_1')
+      .patch('/api/v2/cases/case_1')
       .send({ expected_version: 1, status: 'CONSENT_PENDING' });
 
     expect(response.status).toBe(409);

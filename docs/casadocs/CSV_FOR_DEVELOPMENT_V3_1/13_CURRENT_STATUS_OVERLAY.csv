@@ -1,0 +1,5 @@
+﻿item_type,item_id,matrix_or_source_status,current_governance_context,current_runtime_status,governance_decision_id,notes
+DOCUMENT,M06_PRODUCTION_V1.4,READY_FOR_INDEPENDENT_APPROVAL,APPROVED_FROZEN_BY_OWNER,NOT_APPLICABLE,DEC-M06-001,Source text and bytes unchanged.
+RELEASE_GATE,RG10,BLOCKED / CALCULATION_SPEC_REQUIRED,SPECIFICATION_GAP_RESOLVED,TESTS_PENDING / NOT_PASS,DEC-RG10-001,No PASS until implementation and runtime fixture evidence.
+RELEASE_GATE,RG11,BLOCKED / depends on RG10,SPEC_AVAILABLE,E2E_PENDING / NOT_PASS,DEC-RG10-001,FX-E2E-CASE-001 and replay evidence remain pending.
+RELEASE_GATE,RG12,BLOCKED,NO_GOVERNANCE_OVERRIDE,CRITICAL_SUITE_PENDING / NOT_PASS,,No PASS until all critical tests are resolved with evidence.

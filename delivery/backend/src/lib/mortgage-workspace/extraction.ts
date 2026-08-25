@@ -99,33 +99,38 @@ function fld(p: Partial<FieldValue> & Pick<FieldValue, 'key' | 'label' | 'presen
 }
 
 /**
- * Оценка дохода из ОПВ — правило CASA Pro (Соц. кодекс РК + разъяснение АРРФР).
- * Доход = средний ОПВ работника (КНП 010) / 10%; окно — последние 6 месяцев.
- * Лимит кредитных платежей = доход × 50% (предельный КДН 0.5).
- * Только ОПВ работника (010), НЕ ОПВР работодателя (089) и не пени.
- * Результат — предварительная оценка, не банковское решение.
+ * ЕНПФ / М04 — расчётная база пенсионных взносов.
+ *
+ * По утверждённой спеке M04 (Pension Contribution Engine) сам факт ОПВ по
+ * КНП 010 НЕ даёт права применить ставку 10% и получить зарплату/доход. До
+ * закрытия условий E-01…E-07 и Release Gate RG-04 (payer category, payment
+ * regime, applicable rate, effective period, cap/floor/aggregation semantics
+ * + опубликованная formula version):
+ *
+ *   estimated_contribution_base = null
+ *   estimate_status             = UNKNOWN_RATE_CONTEXT
+ *
+ * Ни «доход = ОПВ/10%», ни «лимит = доход×50%», ни банковский/официальный
+ * КДН (REG-F-001 DISABLED). Governance-решение заказчика 2026-08-25 —
+ * вариант «строго по утверждённой спеке», старая формула ОПВ→доход откачена.
+ * Даже при закрытии гейтов это будет «Расчётная база CASA», НЕ зарплата,
+ * НЕ verified income и НЕ bank accepted income.
  */
-export function estimateIncomeFromOpv(
-  opvAmounts: number[],
-  knpType: string | null,
-): { avgOpv: number | null; monthlyIncome: number | null; paymentLimit: number | null; reason: string } {
-  if (knpType && knpType !== 'OPV') {
-    return { avgOpv: null, monthlyIncome: null, paymentLimit: null, reason: 'взносы не ОПВ работника (КНП 010)' };
-  }
-  const window = opvAmounts.filter((a) => a > 0).slice(-6); // последние 6 месяцев
-  if (window.length === 0) {
-    return { avgOpv: null, monthlyIncome: null, paymentLimit: null, reason: 'нет положительных взносов ОПВ' };
-  }
-  const sum = window.reduce((s, a) => s + a, 0);
-  const avgOpv = Math.round(sum / window.length);
-  const monthlyIncome = Math.round(avgOpv / 0.1);
-  const paymentLimit = Math.round(monthlyIncome * 0.5);
-  return { avgOpv, monthlyIncome, paymentLimit, reason: '' };
+export type PensionEstimateStatus = 'UNKNOWN_RATE_CONTEXT';
+
+export interface PensionContributionBase {
+  estimated_contribution_base: null;
+  estimate_status: PensionEstimateStatus;
+  reason: string;
 }
 
-/** Доступный платёж по новой ипотеке = лимит − действующие ежемесячные платежи. */
-export function availableMortgagePayment(paymentLimit: number, existingMonthlyPayments: number): number {
-  return Math.max(0, paymentLimit - Math.max(0, existingMonthlyPayments));
+export function pensionContributionBase(): PensionContributionBase {
+  return {
+    estimated_contribution_base: null,
+    estimate_status: 'UNKNOWN_RATE_CONTEXT',
+    reason:
+      'Факт ОПВ (КНП 010) не подтверждает payer category, режим, ставку и период — до закрытия E-01…E-07 и RG-04 расчётная база = UNKNOWN (не доход, не зарплата, не bank accepted income).',
+  };
 }
 
 // ============================================================================
@@ -336,33 +341,18 @@ export function extractPension(rawText: string): DocumentExtraction {
     normalizedValue: avg, confidence: avg !== null ? 0.5 : 0, critical: false, level: 'CASA_DERIVED',
   }));
 
-  // ОЦЕНКА ДОХОДА из ОПВ — по продуктовому правилу CASA Pro (Соц. кодекс РК + АРРФР):
-  // среднемесячный доход = средний ОПВ работника (КНП 010) / 10%; окно 6 месяцев.
-  // Берётся ИМЕННО ОПВ работника (010), НЕ ОПВР работодателя (089). Это
-  // предварительная оценка — банк может учитывать нестабильные поступления,
-  // пропуски и самостоятельные взносы иначе.
-  const est = estimateIncomeFromOpv(knpInfo?.type === 'OPV' ? amounts : [], knpInfo?.type ?? null);
+  // М04: расчётная база пенсионных взносов НЕ вычисляется до RG-04 / E-01…E-07.
+  // Показываем честный UNKNOWN_RATE_CONTEXT, а не угаданный доход. Формула
+  // «ОПВ/10% = доход» и производная «доход×50% = лимит» откачены по
+  // governance-решению заказчика (2026-08-25, вариант «строго по спеке»).
+  const base = pensionContributionBase();
   fields.push(fld({
-    key: 'estimated_avg_opv', label: 'Средний ОПВ в мес. (работника), ₸',
-    presence: est.avgOpv !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: est.avgOpv,
-    confidence: est.avgOpv !== null ? 0.5 : 0, critical: false, level: 'CASA_DERIVED',
+    key: 'estimated_contribution_base', label: 'Расчётная база (М04)',
+    presence: 'UNKNOWN', rawValue: null, normalizedValue: null,
+    confidence: 0, critical: true, level: 'CASA_DERIVED',
+    evidence: base.estimate_status,
   }));
-  fields.push(fld({
-    key: 'estimated_monthly_income', label: 'Оценка среднемес. дохода (ОПВ/10%), ₸',
-    presence: est.monthlyIncome !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: est.monthlyIncome,
-    confidence: est.monthlyIncome !== null ? 0.5 : 0, critical: true, level: 'CASA_DERIVED',
-    evidence: est.monthlyIncome !== null ? `${est.avgOpv} / 0.10` : est.reason,
-  }));
-  fields.push(fld({
-    key: 'estimated_payment_limit', label: 'Лимит кредитных платежей (доход×50%), ₸',
-    presence: est.paymentLimit !== null ? 'PRESENT' : 'UNKNOWN', normalizedValue: est.paymentLimit,
-    confidence: est.paymentLimit !== null ? 0.5 : 0, critical: false, level: 'CASA_DERIVED',
-  }));
-  if (est.monthlyIncome !== null) {
-    notes.push(`Предварительная оценка CASA Pro: среднемес. доход = средний ОПВ ${est.avgOpv} ₸ / 10% = ${est.monthlyIncome} ₸; лимит всех кредитных платежей = доход × 50% (КДН 0.5) = ${est.paymentLimit} ₸. Доступный платёж по новой ипотеке = лимит − действующие платежи. Основание: Соц. кодекс РК и разъяснение АРРФР. Банк может учитывать нестабильные поступления/пропуски/самостоятельные взносы иначе.`);
-  } else {
-    notes.push(`Доход из ОПВ не оценён: ${est.reason}. Формула применяется только к ОПВ работника (КНП 010), не к ОПВР (089) и не к пеням.`);
-  }
+  notes.push(`Доход из ОПВ не рассчитывается: ${base.reason} Банковский/официальный КДН не считается (REG-F-001 DISABLED).`);
 
   if (template.includes('?') || template === 'UNKNOWN') {
     gates.push('SAMPLE_REQUIRED: точный разбор строк ЕНПФ подтверждён только на золотом образце шаблона GOVCORP; на произвольной выписке распознавание частичное.');
@@ -386,9 +376,8 @@ export function extractPension(rawText: string): DocumentExtraction {
       observed_amount_avg: avg,
       knp_contribution_rows: knpFound.length || null,
       covered_month_count: null, // UNKNOWN до подтверждения покрытия
-      estimated_avg_opv: est.avgOpv,
-      estimated_monthly_income: est.monthlyIncome,
-      estimated_payment_limit: est.paymentLimit,
+      estimated_contribution_base: null, // М04: UNKNOWN_RATE_CONTEXT до RG-04
+      estimate_status: base.estimate_status,
     },
     gates,
     notes,

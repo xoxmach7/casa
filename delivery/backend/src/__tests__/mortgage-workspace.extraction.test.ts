@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   extractCreditHistory, extractPension, extractDocument,
-  estimateIncomeFromOpv, availableMortgagePayment,
+  pensionContributionBase,
 } from '../lib/mortgage-workspace/extraction';
 
 // Структура повторяет реальный вывод pdf-parse по шаблону GOVCORP ЕНПФ:
@@ -75,14 +75,16 @@ describe('ЕНПФ extraction — жёсткие инварианты специ
     expect(type?.normalizedValue).toBe('OPV');
   });
 
-  it('оценивает доход из ОПВ по правилу CASA (ОПВ/10%, окно 6 мес)', () => {
-    // 6 × 10 000 ОПВ → средний 10 000 → доход 100 000 → лимит 50 000
-    expect(r.derived.estimated_avg_opv).toBe(10000);
-    expect(r.derived.estimated_monthly_income).toBe(100000);
-    expect(r.derived.estimated_payment_limit).toBe(50000);
-    const income = r.fields.find((f) => f.key === 'estimated_monthly_income');
-    expect(income?.presence).toBe('PRESENT');
-    expect(income?.normalizedValue).toBe(100000);
+  it('НЕ вычисляет доход из ОПВ — расчётная база = null, UNKNOWN_RATE_CONTEXT (M04/RG-04)', () => {
+    // Governance 2026-08-25: формула ОПВ/10% откачена; никакого угаданного дохода.
+    expect(r.derived.estimated_contribution_base).toBeNull();
+    expect(r.derived.estimate_status).toBe('UNKNOWN_RATE_CONTEXT');
+    // Старые поля дохода/лимита не выпускаются вовсе.
+    expect(r.fields.find((f) => f.key === 'estimated_monthly_income')).toBeUndefined();
+    expect(r.fields.find((f) => f.key === 'estimated_payment_limit')).toBeUndefined();
+    const cbase = r.fields.find((f) => f.key === 'estimated_contribution_base');
+    expect(cbase?.presence).toBe('UNKNOWN');
+    expect(cbase?.normalizedValue).toBeNull();
   });
 
   it('covered_month_count = null (UNKNOWN), но наблюдаемые месяцы посчитаны', () => {
@@ -130,20 +132,12 @@ describe('Кредитная история extraction', () => {
   });
 });
 
-describe('формула дохода из ОПВ (пример пользователя)', () => {
-  it('∑ОПВ 360000 за 6 мес → доход 600000, лимит 300000, доступный 220000', () => {
-    const six = [60000, 60000, 60000, 60000, 60000, 60000]; // ∑ = 360 000
-    const est = estimateIncomeFromOpv(six, 'OPV');
-    expect(est.avgOpv).toBe(60000);
-    expect(est.monthlyIncome).toBe(600000);
-    expect(est.paymentLimit).toBe(300000);
-    expect(availableMortgagePayment(est.paymentLimit!, 80000)).toBe(220000);
-  });
-
-  it('ОПВР работодателя (не OPV) не даёт оценку дохода', () => {
-    const est = estimateIncomeFromOpv([10000, 10000], 'OPVR');
-    expect(est.monthlyIncome).toBeNull();
-    expect(est.reason).toMatch(/не ОПВ работника/);
+describe('М04 расчётная база — строго по спеке (без ОПВ→доход)', () => {
+  it('pensionContributionBase() = null + UNKNOWN_RATE_CONTEXT до RG-04', () => {
+    const b = pensionContributionBase();
+    expect(b.estimated_contribution_base).toBeNull();
+    expect(b.estimate_status).toBe('UNKNOWN_RATE_CONTEXT');
+    expect(b.reason).toMatch(/E-01|RG-04|UNKNOWN/i);
   });
 });
 

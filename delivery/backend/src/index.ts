@@ -233,7 +233,17 @@ app.use('/api/export', exportRouter);
 app.use('/api/import', importRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/mortgage-applications', mortgageApplicationsRouter);
-app.use('/api/v1/mortgage-cases', mortgageCasesRouter);
+// DEC-API-001 (FROZEN governance): канонический namespace case-ресурса =
+// /api/v2/cases; «M01 owns the base case resource». Реальный ипотечный
+// case-ресурс (Prisma MortgageCase, parties, consent, idempotency, optimistic
+// concurrency, audit) монтируется на утверждённый canonical путь. Прежний
+// /api/v1/mortgage-cases оставлен ВРЕМЕННЫМ транзит-алиасом только ради
+// безопасной миграции — тот же роутер, не вторая истина; удалить после
+// перехода фронта (case-api.ts уже на /v2/cases). TODO(migration).
+app.use('/api/v2/cases', mortgageCasesRouter);
+app.use('/api/v1/mortgage-cases', mortgageCasesRouter); // транзит до полного перехода на /api/v2/cases
+// Демо-рабочий экран (whatif/documents/conclusions/demo) — отдельная
+// demo-поверхность, НЕ canonical case-ресурс; остаётся на своём пути.
 app.use('/api/mortgage-workspace', mortgageWorkspaceRouter);
 app.use('/api/feedback', feedbackRouter);
 

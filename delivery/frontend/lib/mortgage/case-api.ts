@@ -24,7 +24,8 @@ function idempotencyKey(): string {
 }
 
 export async function createMortgageCase(clientId: string): Promise<MortgageCase> {
-  const response = await fetch(`${API_URL}/v1/mortgage-cases`, {
+  // DEC-API-001 (FROZEN): canonical case namespace = /api/v2/cases.
+  const response = await fetch(`${API_URL}/v2/cases`, {
     method: "POST",
     credentials: "include",
     headers: {

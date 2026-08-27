@@ -157,9 +157,7 @@ describe('FX-CALC-GOLDEN-001 — числовая часть golden (хэш-repl
     expect(ann.value).toBe('284035.14');
     expect(ann.displayKzt).toBe(284_035);
   });
-  // ЧЕСТНО: input_hash/output_hash/replay_hash (cb88…/c167…/a7be…) требуют
-  // канонизации CASA-CJ-1 из M06 Production Spec §29 (.docx), которой нет в
-  // машиночитаемых CSV. Реализация хэш-replay заблокирована отсутствием §29 в
-  // структурированном виде — не воспроизводим хэши, пока §29 не извлечён.
-  it.todo('golden input/output/replay hash по методологии CASA-CJ-1 (нужен §29 из .docx)');
+  // Хэш-replay CASA-CJ-1 (cb88…/c167…/a7be…) реализован по §29 Production Spec
+  // v1.4 и проверяется в m06-golden.test.ts. Прежний it.todo здесь утверждал,
+  // что §29 недоступен — это было неверно: раздел есть в .docx в репозитории.
 });

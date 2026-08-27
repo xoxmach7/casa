@@ -100,7 +100,9 @@ describe('mortgage case API', () => {
       data: { clientId: 'client_1', ownerId: 'broker_1' },
     });
     expect(txMock.mortgageCaseParty.create).toHaveBeenCalledWith({
-      data: { caseId: 'case_1', clientId: 'client_1', role: 'PRIMARY' },
+      // M01-CAN-0138: основной заёмщик сразу включён в анализ; остальные роли —
+      // только явным решением (M01-CAN-0139/0140).
+      data: { caseId: 'case_1', clientId: 'client_1', role: 'PRIMARY', includedInAnalysis: true },
     });
     expect(txMock.mortgageAuditEvent.create).toHaveBeenCalled();
     expect(txMock.mortgageIdempotencyRecord.create).toHaveBeenCalled();

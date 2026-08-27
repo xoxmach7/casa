@@ -120,9 +120,39 @@ publicMortgageRouter.post('/consent/:token/decide', (req: Request, res: Response
 
 // --- Заключение --------------------------------------------------------------
 
-// GET /api/public/mortgage/conclusion/:token — безопасное клиентское заключение
+/**
+ * RELEASE GATE 1.0 — публичное ипотечное заключение ВЫКЛЮЧЕНО.
+ *
+ * MASTER v1.2 относит клиентское заключение к релизу 1.3, а не к текущему 1.0.
+ * M06 (§10–§11) запрещает показывать numeric КДН и принимаемый банком доход;
+ * вердикты программ и сценарии относятся к 1.1/1.2. Прежний payload выдавал
+ * ровно это (kdn, acceptedIncome, programs[].verdict, selectedScenario,
+ * properties[]) — до правильной версии выдача клиенту закрыта.
+ *
+ * Флаг существует, чтобы включение было ЯВНЫМ решением владельца, а не
+ * побочным эффектом окружения: по умолчанию OFF даже в dev.
+ */
+function publicMortgageConclusionEnabled(): boolean {
+  return process.env.MORTGAGE_PUBLIC_CONCLUSION_ENABLED === 'true';
+}
+
+// GET /api/public/mortgage/conclusion/:token
 publicMortgageRouter.get('/conclusion/:token', (req: Request, res: Response): void => {
   const payload = getConclusion(req.params.token);
+
+  if (!publicMortgageConclusionEnabled()) {
+    // История и токены НЕ удаляются — прекращена только выдача пользователю.
+    // 410 Gone: ресурс существовал, эта версия больше не отдаётся.
+    res.status(410).json({
+      error: {
+        code: 'MORTGAGE_CONCLUSION_UNAVAILABLE',
+        message: 'Ипотечное заключение по этой версии больше недоступно. '
+          + 'Обратитесь к вашему специалисту CASA.',
+      },
+    });
+    return;
+  }
+
   if (!payload) {
     res.status(404).json({ error: 'Заключение не найдено' });
     return;

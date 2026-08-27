@@ -16,7 +16,8 @@ const p = vi.hoisted(() => ({
   mortgageAsset: { create: vi.fn() },
   mortgageNonCreditCommitment: { create: vi.fn() },
   mortgageEmployment: { create: vi.fn() },
-  mortgageClientProfileSnapshot: { create: vi.fn() },
+  mortgageClientProfileSnapshot: { create: vi.fn(), findFirst: vi.fn() },
+  mortgagePurchaseGoal: { upsert: vi.fn() },
   mortgageAuditEvent: { create: vi.fn() },
 }));
 
@@ -33,7 +34,7 @@ function app() {
 
 const theCase = { id: 'case_1', clientId: 'client_1', ownerId: 'broker_1', status: 'DRAFT', version: 1 };
 const emptyProfile = {
-  id: 'prof_1', caseId: 'case_1', version: 1,
+  id: 'prof_1', caseId: 'case_1', version: 1, purchaseGoal: null,
   employments: [], incomeSources: [], assets: [], downPaymentSources: [], nonCreditCommitments: [],
 };
 
@@ -45,6 +46,8 @@ describe('M05 client-profile API', () => {
     p.mortgageClientProfile.upsert.mockResolvedValue({ id: 'prof_1', caseId: 'case_1' });
     p.mortgageClientProfile.findUnique.mockResolvedValue(emptyProfile);
     p.mortgageAuditEvent.create.mockResolvedValue({});
+    // Экран показывает ссылку на последний снапшот профиля; его может не быть.
+    p.mortgageClientProfileSnapshot.findFirst.mockResolvedValue(null);
   });
 
   it('GET client-profile → 200, авто-создание, агрегат available_now_total', async () => {
@@ -94,5 +97,48 @@ describe('M05 client-profile API', () => {
     expect(res.status).toBe(201);
     expect(res.body.data.content_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(res.body.data.payload.available_now_total.value).toBe('5000000.00');
+  });
+
+  it('PATCH client-profile задаёт purchase_goal (API-M05-002)', async () => {
+    p.mortgageClientProfile.findUnique.mockResolvedValue({ id: 'prof_1' });
+    p.mortgageClientProfile.update.mockResolvedValue({});
+    p.mortgagePurchaseGoal.upsert.mockImplementation(async ({ create, update }: any) => ({
+      id: 'goal_1', ...create, ...update,
+    }));
+    const res = await request(app())
+      .patch('/api/v2/cases/case_1/client-profile')
+      .send({ purchase_goal: { target_price_max: '30000000', status: 'DECLARED' } });
+    expect(res.status).toBe(200);
+    expect(res.body.data.purchase_goal.target_price_max).toBe('30000000.00');
+    expect(res.body.data.purchase_goal.status).toBe('DECLARED');
+  });
+
+  it('PATCH с пустой целью → статус UNKNOWN, а не «заявлено без цифры»', async () => {
+    p.mortgageClientProfile.findUnique.mockResolvedValue({ id: 'prof_1' });
+    p.mortgageClientProfile.update.mockResolvedValue({});
+    p.mortgagePurchaseGoal.upsert.mockImplementation(async ({ create }: any) => ({ id: 'goal_1', ...create }));
+    const res = await request(app())
+      .patch('/api/v2/cases/case_1/client-profile')
+      .send({ purchase_goal: { target_price_max: null, status: 'DECLARED' } });
+    expect(res.status).toBe(200);
+    expect(res.body.data.purchase_goal.target_price_max).toBeNull();
+    expect(res.body.data.purchase_goal.status).toBe('UNKNOWN');
+  });
+
+  it('снапшот профиля несёт purchase_goal и selected_upstream_refs', async () => {
+    p.mortgageClientProfile.findUnique.mockResolvedValue({
+      ...emptyProfile,
+      purchaseGoal: { targetPriceMax: '30000000.00', currency: 'KZT', status: 'DECLARED' },
+      downPaymentSources: [{ amount: '5000000.00', status: 'VERIFIED' }],
+    });
+    p.mortgageClientProfileSnapshot.create.mockImplementation(async ({ data }: any) => ({ id: 'snap_2', ...data, createdAt: new Date() }));
+    p.mortgageClientProfile.update.mockResolvedValue({});
+    const res = await request(app()).post('/api/v2/cases/case_1/client-profile/publish-snapshot');
+    expect(res.status).toBe(201);
+    expect(res.body.data.payload.purchase_goal.target_price_max).toBe('30000000.00');
+    // Каноничные M02/M03/M04 ещё не реализованы — честный null, не выдуманный id.
+    expect(res.body.data.payload.selected_upstream_refs).toEqual({
+      iin_check_batch_id: null, credit_history_snapshot_id: null, pension_snapshot_id: null,
+    });
   });
 });

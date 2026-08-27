@@ -1,95 +1,85 @@
 "use client";
 
 /**
- * CASA Pro Ипотека — рабочий экран по КАНОНИЧЕСКОЙ структуре (M01→M06).
+ * CASA Pro Ипотека — рабочий экран релиза 1.0 (M01→M06).
  *
- * Демо-режим 1.1 (выдуманные КДН/принимаемый доход/число программ/сценарии)
- * УДАЛЁН. Экран показывает только то, что разрешено спекой релиза 1.0:
- *  - профиль клиента (M05): available_now_total из источников взноса (UNKNOWN≠0);
- *  - расчёт (M06): required_financing = max(цена − взнос, 0) и аннуитетный платёж
- *    (CALC-F-001/002), со статусом и кодами §19;
- *  - реальная загрузка документов (КИ/ЕНПФ) с распознаванием полей.
- * Банковский/регуляторный КДН (REG-F-001) НЕ считается. Ни одна цифра — не
- * банковское решение; CASA формирует предварительное заключение.
+ * ЖЁСТКИЕ ПРАВИЛА ЭТОГО ЭКРАНА (M06 Production Spec v1.4 §18/§21/§29):
  *
- * Данные клиента/профиля — демо-моки в форме канонических ответов /api/v2/cases.
+ *  1. Фронт НЕ является calculation engine. Здесь нет и не должно появиться ни
+ *     одной ипотечной формулы, ни Math.pow, ни Math.round как источника числа.
+ *     Все величины приходят из POST /api/v2/cases/{id}/calculation-runs и
+ *     показываются ровно так, как их вернул движок (display-строка).
+ *  2. Без выбранного РЕАЛЬНОГО кейса не показывается ни одной финансовой цифры.
+ *     Никаких DEMO_CASE / DEMO_INCOME / DEMO_DOWN_PAYMENT.
+ *  3. Если бэкенд расчёта недоступен — «Расчёт временно недоступен».
+ *     Fallback-число не вычисляется никогда.
+ *  4. Запрещено к показу в 1.0: numeric КДН, принимаемый банком доход, список
+ *     и вердикты программ, сценарии, подбор квартир, вероятность одобрения.
+ *
+ * Ни одна цифра не является решением банка: CASA формирует предварительный
+ * расчёт по утверждённым формулам CALC-F-001/002.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Calculator, RotateCcw, TriangleAlert, User2, ShieldCheck, FileUp, Wrench, Info,
+  Calculator, User2, ShieldCheck, Wrench, Info, TriangleAlert, RefreshCw, FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { API_URL } from "@/lib/config";
+import {
+  listMortgageCases,
+  getClientProfile,
+  setPurchaseGoal,
+  addDownPaymentSource,
+  publishProfileSnapshot,
+  createCalculationRun,
+  MortgageCaseApiError,
+  type MortgageCaseListItem,
+  type ClientProfile,
+  type CalculationSnapshot,
+  type CalcStatus,
+} from "@/lib/mortgage/case-api";
+import { legacyMortgageToolsEnabled } from "@/lib/mortgage/release-flags";
 
-// --- Канонический клиентский расчёт M06 (зеркало m06-calc.ts) ---------------
-
-type CalcStatus = "COMPLETED" | "COMPLETED_WITH_LIMITATIONS" | "BLOCKED" | "INVALID_INPUT";
-interface CalcResult { value: number | null; status: CalcStatus; codes: string[]; }
-
-function requiredFinancing(P: number | null, A: number | null): CalcResult {
-  if (P === null || A === null) return { value: null, status: "BLOCKED", codes: ["MISSING_INPUT"] };
-  if (P < 0 || A < 0) return { value: null, status: "INVALID_INPUT", codes: ["NEGATIVE_AMOUNT"] };
-  const codes = A >= P ? ["DOWN_PAYMENT_COVERS_TARGET"] : [];
-  return { value: Math.max(P - A, 0), status: "COMPLETED", codes };
-}
-
-function annuity(P: number | null, aPct: number | null, n: number | null): CalcResult {
-  if (P === null || aPct === null || n === null) return { value: null, status: "BLOCKED", codes: ["MISSING_INPUT"] };
-  if (!Number.isInteger(n) || n <= 0 || n > 1200) return { value: null, status: "INVALID_INPUT", codes: ["INVALID_TERM"] };
-  if (aPct < 0 || aPct > 100) return { value: null, status: "INVALID_INPUT", codes: ["INVALID_RATE"] };
-  const r = aPct / 100 / 12;
-  let raw: number;
-  const codes: string[] = [];
-  if (P === 0) raw = 0;
-  else if (r === 0) { raw = P / n; codes.push("ZERO_RATE_BRANCH"); }
-  else { const f = Math.pow(1 + r, n); raw = (P * r * f) / (f - 1); }
-  return { value: raw, status: "COMPLETED", codes };
-}
-
-const money = (v: number | null): string =>
-  v === null ? "—" : `${new Intl.NumberFormat("ru-RU").format(Math.round(v))} ₸`;
-
-// --- Демо-моки в форме канонических ответов ---------------------------------
-
-type FieldStatus = "VERIFIED" | "DECLARED" | "UNKNOWN";
-interface MoneySource { kind: string; amount: number | null; status: FieldStatus; }
-
-const DEMO_CASE = { id: "case-demo", clientName: "Айдос М.", status: "READY_TO_CALCULATE" as const };
-const DEMO_DOWN_PAYMENT: MoneySource[] = [
-  { kind: "Накопления", amount: 5_000_000, status: "VERIFIED" },
-  { kind: "Продажа автомобиля", amount: 2_000_000, status: "DECLARED" },
-];
-const DEMO_INCOME: MoneySource[] = [
-  { kind: "Зарплата (заявлено)", amount: 650_000, status: "DECLARED" },
-];
-
-/** Агрегат available_now_total: UNKNOWN/пустая сумма ≠ 0 → агрегат неполон. */
-function aggregate(sources: MoneySource[]): { value: number | null; status: FieldStatus; complete: boolean } {
-  let sum = 0; let sawDeclared = false; let incomplete = false;
-  for (const s of sources) {
-    if (s.status === "UNKNOWN" || s.amount === null) { incomplete = true; continue; }
-    sum += s.amount; if (s.status === "DECLARED") sawDeclared = true;
-  }
-  return { value: incomplete ? null : sum, status: incomplete ? "UNKNOWN" : sawDeclared ? "DECLARED" : "VERIFIED", complete: !incomplete };
-}
+// --- Ярлыки -----------------------------------------------------------------
 
 const STATUS_LABEL: Record<CalcStatus, string> = {
   COMPLETED: "Рассчитано",
-  COMPLETED_WITH_LIMITATIONS: "Рассчитано (не подтверждено)",
+  COMPLETED_WITH_LIMITATIONS: "Рассчитано (входы не подтверждены)",
   BLOCKED: "Заблокировано (нет данных)",
   INVALID_INPUT: "Некорректный ввод",
 };
-const FIELD_LABEL: Record<FieldStatus, string> = { VERIFIED: "подтверждено", DECLARED: "заявлено", UNKNOWN: "неизвестно" };
+
+const FIELD_LABEL: Record<string, string> = {
+  CONFIRMED: "подтверждено",
+  VERIFIED: "подтверждено",
+  DECLARED: "заявлено",
+  UNKNOWN: "неизвестно",
+  CONFLICT: "конфликт",
+  MISSING: "не заполнено",
+};
+
+/**
+ * Показ денежной строки, пришедшей с сервера. Форматирование разрядов —
+ * презентация, не математика: значение НЕ пересчитывается, дробная часть не
+ * округляется на клиенте. null остаётся «—», а не нулём.
+ */
+function showMoney(serverValue: string | null | undefined): string {
+  if (serverValue === null || serverValue === undefined) return "—";
+  const [whole, fraction] = serverValue.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${grouped}${fraction ? `,${fraction}` : ""} ₸`;
+}
 
 // --- UI-примитивы -----------------------------------------------------------
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return <section className={cn("rounded-xl border border-border bg-card text-card-foreground shadow-sm", className)}>{children}</section>;
 }
+
 function CardHead({ icon, title, sub }: { icon: React.ReactNode; title: string; sub?: string }) {
   return (
     <div className="flex items-start gap-3 border-b border-border px-5 py-4">
@@ -101,6 +91,7 @@ function CardHead({ icon, title, sub }: { icon: React.ReactNode; title: string; 
     </div>
   );
 }
+
 function StatusPill({ status }: { status: CalcStatus }) {
   const tone = status === "COMPLETED" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
     : status === "COMPLETED_WITH_LIMITATIONS" ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
@@ -108,204 +99,461 @@ function StatusPill({ status }: { status: CalcStatus }) {
   return <span className={cn("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", tone)}>{STATUS_LABEL[status]}</span>;
 }
 
+// --- Пустое состояние -------------------------------------------------------
+
+function NoCaseSelected({ cases, loading, onPick }: {
+  cases: MortgageCaseListItem[]; loading: boolean; onPick: (id: string) => void;
+}) {
+  return (
+    <Card>
+      <CardHead
+        icon={<FolderOpen className="h-5 w-5" />}
+        title="Выберите или создайте ипотечный кейс"
+        sub="Пока кейс не выбран, экран не показывает никаких финансовых значений."
+      />
+      <div className="px-5 py-4">
+        {loading && <p className="text-sm text-muted-foreground">Загрузка списка кейсов…</p>}
+
+        {!loading && cases.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Доступных кейсов нет. Создайте ипотечный кейс для клиента, чтобы начать работу.
+          </p>
+        )}
+
+        {!loading && cases.length > 0 && (
+          <ul className="divide-y divide-border">
+            {cases.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  {/* В списке намеренно нет персональных данных: только кейс. */}
+                  <p className="truncate font-medium">Кейс {c.id}</p>
+                  <p className="truncate text-xs text-muted-foreground">{c.status}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => onPick(c.id)}>Открыть</Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // --- Страница ---------------------------------------------------------------
 
-const DEFAULTS = { targetPrice: 30_000_000, rate: 12.5, termMonths: 240 };
-
-export default function MortgagePage() {
+function MortgageWorkspace() {
   const { toast } = useToast();
-  const availableNow = useMemo(() => aggregate(DEMO_DOWN_PAYMENT), []);
-  const incomeAgg = useMemo(() => aggregate(DEMO_INCOME), []);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const caseId = searchParams.get("case");
 
-  const [targetPrice, setTargetPrice] = useState<number>(DEFAULTS.targetPrice);
-  const [rate, setRate] = useState<number>(DEFAULTS.rate);
-  const [termMonths, setTermMonths] = useState<number>(DEFAULTS.termMonths);
+  const [cases, setCases] = useState<MortgageCaseListItem[]>([]);
+  const [casesLoading, setCasesLoading] = useState(true);
 
-  const rf = useMemo(() => requiredFinancing(targetPrice, availableNow.value), [targetPrice, availableNow.value]);
-  const payment = useMemo(() => annuity(rf.value, rate, termMonths), [rf.value, rate, termMonths]);
-  const overallStatus: CalcStatus = availableNow.complete === false ? "BLOCKED"
-    : incomeAgg.status === "DECLARED" || availableNow.status === "DECLARED" ? "COMPLETED_WITH_LIMITATIONS"
-    : rf.status === "BLOCKED" || payment.status === "BLOCKED" ? "BLOCKED"
-    : payment.status;
+  const [profile, setProfile] = useState<ClientProfile | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
-  const reset = () => { setTargetPrice(DEFAULTS.targetPrice); setRate(DEFAULTS.rate); setTermMonths(DEFAULTS.termMonths); };
+  // Параметры расчёта — это параметры прогона (§21), а не данные профиля.
+  const [ratePercent, setRatePercent] = useState("12.5");
+  const [termMonths, setTermMonths] = useState(240);
 
-  // --- Реальная загрузка документов (КИ/ЕНПФ) ---
-  type DocState = { fileName?: string; fields: { key: string; label: string; value: string | number; presence: string; confidence: number; critical?: boolean }[]; gates: string[]; notes: string[]; stored?: boolean; busy?: boolean };
-  const [docs, setDocs] = useState<Record<"credit_history" | "enpf_statement", DocState>>({
-    credit_history: { fields: [], gates: [], notes: [] },
-    enpf_statement: { fields: [], gates: [], notes: [] },
-  });
+  const [calc, setCalc] = useState<CalculationSnapshot | null>(null);
+  const [calcError, setCalcError] = useState<string | null>(null);
+  const [calcBusy, setCalcBusy] = useState(false);
 
-  const upload = useCallback(async (type: "credit_history" | "enpf_statement", file: File) => {
-    setDocs((p) => ({ ...p, [type]: { ...p[type], busy: true, fileName: file.name } }));
+  // --- Загрузка списка кейсов ---
+  useEffect(() => {
+    let alive = true;
+    listMortgageCases()
+      .then((page) => { if (alive) setCases(page?.items ?? []); })
+      .catch(() => { if (alive) setCases([]); })
+      .finally(() => { if (alive) setCasesLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  // --- Загрузка профиля выбранного кейса ---
+  const loadProfile = useCallback(async (id: string) => {
+    setProfileError(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("type", type);
-      const res = await fetch(`${API_URL}/mortgage-workspace/documents`, { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) throw new Error(String(res.status));
-      const d = await res.json();
-      const fields = (Array.isArray(d.extraction?.fields) ? d.extraction.fields : []).map((f: any) => ({
-        key: f.key, label: f.label,
-        value: (f.normalizedValue ?? f.rawValue ?? (f.presence === "UNKNOWN" ? "нет данных" : f.presence)) as string | number,
-        presence: f.presence, confidence: typeof f.confidence === "number" ? f.confidence : 0, critical: f.critical,
-      }));
-      setDocs((p) => ({ ...p, [type]: { fileName: file.name, fields, gates: d.extraction?.gates ?? [], notes: d.extraction?.notes ?? [], stored: !!d.stored, busy: false } }));
-      toast({ title: "Документ сохранён и распознан", description: "Поля извлечены из текстового слоя PDF." });
-    } catch {
-      setDocs((p) => ({ ...p, [type]: { ...p[type], busy: false } }));
-      toast({ title: "Не удалось загрузить", description: "Сервер недоступен или файл не PDF.", variant: "destructive" });
+      setProfile(await getClientProfile(id));
+    } catch (e) {
+      setProfile(null);
+      setProfileError(e instanceof MortgageCaseApiError ? e.message : "Не удалось загрузить профиль");
     }
-  }, [toast]);
+  }, []);
+
+  useEffect(() => {
+    if (!caseId) { setProfile(null); setCalc(null); return; }
+    setCalc(null);
+    setCalcError(null);
+    void loadProfile(caseId);
+  }, [caseId, loadProfile]);
+
+  const pickCase = (id: string) => router.push(`/dashboard/mortgage?case=${encodeURIComponent(id)}`);
+
+  // --- Действия профиля (M05) ---
+  const saveGoal = async (raw: string) => {
+    if (!caseId) return;
+    const trimmed = raw.trim();
+    try {
+      await setPurchaseGoal(caseId, {
+        target_price_max: trimmed === "" ? null : trimmed,
+        status: "DECLARED",
+      });
+      await loadProfile(caseId);
+      setCalc(null); // прежний расчёт больше не относится к текущему профилю
+    } catch (e) {
+      toast({
+        title: "Не удалось сохранить цель покупки",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const addSource = async (kind: string, amount: string) => {
+    if (!caseId || !kind.trim()) return;
+    try {
+      await addDownPaymentSource(caseId, {
+        kind: kind.trim(),
+        amount: amount.trim() === "" ? null : amount.trim(),
+        status: amount.trim() === "" ? "UNKNOWN" : "DECLARED",
+      });
+      await loadProfile(caseId);
+      setCalc(null);
+    } catch (e) {
+      toast({
+        title: "Не удалось добавить источник взноса",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // --- Расчёт (M06) ---
+  const runCalculation = async () => {
+    if (!caseId) return;
+    setCalcBusy(true);
+    setCalcError(null);
+    try {
+      // Расчёт всегда идёт от свежего иммутабельного снапшота профиля (§21):
+      // цифра обязана быть привязана к конкретной версии данных.
+      const snapshot = await publishProfileSnapshot(caseId);
+      const result = await createCalculationRun(caseId, {
+        client_profile_snapshot_id: snapshot.id,
+        annual_nominal_rate_percent: ratePercent.trim(),
+        term_months: termMonths,
+      });
+      setCalc(result);
+      await loadProfile(caseId);
+    } catch (e) {
+      setCalc(null);
+      // Никакого локального пересчёта: ошибка остаётся ошибкой.
+      setCalcError(
+        e instanceof MortgageCaseApiError && e.status !== 0
+          ? e.message
+          : "Расчёт временно недоступен",
+      );
+    } finally {
+      setCalcBusy(false);
+    }
+  };
+
+  const goal = profile?.purchase_goal;
+  const availableNow = profile?.aggregates.available_now_total;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-      {/* Заголовок */}
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Ипотечное решение клиента</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Профиль → расчёт → документы. Предварительно — итоговое решение принимает банк.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Профиль (M05) → детерминированный расчёт (M06). Итоговое решение принимает банк.
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={reset}><RotateCcw className="mr-1.5 h-4 w-4" />Сброс</Button>
-          <Button asChild variant="outline" size="sm"><Link href="/dashboard/mortgage/tools"><Wrench className="mr-1.5 h-4 w-4" />Инструменты</Link></Button>
+          {caseId && (
+            <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/mortgage")}>
+              <FolderOpen className="mr-1.5 h-4 w-4" />Другой кейс
+            </Button>
+          )}
+          {legacyMortgageToolsEnabled() && (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/mortgage/tools"><Wrench className="mr-1.5 h-4 w-4" />Инструменты</Link>
+            </Button>
+          )}
         </div>
       </header>
 
-      {/* Демо-баннер */}
-      <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-        <p className="text-muted-foreground">Данные клиента и профиля — демонстрационные, в форме канонических ответов <code className="rounded bg-muted px-1">/api/v2/cases</code>. Банковский КДН (REG-F-001) не рассчитывается; расчётная база дохода из ОПВ — UNKNOWN до закрытия регуляторных условий.</p>
-      </div>
+      {!caseId && <NoCaseSelected cases={cases} loading={casesLoading} onPick={pickCase} />}
 
-      {/* Кейс */}
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <div className="flex items-center gap-3">
-            <User2 className="h-5 w-5 text-primary" />
+      {caseId && profileError && (
+        <Card>
+          <div className="flex items-start gap-3 px-5 py-4">
+            <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
             <div>
-              <p className="font-semibold">{DEMO_CASE.clientName}</p>
-              <p className="text-sm text-muted-foreground">Кейс {DEMO_CASE.id}</p>
+              <p className="font-medium">Профиль недоступен</p>
+              <p className="text-sm text-muted-foreground">{profileError}</p>
+              <Button size="sm" variant="outline" className="mt-3" onClick={() => void loadProfile(caseId)}>
+                <RefreshCw className="mr-1.5 h-4 w-4" />Повторить
+              </Button>
             </div>
           </div>
-          <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{DEMO_CASE.status}</span>
-        </div>
-      </Card>
+        </Card>
+      )}
 
-      {/* Профиль клиента (M05) */}
-      <Card>
-        <CardHead icon={<ShieldCheck className="h-5 w-5" />} title="Профиль клиента (M05)" sub="Источники первоначального взноса и дохода. Пустая/неизвестная сумма не считается нулём." />
-        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Доступно на взнос (available_now_total)</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">{money(availableNow.value)}</p>
-            <p className="text-xs text-muted-foreground">статус: {FIELD_LABEL[availableNow.status]}</p>
-            <ul className="mt-2 space-y-1 text-sm">
-              {DEMO_DOWN_PAYMENT.map((s, i) => (
-                <li key={i} className="flex justify-between border-b border-border/60 pb-1">
-                  <span className="text-muted-foreground">{s.kind}</span>
-                  <span className="tabular-nums">{money(s.amount)} <span className="text-xs text-muted-foreground">· {FIELD_LABEL[s.status]}</span></span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Доход (заявлено)</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">{money(incomeAgg.value)}<span className="text-sm font-normal text-muted-foreground">/мес</span></p>
-            <p className="text-xs text-muted-foreground">Не используется как banked income: подтверждение и расчётная база — за регуляторными гейтами (RG-04).</p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Расчёт (M06) */}
-      <Card>
-        <CardHead icon={<Calculator className="h-5 w-5" />} title="Расчёт (M06)" sub="CALC-F-001 required_financing = max(цена − взнос, 0); CALC-F-002 аннуитетный платёж." />
-        <div className="grid gap-5 px-5 py-4 md:grid-cols-2">
-          <div className="space-y-4">
-            <label className="block">
-              <span className="text-sm text-muted-foreground">Целевая цена, ₸</span>
-              <input type="number" value={targetPrice} min={0} step={500_000}
-                onChange={(e) => setTargetPrice(Number(e.target.value))}
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums" />
-            </label>
-            <div>
-              <span className="text-sm text-muted-foreground">Ставка: <b className="text-foreground">{rate.toFixed(1)}%</b></span>
-              <input type="range" min={0} max={30} step={0.5} value={rate} onChange={(e) => setRate(Number(e.target.value))} className="mt-1 w-full" />
-            </div>
-            <div>
-              <span className="text-sm text-muted-foreground">Срок: <b className="text-foreground">{termMonths} мес ({Math.round(termMonths / 12)} лет)</b></span>
-              <input type="range" min={12} max={360} step={12} value={termMonths} onChange={(e) => setTermMonths(Number(e.target.value))} className="mt-1 w-full" />
-            </div>
-            <p className="text-xs text-muted-foreground">Взнос берётся из профиля: {money(availableNow.value)} ({FIELD_LABEL[availableNow.status]}).</p>
-          </div>
-
-          <div className="space-y-3 rounded-lg bg-muted/40 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Статус расчёта</span>
-              <StatusPill status={overallStatus} />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Требуемое финансирование</p>
-              <p className="text-2xl font-bold tabular-nums">{money(rf.value)}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Ежемесячный платёж (аннуитет)</p>
-              <p className="text-2xl font-bold tabular-nums">{money(payment.value)}</p>
-            </div>
-            {[...rf.codes, ...payment.codes].length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {[...new Set([...rf.codes, ...payment.codes])].map((c) => (
-                  <span key={c} className="rounded bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{c}</span>
-                ))}
-              </div>
-            )}
-            <p className="pt-1 text-xs text-muted-foreground">Без банковского КДН (REG-F-001 DISABLED). Не является одобрением банка.</p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Документы (реальная загрузка) */}
-      <Card>
-        <CardHead icon={<FileUp className="h-5 w-5" />} title="Документы (M03/M04)" sub="Кредитная история (ПКБ) и выписка ЕНПФ. PDF ≤ 25 МБ, распознавание из текстового слоя." />
-        <div className="grid gap-4 px-5 py-4 md:grid-cols-2">
-          {(["credit_history", "enpf_statement"] as const).map((type) => {
-            const doc = docs[type];
-            const title = type === "credit_history" ? "Кредитная история (ПКБ)" : "Выписка ЕНПФ";
-            return (
-              <div key={type} className="rounded-lg border border-border p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium">{title}</p>
-                  {doc.stored && <span className="text-xs text-emerald-600 dark:text-emerald-400">сохранён на сервере</span>}
+      {caseId && profile && (
+        <>
+          {/* Кейс (M01) */}
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <User2 className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-semibold">Кейс {profile.case_id}</p>
+                  <p className="text-sm text-muted-foreground">Версия профиля {profile.version}</p>
                 </div>
-                <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
-                  <FileUp className="h-4 w-4" />
-                  <span>{doc.busy ? "Загрузка…" : doc.fileName ?? "Выбрать PDF"}</span>
-                  <input type="file" accept="application/pdf" className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(type, f); }} />
+              </div>
+              {profile.latest_snapshot && (
+                <span className="text-xs text-muted-foreground">
+                  снапшот профиля {profile.latest_snapshot.content_hash.slice(0, 12)}…
+                </span>
+              )}
+            </div>
+          </Card>
+
+          {/* Профиль (M05) */}
+          <Card>
+            <CardHead
+              icon={<ShieldCheck className="h-5 w-5" />}
+              title="Профиль клиента (M05)"
+              sub="Цель покупки и источники взноса. Пустая или неизвестная сумма не считается нулём."
+            />
+            <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
+              <div>
+                <label className="block">
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Цель покупки, ₸ (purchase_goal.target_price_max)
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue={goal?.target_price_max ?? ""}
+                    placeholder="не задана"
+                    onBlur={(e) => void saveGoal(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
+                  />
                 </label>
-                {doc.fields.length > 0 && (
-                  <ul className="mt-3 space-y-1 text-sm">
-                    {doc.fields.slice(0, 8).map((f) => (
-                      <li key={f.key} className="flex justify-between gap-2 border-b border-border/60 pb-1">
-                        <span className="text-muted-foreground">{f.label}</span>
-                        <span className={cn("text-right tabular-nums", (f.confidence < 0.7 || f.presence === "UNKNOWN") && "text-amber-600 dark:text-amber-400")}>
-                          {String(f.value)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  статус: {FIELD_LABEL[String(goal?.status)] ?? String(goal?.status ?? "—")}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Доступно на взнос (available_now_total)
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">
+                  {showMoney(availableNow?.value)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  статус: {FIELD_LABEL[String(availableNow?.status)] ?? "—"}
+                  {availableNow && !availableNow.complete && " · агрегат неполон"}
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {profile.down_payment_sources.map((s) => (
+                    <li key={s.id} className="flex justify-between border-b border-border/60 pb-1">
+                      <span className="text-muted-foreground">{s.kind}</span>
+                      <span className="tabular-nums">
+                        {showMoney(s.amount)}{" "}
+                        <span className="text-xs text-muted-foreground">· {FIELD_LABEL[s.status] ?? s.status}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <AddSourceForm onAdd={addSource} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Расчёт (M06) */}
+          <Card>
+            <CardHead
+              icon={<Calculator className="h-5 w-5" />}
+              title="Расчёт (M06)"
+              sub="CALC-F-001 required_financing = max(цена − взнос, 0); CALC-F-002 аннуитетный платёж. Считает сервер."
+            />
+            <div className="grid gap-5 px-5 py-4 md:grid-cols-2">
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="text-sm text-muted-foreground">Годовая номинальная ставка, %</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={ratePercent}
+                    onChange={(e) => setRatePercent(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-muted-foreground">Срок, месяцев</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1200}
+                    value={termMonths}
+                    onChange={(e) => setTermMonths(Number(e.target.value))}
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
+                  />
+                </label>
+                <Button onClick={() => void runCalculation()} disabled={calcBusy} className="w-full">
+                  <Calculator className="mr-1.5 h-4 w-4" />
+                  {calcBusy ? "Расчёт…" : "Рассчитать на сервере"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Расчёт публикует снапшот профиля и выполняется движком M06.
+                  Ставка и срок — параметры прогона, а не данные профиля.
+                </p>
+              </div>
+
+              <div className="space-y-3 rounded-lg bg-muted/40 p-4">
+                {!calc && !calcError && (
+                  <p className="text-sm text-muted-foreground">
+                    Расчёт ещё не выполнялся. Значения появятся только после прогона на сервере.
+                  </p>
                 )}
-                {doc.gates.length > 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground"><TriangleAlert className="mr-1 inline h-3 w-3" />{doc.gates[0].slice(0, 90)}</p>
+
+                {calcError && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
+                    <div>
+                      <p className="font-medium text-rose-600 dark:text-rose-400">{calcError}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Приблизительный расчёт на устройстве не выполняется: цифра допустима
+                        только из детерминированного движка.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {calc && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Статус расчёта</span>
+                      <StatusPill status={calc.status} />
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Требуемое финансирование</p>
+                      <p className="text-2xl font-bold tabular-nums">
+                        {showMoney(calc.results.requiredFinancing.value)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {calc.results.requiredFinancing.machineName}/{calc.results.requiredFinancing.formulaVersion}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Ежемесячный платёж (аннуитет)</p>
+                      <p className="text-2xl font-bold tabular-nums">
+                        {showMoney(calc.results.annuity.value)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {calc.results.annuity.machineName}/{calc.results.annuity.formulaVersion}
+                      </p>
+                    </div>
+
+                    {calc.results.blockers.length > 0 && (
+                      <ul className="space-y-1 pt-1 text-xs text-muted-foreground">
+                        {calc.results.blockers.map((b, i) => (
+                          <li key={`${b.code}-${i}`}>
+                            <b className="font-medium">{b.code}</b> — {b.reason}
+                            {b.blocking_input_refs.length > 0 && ` (${b.blocking_input_refs.join(", ")})`}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <details className="pt-1 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer">Воспроизводимость расчёта</summary>
+                      <dl className="mt-2 space-y-0.5 break-all">
+                        <div>input_hash: {calc.input_hash}</div>
+                        <div>output_hash: {calc.output_hash}</div>
+                        <div>replay_hash: {calc.replay_hash}</div>
+                        <div>{calc.engine_version} · {calc.canonicalization_version}</div>
+                        <div>{calc.decimal_context_version}</div>
+                      </dl>
+                    </details>
+                  </>
                 )}
               </div>
-            );
-          })}
-        </div>
-      </Card>
+            </div>
+          </Card>
 
-      <p className="pb-4 text-center text-xs text-muted-foreground">Демонстрационный экран. Все значения предварительные; окончательное решение принимает банк.</p>
+          <div
+            data-testid="release-scope-note"
+            className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm"
+          >
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <p className="text-muted-foreground">
+              Банковский КДН (REG-F-001) не рассчитывается: нормативные входы не определены
+              для релиза 1.0. Принимаемый банком доход, программы, сценарии и подбор квартир
+              на этом экране не показываются — они относятся к последующим релизам.
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * useSearchParams переводит поддерево в клиентский рендер до ближайшей границы
+ * Suspense (Next 16, use-search-params#prerendering). Граница здесь, чтобы
+ * оболочка дашборда пререндерилась, а от кейса зависел только сам экран.
+ */
+export default function MortgagePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-5xl px-4 py-6 text-sm text-muted-foreground">
+          Загрузка ипотечного экрана…
+        </div>
+      }
+    >
+      <MortgageWorkspace />
+    </Suspense>
+  );
+}
+
+// --- Форма добавления источника взноса ---------------------------------------
+
+function AddSourceForm({ onAdd }: { onAdd: (kind: string, amount: string) => void }) {
+  const [kind, setKind] = useState("");
+  const [amount, setAmount] = useState("");
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      <input
+        value={kind}
+        onChange={(e) => setKind(e.target.value)}
+        placeholder="Источник"
+        className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+      />
+      <input
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        inputMode="decimal"
+        placeholder="Сумма"
+        className="w-28 rounded-md border border-border bg-background px-2 py-1.5 text-sm tabular-nums"
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => { onAdd(kind, amount); setKind(""); setAmount(""); }}
+      >
+        Добавить
+      </Button>
     </div>
   );
 }

@@ -2421,6 +2421,10 @@ model MortgageCaseParty {
   caseId            String            @map("case_id")
   clientId          String            @map("client_id")
   role              MortgagePartyRole
+  /// M01: семейная связь НЕ равна созаёмщику. SPOUSE — false до явного выбора,
+  /// CO-BORROWER — только после явного включения (M01-CAN-0139/0140).
+  /// Поэтому значение по умолчанию false, а не «включён, раз добавлен».
+  includedInAnalysis Boolean          @default(false) @map("included_in_analysis")
   consentRevisionId String?           @map("consent_revision_id")
   createdAt         DateTime          @default(now()) @map("created_at")
 
@@ -2510,14 +2514,46 @@ model MortgageAuditEvent {
 // канонизации (сорт-ключи JSON → sha256); полный CASA-CJ-1 §29 подключится позже.
 // =========================================
 
+/// M06 §21 Calculation run. Хранит ПОЛНЫЙ frozen execution context: прогон
+/// должен быть воспроизводим по одной этой записи, без реконструкции «как оно
+/// тогда, наверное, было». Каждое поле ниже соответствует строке §21.
 model MortgageCalculationRun {
   id                    String   @id @default(cuid())
   caseId                String   @map("case_id")
+  /// §21 tenant_id — M01 access scope. Отдельной сущности «арендатор» в модели
+  /// CASA Pro нет: областью доступа M01 фактически является владелец кейса.
+  /// Записываем ту область, которая РЕАЛЬНО проверялась при авторизации, и
+  /// помечаем её вид — при появлении настоящего tenant отображение 1:1.
+  tenantId              String   @map("tenant_id")
+  tenantScopeKind       String   @default("CASE_OWNER") @map("tenant_scope_kind")
   actorId               String   @map("actor_id")
   engineVersion         String   @map("engine_version")
   decimalContextVersion String   @map("decimal_context_version")
+  formulaRegistryVersion String  @map("formula_registry_version")
+  // §21: client_profile_snapshot_id/hash обязателен и иммутабелен — это
+  // единственный источник данных профиля для прогона.
+  clientProfileSnapshotId   String @map("client_profile_snapshot_id")
+  clientProfileSnapshotHash String @map("client_profile_snapshot_hash")
+  /// §21 participant_scope: точные participant_id/role/included_in_analysis.
+  /// Никакого неявного суммирования супруга/созаёмщика.
+  participantScopeJson     Json   @map("participant_scope_json")
+  /// §21 selected_upstream_refs: M02 batch + M03/M04 snapshot id/hash так, как
+  /// их несёт M05. null допустим, пока модуль не реализован; фиктивные id — нет.
+  selectedUpstreamRefsJson Json   @map("selected_upstream_refs_json")
+  /// §21 requested_calculations: упорядоченные formula_id + версии. Если клиент
+  /// их не передал, сервер берёт allowlist релиза 1.0, но СОХРАНЯЕТ выбранные.
+  requestedCalculationsJson Json  @map("requested_calculations_json")
+  /// §21 parameters: ставка/срок/периодичность + source/channel/actor.
+  parametersJson        Json     @map("parameters_json")
   inputsJson            Json     @map("inputs_json")
   inputHash             String   @map("input_hash")
+  /// §21 results / blockers: значение, статус, причина и ссылки на блокирующие входы.
+  resultsJson           Json     @map("results_json")
+  blockersJson          Json     @map("blockers_json")
+  /// §21 calculated_at / actor + идемпотентность запроса.
+  calculatedAt          DateTime @default(now()) @map("calculated_at")
+  idempotencyKey        String   @map("idempotency_key")
+  requestHash           String   @map("request_hash")
   status                String
   createdAt             DateTime @default(now()) @map("created_at")
 
@@ -2531,13 +2567,29 @@ model MortgageCalculationRun {
 model MortgageCalculationSnapshot {
   id                    String   @id @default(cuid())
   caseId                String   @map("case_id")
+  /// §22 Envelope: tenant_id обязателен (DC-M06-CAN-0059). Вид области — как в
+  /// прогоне: отдельной сущности tenant в модели пока нет.
+  tenantId              String   @map("tenant_id")
+  tenantScopeKind       String   @default("CASE_OWNER") @map("tenant_scope_kind")
   runId                 String   @unique @map("run_id")
+  schemaVersion         String   @map("schema_version")
   engineVersion         String   @map("engine_version")
   decimalContextVersion String   @map("decimal_context_version")
-  inputHash             String   @map("input_hash")
-  outputHash            String   @map("output_hash")
+  formulaRegistryVersion String  @map("formula_registry_version")
+  // §22 Hashes: три хэша + версия канонизации (CASA-CJ-1, §29).
+  canonicalizationVersion   String @map("canonicalization_version")
+  inputHash                 String @map("input_hash")
+  outputHash                String @map("output_hash")
+  replayHash                String @map("replay_hash")
+  clientProfileSnapshotId   String @map("client_profile_snapshot_id")
+  clientProfileSnapshotHash String @map("client_profile_snapshot_hash")
+  /// Канонический replay payload (allowlist §29) — предъявляется как evidence
+  /// и позволяет пересчитать replay_hash без обращения к движку.
+  replayPayloadJson     Json     @map("replay_payload_json")
   resultsJson           Json     @map("results_json")
   status                String
+  /// §22 Envelope: calculated_at фиксируется вместе со статусом и иммутабелен.
+  calculatedAt          DateTime @default(now()) @map("calculated_at")
   createdAt             DateTime @default(now()) @map("created_at")
 
   run          MortgageCalculationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -2569,6 +2621,7 @@ model MortgageClientProfile {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   mortgageCase         MortgageCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  purchaseGoal         MortgagePurchaseGoal?
   employments          MortgageEmployment[]
   incomeSources        MortgageIncomeSource[]
   assets               MortgageAsset[]
@@ -2576,6 +2629,25 @@ model MortgageClientProfile {
   nonCreditCommitments MortgageNonCreditCommitment[]
 
   @@map("mortgage_client_profiles")
+}
+
+/// M05 purchase_goal — цель покупки. target_price_max отсюда является ЕДИНСТВЕННЫМ
+/// источником цены для CALC-F-001 (source_field_ref = purchase_goal.target_price_max).
+/// Отсутствие цели ≠ ноль: без неё расчёт блокируется, а не считается от нуля.
+model MortgagePurchaseGoal {
+  id             String                     @id @default(cuid())
+  profileId      String                     @unique @map("profile_id")
+  targetPriceMax Decimal?                   @map("target_price_max") @db.Decimal(20, 2)
+  currency       String                     @default("KZT")
+  status         MortgageProfileFieldStatus @default(UNKNOWN)
+  propertyKind   String?                    @map("property_kind")
+  regionCode     String?                    @map("region_code")
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  updatedAt      DateTime                   @updatedAt @map("updated_at")
+
+  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("mortgage_purchase_goals")
 }
 
 model MortgageEmployment {

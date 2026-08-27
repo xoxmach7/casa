@@ -42,7 +42,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import Link from "next/link"
 import { API_URL } from "@/lib/config"
+import { legacyMortgageToolsEnabled } from "@/lib/mortgage/release-flags"
 import { useToast } from "@/hooks/use-toast"
 
 interface Client {
@@ -105,7 +107,7 @@ function mapApiProgram(p: any): MortgageProgram {
   };
 }
 
-export default function MortgagePage() {
+function LegacyMortgageToolsPage() {
   // Filter states
   const [bankFilter, setBankFilter] = useState("ALL")
   const [typeFilter, setTypeFilter] = useState("ALL")
@@ -798,4 +800,28 @@ export default function MortgagePage() {
       </Tabs>
     </div>
   )
+}
+
+// --- Гейт релиза 1.0 ---------------------------------------------------------
+// Экран считает аннуитет локально (Math.pow), опирается на придуманный предел
+// доли платежа к доходу и показывает банковские программы. В релизе 1.0 это
+// запрещено: единственный numeric authority — движок M06 на сервере. Код
+// сохранён для 1.1+, но пользователю закрыт.
+export default function MortgageToolsPage() {
+  if (!legacyMortgageToolsEnabled()) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+        <h1 className="text-xl font-semibold tracking-tight">Инструменты недоступны</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Ипотечные калькуляторы и подбор программ переносятся на канонический расчёт
+          и в текущей версии не показываются. Актуальный расчёт доступен на экране
+          ипотечного кейса.
+        </p>
+        <Button asChild variant="outline" className="mt-6">
+          <Link href="/dashboard/mortgage">К ипотечным кейсам</Link>
+        </Button>
+      </div>
+    )
+  }
+  return <LegacyMortgageToolsPage />
 }

@@ -32,17 +32,20 @@ import { cn } from "@/lib/utils";
 import {
   listMortgageCases,
   getClientProfile,
+  getMortgageCase,
   setPurchaseGoal,
   addDownPaymentSource,
   publishProfileSnapshot,
   createCalculationRun,
   MortgageCaseApiError,
+  type MortgageCase,
   type MortgageCaseListItem,
   type ClientProfile,
   type CalculationSnapshot,
   type CalcStatus,
 } from "@/lib/mortgage/case-api";
 import { legacyMortgageToolsEnabled } from "@/lib/mortgage/release-flags";
+import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
 
 // --- Ярлыки -----------------------------------------------------------------
 
@@ -152,6 +155,7 @@ function MortgageWorkspace() {
 
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [mortgageCase, setMortgageCase] = useState<MortgageCase | null>(null);
 
   // Параметры расчёта — это параметры прогона (§21), а не данные профиля.
   const [ratePercent, setRatePercent] = useState("12.5");
@@ -175,7 +179,14 @@ function MortgageWorkspace() {
   const loadProfile = useCallback(async (id: string) => {
     setProfileError(null);
     try {
-      setProfile(await getClientProfile(id));
+      // Кейс нужен ради участника: проверки M02 привязаны к participant,
+      // а не к кейсу целиком.
+      const [loadedProfile, loadedCase] = await Promise.all([
+        getClientProfile(id),
+        getMortgageCase(id).catch(() => null),
+      ]);
+      setProfile(loadedProfile);
+      setMortgageCase(loadedCase);
     } catch (e) {
       setProfile(null);
       setProfileError(e instanceof MortgageCaseApiError ? e.message : "Не удалось загрузить профиль");
@@ -183,7 +194,7 @@ function MortgageWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (!caseId) { setProfile(null); setCalc(null); return; }
+    if (!caseId) { setProfile(null); setMortgageCase(null); setCalc(null); return; }
     setCalc(null);
     setCalcError(null);
     void loadProfile(caseId);
@@ -259,6 +270,8 @@ function MortgageWorkspace() {
     }
   };
 
+  // Основной заёмщик: проверки реестров запускаются по конкретному участнику.
+  const primaryPartyId = mortgageCase?.parties?.find((p) => p.role === "PRIMARY")?.id ?? null;
   const goal = profile?.purchase_goal;
   const availableNow = profile?.aggregates.available_now_total;
 
@@ -375,6 +388,11 @@ function MortgageWorkspace() {
               </div>
             </div>
           </Card>
+
+          {/* Проверка по официальным реестрам (M02) */}
+          {primaryPartyId && (
+            <SourceCheckSection caseId={profile.case_id} partyId={primaryPartyId} />
+          )}
 
           {/* Расчёт (M06) */}
           <Card>

@@ -20,6 +20,13 @@ export interface MortgageCaseListItem {
   updated_at: string;
 }
 
+export interface MortgageCaseParty {
+  id: string;
+  clientId: string;
+  role: string;
+  includedInAnalysis: boolean;
+}
+
 export interface MortgageCase {
   id: string;
   client_id: string;
@@ -28,6 +35,7 @@ export interface MortgageCase {
   version: number;
   created_at?: string;
   updated_at?: string;
+  parties?: MortgageCaseParty[];
 }
 
 export type ProfileFieldStatus = "DECLARED" | "VERIFIED" | "UNKNOWN" | "CONFLICT";

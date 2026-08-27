@@ -68,6 +68,7 @@ import { subscriptionsRouter } from './routes/subscriptions.routes';
 import { mortgageApplicationsRouter } from './routes/mortgage-applications.routes';
 import { mortgageWorkspaceRouter } from './routes/mortgage-workspace.routes';
 import { mortgageCasesRouter } from './routes/mortgage-cases.routes';
+import { m02Router } from './routes/m02-iin-check.routes';
 import { publicMortgageRouter } from './routes/public-mortgage.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { auditMiddleware } from './middleware/audit.middleware';
@@ -239,6 +240,9 @@ app.use('/api/mortgage-applications', mortgageApplicationsRouter);
 // concurrency, audit) — ЕДИНСТВЕННЫЙ маунт, без параллельных версий. Прежний
 // /api/v1/mortgage-cases (от PR #7) убран: фронт case-api.ts и тесты на /v2.
 app.use('/api/v2/cases', mortgageCasesRouter);
+// M02 R0 (API-M02-001..006). Пути частично вне /cases (batch/result/task —
+// самостоятельные ресурсы), поэтому роутер монтируется на корень /api/v2.
+app.use('/api/v2', m02Router);
 // Демо-рабочий экран (whatif/documents/conclusions/demo) — отдельная
 // demo-поверхность, НЕ canonical case-ресурс; остаётся на своём пути.
 app.use('/api/mortgage-workspace', mortgageWorkspaceRouter);

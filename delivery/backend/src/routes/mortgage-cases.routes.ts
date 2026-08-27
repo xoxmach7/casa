@@ -12,10 +12,13 @@ import {
 } from '../lib/mortgage-case.service';
 import {
   runCalculation,
+  M06_SCHEMA_VERSION,
   M06_ENGINE_VERSION,
   M06_DECIMAL_CONTEXT_VERSION,
+  M06_FORMULA_REGISTRY_VERSION,
+  type CalculationRunContext,
 } from '../lib/mortgage-workspace/mortgage-calc.service';
-import type { StatusedMoney, InputStatus } from '../lib/mortgage-workspace/m06-calc';
+import type { InputStatus } from '../lib/mortgage-workspace/m06-calc';
 import { aggregateMoney, profileContentHash, type MoneySource } from '../lib/mortgage-workspace/mortgage-profile.service';
 
 export const mortgageCasesRouter = Router();
@@ -324,6 +327,29 @@ mortgageCasesRouter.post(['/:id/participants', '/:id/parties'], async (req: Requ
     apiError(res, 500, 'internal_error', 'Не удалось добавить участника');
   }
 });
+/**
+ * GET /api/v2/cases — операционный листинг кейсов оператора.
+ *
+ * НЕ ВХОДИТ в 45 канонических API-контрактов (06_API_CONTRACTS.csv): там на этом
+ * пути определён только POST (API-M01-001). Эндпоинт существует ровно для того,
+ * чтобы рабочий экран мог выбрать РЕАЛЬНЫЙ case_id вместо демо-константы, и при
+ * подсчёте покрытия контрактов считаться не должен. Отдаёт только кейсы,
+ * доступные актору; никаких PII сверх client_id.
+ */
+mortgageCasesRouter.get('/', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const isAdmin = req.user!.role === 'ADMIN';
+    const rows = await prisma.mortgageCase.findMany({
+      where: isAdmin ? {} : { ownerId: req.user!.userId },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+    res.json({ data: rows.map(caseResponse) });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось получить список кейсов');
+  }
+});
+
 mortgageCasesRouter.get('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const mortgageCase = await prisma.mortgageCase.findUnique({
@@ -449,26 +475,49 @@ mortgageCasesRouter.patch('/:id', async (req: Request, res: Response): Promise<v
 // идемпотентен (Idempotency-Key), снапшот иммутабелен (input_hash/output_hash).
 // =========================================================================
 
-const INPUT_STATUS_VALUES = [
-  'CONFIRMED', 'DECLARED', 'EVIDENCE_REQUESTED', 'MISSING', 'UNKNOWN', 'STALE', 'CONFLICT',
-] as const;
-
-const calcMoney = z.union([z.number(), z.string(), z.null()]).optional();
+/**
+ * §21: прогон принимает ТОЛЬКО ссылку на опубликованный снапшот профиля M05 и
+ * явные расчётные параметры. Денежные величины из тела запроса не принимаются
+ * вовсе — иначе клиент смог бы подсунуть цифру мимо профиля, и снапшот перестал
+ * бы быть «sole profile data source». `.strict()` отвергает и старые ключи
+ * (target_price_max / available_now_total) как unknown field.
+ */
 const calcRunSchema = z.object({
-  target_price_max: calcMoney,
-  available_now_total: calcMoney,
-  annual_nominal_rate_percent: calcMoney,
-  term_months: z.number().int().nullable().optional(),
-  input_statuses: z.object({
-    target_price_max: z.enum(INPUT_STATUS_VALUES).optional(),
-    available_now_total: z.enum(INPUT_STATUS_VALUES).optional(),
-    annual_nominal_rate_percent: z.enum(INPUT_STATUS_VALUES).optional(),
-  }).strict().optional(),
+  client_profile_snapshot_id: z.string().trim().min(1).max(128),
+  parameters: z.object({
+    annual_nominal_rate_percent: z.union([z.number(), z.string()]),
+    term_months: z.number().int(),
+    payment_frequency: z.literal('MONTHLY').default('MONTHLY'),
+  }).strict(),
 }).strict();
 
-function toStatused(value: number | string | null | undefined, status?: InputStatus): StatusedMoney {
-  if (status) return { value: value ?? undefined, status };
-  return value ?? undefined;
+/** Статус поля M05 → статус входа M06 (§19). CONFLICT блокирует, а не «почти ок». */
+function profileStatusToInputStatus(status: string | null | undefined): InputStatus {
+  switch (status) {
+    // Поля профиля несут VERIFIED, агрегаты (aggregateMoney) — уже CONFIRMED.
+    case 'VERIFIED': return 'CONFIRMED';
+    case 'CONFIRMED': return 'CONFIRMED';
+    case 'DECLARED': return 'DECLARED';
+    case 'CONFLICT': return 'CONFLICT';
+    case 'UNKNOWN': return 'UNKNOWN';
+    default: return 'MISSING';
+  }
+}
+
+/** Достаёт вход M06 из payload снапшота M05, не «чиня» отсутствующее нулём. */
+function amountFromSnapshot(
+  node: unknown,
+  valueKey: string,
+): { amount: string | null; status: InputStatus } {
+  if (!node || typeof node !== 'object') return { amount: null, status: 'MISSING' };
+  const n = node as Record<string, unknown>;
+  const raw = n[valueKey];
+  const amount = typeof raw === 'string' || typeof raw === 'number' ? String(raw) : null;
+  const status = profileStatusToInputStatus(n.status as string | undefined);
+  if (amount === null && status !== 'UNKNOWN' && status !== 'CONFLICT') {
+    return { amount: null, status: 'MISSING' };
+  }
+  return { amount, status };
 }
 
 function calcSnapshotResponse(run: any, snap: any) {
@@ -476,12 +525,21 @@ function calcSnapshotResponse(run: any, snap: any) {
     id: snap.id,
     run_id: snap.runId,
     case_id: snap.caseId,
+    schema_version: snap.schemaVersion,
     engine_version: snap.engineVersion,
     decimal_context_version: snap.decimalContextVersion,
+    formula_registry_version: snap.formulaRegistryVersion,
+    canonicalization_version: snap.canonicalizationVersion,
+    client_profile_snapshot: {
+      snapshot_id: snap.clientProfileSnapshotId,
+      snapshot_hash: snap.clientProfileSnapshotHash,
+    },
     input_hash: snap.inputHash,
     output_hash: snap.outputHash,
+    replay_hash: snap.replayHash,
     status: snap.status,
     results: snap.resultsJson,
+    replay_payload: snap.replayPayloadJson,
     created_at: snap.createdAt,
     ...(run ? { run: { id: run.id, status: run.status, created_at: run.createdAt } } : {}),
   };
@@ -520,13 +578,34 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
       const current = await tx.mortgageCase.findUnique({ where: { id: req.params.caseId } });
       if (!current || !canAccessMortgageCase(current, req.user!)) return { kind: 'not_found' as const };
 
-      const s = parsed.data.input_statuses ?? {};
-      const calc = runCalculation({
-        targetPriceMax: toStatused(parsed.data.target_price_max, s.target_price_max),
-        availableNowTotal: toStatused(parsed.data.available_now_total, s.available_now_total),
-        annualNominalRatePercent: toStatused(parsed.data.annual_nominal_rate_percent, s.annual_nominal_rate_percent),
-        termMonths: parsed.data.term_months ?? null,
+      // §21: единственный источник данных профиля — опубликованный снапшот M05.
+      const cps = await tx.mortgageClientProfileSnapshot.findUnique({
+        where: { id: parsed.data.client_profile_snapshot_id },
       });
+      if (!cps || cps.caseId !== current.id) return { kind: 'snapshot_not_found' as const };
+
+      const payload = (cps.payloadJson ?? {}) as Record<string, unknown>;
+      const targetPrice = amountFromSnapshot(payload.purchase_goal, 'target_price_max');
+      const availableNow = amountFromSnapshot(payload.available_now_total, 'value');
+      const upstream = (payload.selected_upstream_refs ?? {}) as Record<string, string | null>;
+
+      const runContext: CalculationRunContext = {
+        caseId: current.id,
+        clientProfileSnapshot: { snapshotId: cps.id, snapshotHash: cps.contentHash },
+        selectedUpstreamRefs: {
+          iin_check_batch_id: upstream.iin_check_batch_id ?? null,
+          credit_history_snapshot_id: upstream.credit_history_snapshot_id ?? null,
+          pension_snapshot_id: upstream.pension_snapshot_id ?? null,
+        },
+        targetPrice,
+        availableNowDownPayment: availableNow,
+        parameters: {
+          annualNominalRatePercent: parsed.data.parameters.annual_nominal_rate_percent,
+          termMonths: parsed.data.parameters.term_months,
+          paymentFrequency: parsed.data.parameters.payment_frequency,
+        },
+      };
+      const calc = runCalculation(runContext);
 
       const run = await tx.mortgageCalculationRun.create({
         data: {
@@ -534,7 +613,9 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
           actorId,
           engineVersion: M06_ENGINE_VERSION,
           decimalContextVersion: M06_DECIMAL_CONTEXT_VERSION,
-          inputsJson: parsed.data as Prisma.InputJsonValue,
+          clientProfileSnapshotId: cps.id,
+          clientProfileSnapshotHash: cps.contentHash,
+          inputsJson: calc.canonicalInputs as Prisma.InputJsonValue,
           inputHash: calc.inputHash,
           status: calc.results.status,
         },
@@ -543,10 +624,17 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
         data: {
           caseId: current.id,
           runId: run.id,
+          schemaVersion: M06_SCHEMA_VERSION,
           engineVersion: M06_ENGINE_VERSION,
           decimalContextVersion: M06_DECIMAL_CONTEXT_VERSION,
+          formulaRegistryVersion: M06_FORMULA_REGISTRY_VERSION,
+          canonicalizationVersion: calc.canonicalizationVersion,
           inputHash: calc.inputHash,
           outputHash: calc.outputHash,
+          replayHash: calc.replayHash,
+          clientProfileSnapshotId: cps.id,
+          clientProfileSnapshotHash: cps.contentHash,
+          replayPayloadJson: calc.replayPayload as Prisma.InputJsonValue,
           resultsJson: calc.results as unknown as Prisma.InputJsonValue,
           status: calc.results.status,
         },
@@ -581,6 +669,11 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
     if (result.kind === 'conflict') { apiError(res, 409, 'idempotency_conflict', 'Idempotency-Key уже использован с другим запросом'); return; }
     if (result.kind === 'in_progress') { apiError(res, 409, 'request_in_progress', 'Запрос с этим Idempotency-Key ещё выполняется'); return; }
     if (result.kind === 'not_found') { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    if (result.kind === 'snapshot_not_found') {
+      apiError(res, 409, 'client_profile_snapshot_required',
+        'Снапшот профиля M05 не найден для этого кейса: расчёт без опубликованного профиля невозможен');
+      return;
+    }
     res.status(result.status).json(result.body);
   } catch (error) {
     const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : (error as { code?: string })?.code;
@@ -674,6 +767,29 @@ function moneySourceRow(r: { amount?: any; monthlyAmount?: any; value?: any; sta
   return { amount, status: r.status as any };
 }
 
+/** purchase_goal в ответе/снапшоте: сумма строкой Decimal(20,2) либо null. */
+function purchaseGoalNode(goal: { targetPriceMax: any; currency: string; status: string } | null) {
+  if (!goal || goal.targetPriceMax === null || goal.targetPriceMax === undefined) {
+    return { target_price_max: null, currency: 'KZT', status: goal?.status ?? 'UNKNOWN' };
+  }
+  return {
+    target_price_max: new Prisma.Decimal(goal.targetPriceMax).toFixed(2),
+    currency: goal.currency,
+    status: goal.status,
+  };
+}
+
+/** API-M05-002: цель покупки — единственный источник target_price для M06. */
+const patchProfileSchema = z.object({
+  purchase_goal: z.object({
+    target_price_max: z.union([z.number(), z.string(), z.null()]),
+    currency: z.string().length(3).default('KZT'),
+    status: z.enum(FIELD_STATUS).default('DECLARED'),
+    property_kind: z.string().max(64).nullable().optional(),
+    region_code: z.string().max(32).nullable().optional(),
+  }).strict(),
+}).strict();
+
 // GET /api/v2/cases/{caseId}/client-profile (API-M05-001) — авто-создание + агрегаты
 mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -683,7 +799,7 @@ mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Res
     const profile = await prisma.mortgageClientProfile.findUnique({
       where: { caseId: current.id },
       include: {
-        employments: true, incomeSources: true, assets: true,
+        purchaseGoal: true, employments: true, incomeSources: true, assets: true,
         downPaymentSources: true, nonCreditCommitments: true,
       },
     });
@@ -692,9 +808,17 @@ mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Res
     const availableNow = aggregateMoney(profile.downPaymentSources.map(moneySourceRow));
     const monthlyIncome = aggregateMoney(profile.incomeSources.map(moneySourceRow));
     const monthlyCommitments = aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow));
+    const latestSnapshot = await prisma.mortgageClientProfileSnapshot.findFirst({
+      where: { caseId: current.id },
+      orderBy: { createdAt: 'desc' },
+    });
 
     res.json({ data: {
       id: profile.id, case_id: profile.caseId, version: profile.version,
+      purchase_goal: purchaseGoalNode(profile.purchaseGoal),
+      latest_snapshot: latestSnapshot
+        ? { id: latestSnapshot.id, content_hash: latestSnapshot.contentHash, created_at: latestSnapshot.createdAt }
+        : null,
       down_payment_sources: profile.downPaymentSources,
       income_sources: profile.incomeSources,
       assets: profile.assets,
@@ -708,6 +832,45 @@ mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Res
     } });
   } catch {
     apiError(res, 500, 'internal_error', 'Не удалось получить профиль');
+  }
+});
+
+// PATCH /api/v2/cases/{caseId}/client-profile (API-M05-002)
+mortgageCasesRouter.patch('/:caseId/client-profile', async (req: Request, res: Response): Promise<void> => {
+  const parsed = patchProfileSchema.safeParse(req.body);
+  if (!parsed.success) { apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten()); return; }
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    const profileId = await ensureProfileId(current.id);
+    const g = parsed.data.purchase_goal;
+    // Сумма null означает «цель не задана» и обязана обнулять статус в UNKNOWN,
+    // иначе профиль отчитается DECLARED без единой цифры.
+    const status = g.target_price_max === null ? 'UNKNOWN' : g.status;
+    const data = {
+      targetPriceMax: g.target_price_max === null ? null : new Prisma.Decimal(g.target_price_max),
+      currency: g.currency,
+      status,
+      propertyKind: g.property_kind ?? null,
+      regionCode: g.region_code ?? null,
+    };
+    const goal = await prisma.mortgagePurchaseGoal.upsert({
+      where: { profileId },
+      update: data,
+      create: { profileId, ...data },
+    });
+    await prisma.mortgageClientProfile.update({
+      where: { id: profileId },
+      data: { version: { increment: 1 } },
+    });
+    await prisma.mortgageAuditEvent.create({ data: {
+      caseId: current.id, actorId: req.user!.userId, action: 'mortgage_profile.purchase_goal_set',
+      objectType: 'MortgagePurchaseGoal', objectId: goal.id, purpose: 'mortgage_prescore',
+      result: 'SUCCESS', reasonCode: status,
+    } });
+    res.json({ data: { purchase_goal: purchaseGoalNode(goal) } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось обновить профиль');
   }
 });
 
@@ -773,15 +936,28 @@ mortgageCasesRouter.post('/:caseId/client-profile/publish-snapshot', async (req:
     if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
     const profile = await prisma.mortgageClientProfile.findUnique({
       where: { caseId: current.id },
-      include: { employments: true, incomeSources: true, assets: true, downPaymentSources: true, nonCreditCommitments: true },
+      include: {
+        purchaseGoal: true, employments: true, incomeSources: true,
+        assets: true, downPaymentSources: true, nonCreditCommitments: true,
+      },
     });
     if (!profile) { apiError(res, 409, 'profile_empty', 'Профиль ещё не создан'); return; }
 
     const payload = {
       case_id: profile.caseId, version: profile.version,
+      // purchase_goal.target_price_max — вход CALC-F-001. Цель не задана →
+      // status MISSING, а не ноль: M06 обязан заблокироваться, а не считать.
+      purchase_goal: purchaseGoalNode(profile.purchaseGoal),
       available_now_total: aggregateMoney(profile.downPaymentSources.map(moneySourceRow)),
       monthly_income_total: aggregateMoney(profile.incomeSources.map(moneySourceRow)),
       monthly_commitments_total: aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow)),
+      // §21: ссылки M02/M03/M04 в том виде, как их несёт M05. Пока канонические
+      // M02/M03/M04 не реализованы, честное значение — null, не выдуманный id.
+      selected_upstream_refs: {
+        iin_check_batch_id: null,
+        credit_history_snapshot_id: null,
+        pension_snapshot_id: null,
+      },
       counts: {
         down_payment: profile.downPaymentSources.length, income: profile.incomeSources.length,
         assets: profile.assets.length, employments: profile.employments.length,

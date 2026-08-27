@@ -2516,6 +2516,10 @@ model MortgageCalculationRun {
   actorId               String   @map("actor_id")
   engineVersion         String   @map("engine_version")
   decimalContextVersion String   @map("decimal_context_version")
+  // §21: client_profile_snapshot_id/hash обязателен и иммутабелен — это
+  // единственный источник данных профиля для прогона.
+  clientProfileSnapshotId   String @map("client_profile_snapshot_id")
+  clientProfileSnapshotHash String @map("client_profile_snapshot_hash")
   inputsJson            Json     @map("inputs_json")
   inputHash             String   @map("input_hash")
   status                String
@@ -2532,10 +2536,20 @@ model MortgageCalculationSnapshot {
   id                    String   @id @default(cuid())
   caseId                String   @map("case_id")
   runId                 String   @unique @map("run_id")
+  schemaVersion         String   @map("schema_version")
   engineVersion         String   @map("engine_version")
   decimalContextVersion String   @map("decimal_context_version")
-  inputHash             String   @map("input_hash")
-  outputHash            String   @map("output_hash")
+  formulaRegistryVersion String  @map("formula_registry_version")
+  // §22 Hashes: три хэша + версия канонизации (CASA-CJ-1, §29).
+  canonicalizationVersion   String @map("canonicalization_version")
+  inputHash                 String @map("input_hash")
+  outputHash                String @map("output_hash")
+  replayHash                String @map("replay_hash")
+  clientProfileSnapshotId   String @map("client_profile_snapshot_id")
+  clientProfileSnapshotHash String @map("client_profile_snapshot_hash")
+  /// Канонический replay payload (allowlist §29) — предъявляется как evidence
+  /// и позволяет пересчитать replay_hash без обращения к движку.
+  replayPayloadJson     Json     @map("replay_payload_json")
   resultsJson           Json     @map("results_json")
   status                String
   createdAt             DateTime @default(now()) @map("created_at")
@@ -2569,6 +2583,7 @@ model MortgageClientProfile {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   mortgageCase         MortgageCase                 @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  purchaseGoal         MortgagePurchaseGoal?
   employments          MortgageEmployment[]
   incomeSources        MortgageIncomeSource[]
   assets               MortgageAsset[]
@@ -2576,6 +2591,25 @@ model MortgageClientProfile {
   nonCreditCommitments MortgageNonCreditCommitment[]
 
   @@map("mortgage_client_profiles")
+}
+
+/// M05 purchase_goal — цель покупки. target_price_max отсюда является ЕДИНСТВЕННЫМ
+/// источником цены для CALC-F-001 (source_field_ref = purchase_goal.target_price_max).
+/// Отсутствие цели ≠ ноль: без неё расчёт блокируется, а не считается от нуля.
+model MortgagePurchaseGoal {
+  id             String                     @id @default(cuid())
+  profileId      String                     @unique @map("profile_id")
+  targetPriceMax Decimal?                   @map("target_price_max") @db.Decimal(20, 2)
+  currency       String                     @default("KZT")
+  status         MortgageProfileFieldStatus @default(UNKNOWN)
+  propertyKind   String?                    @map("property_kind")
+  regionCode     String?                    @map("region_code")
+  createdAt      DateTime                   @default(now()) @map("created_at")
+  updatedAt      DateTime                   @updatedAt @map("updated_at")
+
+  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("mortgage_purchase_goals")
 }
 
 model MortgageEmployment {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
+import { legacyMortgageToolsEnabled } from "@/lib/mortgage/release-flags"
 import type { ApartmentCardData } from "./ApartmentCard"
 
 interface MortgageProgram {
@@ -83,7 +84,10 @@ export function MortgageQuickCalcDialog({ apartment, onClose }: MortgageQuickCal
     return () => clearTimeout(timeout)
   }, [clientSearch])
 
-  if (!apartment) return null
+  // Гейт релиза 1.0: диалог считает аннуитет локально (Math.pow) и опирается на
+  // банковские программы — обе поверхности переносятся на канонический M06/1.1.
+  // Пока флаг выключен, диалог не показывает ни одной ипотечной цифры.
+  if (!apartment || !legacyMortgageToolsEnabled()) return null
 
   const program = programs.find((p) => p.id === selectedProgramId)
   const rate = program?.interestRate ?? 15

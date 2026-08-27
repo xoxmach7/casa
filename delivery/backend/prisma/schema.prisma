@@ -2410,6 +2410,7 @@ model MortgageCase {
   calculationSnapshots MortgageCalculationSnapshot[]
   clientProfile        MortgageClientProfile?
   profileSnapshots     MortgageClientProfileSnapshot[]
+  clientCheckBatches   ClientCheckBatch[]
 
   @@index([clientId])
   @@index([ownerId, status])
@@ -3029,4 +3030,198 @@ model LandingLead {
 
   @@index([status])
   @@map("landing_leads")
+}
+
+// =========================================
+// M02 R0 — IIN CHECK (официальные реестры)
+//
+// Источник: M02_CASA_Pro_IIN_Check_R0_Implementation_and_Acceptance_v1.0.
+// R0 работает ПОЛНОСТЬЮ без внешних production-вызовов: коннекторы выключены
+// deny-by-default, маршруты — manual / client-authorized / unavailable.
+// SmartBridge и официальные API — это R1/R2 и НЕ являются условием готовности R0.
+//
+// Полный ИИН здесь не хранится: субъект адресуется borrower reference +
+// HMAC-токеном поиска + маской (§7, §16).
+// =========================================
+
+/// Техническое состояние проверки — отдельно от бизнес-исхода (§10).
+enum ClientCheckStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  MANUAL_REQUIRED
+  BLOCKED
+  UNAVAILABLE
+  ERROR
+  NOT_ALLOWED
+}
+
+/// Бизнес-исход. UNKNOWN — самостоятельное значение: не 0, не false, не «чисто».
+enum ClientCheckOutcome {
+  FOUND
+  NOT_FOUND
+  ZERO
+  NOT_APPLICABLE
+  UNKNOWN
+}
+
+enum ClientCheckOverallStatus {
+  COMPLETE_FACTS_FOUND
+  COMPLETE_NO_RECORDS
+  PARTIAL
+  BLOCKED_CONSENT
+  BLOCKED_LEGAL
+  STALE
+}
+
+enum ManualCheckTaskStatus {
+  OPEN
+  IN_PROGRESS
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+/// Один запуск проверки: participant identity_version + consent + frozen manifest.
+/// Иммутабелен. Обновление — это НОВЫЙ batch со ссылкой supersedes_id (§13).
+model ClientCheckBatch {
+  id        String @id @default(cuid())
+  /// Область доступа M01. Отдельной сущности tenant в модели нет — областью
+  /// является владелец кейса; вид фиксируется явно (как в M06).
+  tenantId  String @map("tenant_id")
+  tenantScopeKind String @default("CASE_OWNER") @map("tenant_scope_kind")
+  caseId    String @map("case_id")
+  partyId   String @map("party_id")
+  /// Ссылка на субъекта БЕЗ ИИН: маска для человека + HMAC-токен для поиска.
+  borrowerRef       String  @map("borrower_ref")
+  iinMasked         String  @map("iin_masked")
+  iinLookupToken    String  @map("iin_lookup_token")
+  identityVersion   Int     @map("identity_version")
+  consentRevisionId String? @map("consent_revision_id")
+  consentPurpose    String  @map("consent_purpose")
+  /// Замороженный манифест: знаменатель покрытия берётся отсюда, а НЕ из
+  /// живого реестра — дрейф реестра не меняет уже выполненный прогон (§9).
+  manifestVersion   String @map("manifest_version")
+  registryVersion   String @map("registry_version")
+  manifestJson      Json   @map("manifest_json")
+  requiredTotal     Int    @map("required_total")
+  actorId     String   @map("actor_id")
+  requestedAt DateTime @default(now()) @map("requested_at")
+  overallStatus ClientCheckOverallStatus @map("overall_status")
+  coverageJson  Json                     @map("coverage_json")
+  /// Блокер до маршрута: невалидный ИИН, нет согласия, не закрыт legal gate.
+  blockerCode String? @map("blocker_code")
+  idempotencyKey String @map("idempotency_key")
+  requestHash    String @map("request_hash")
+  /// Иммутабельная история: refresh не правит старый batch, а создаёт новый.
+  supersedesId   String? @map("supersedes_id")
+  supersededById String? @map("superseded_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  mortgageCase MortgageCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  results      ClientCheckResult[]
+  manualTasks  ManualCheckTask[]
+
+  @@index([caseId, createdAt])
+  @@index([tenantId])
+  @@index([iinLookupToken])
+  @@map("client_check_batches")
+}
+
+/// Результат по паре источник × check_type. Иммутабелен; исправление —
+/// новая запись с supersedes_id.
+model ClientCheckResult {
+  id      String @id @default(cuid())
+  batchId String @map("batch_id")
+  tenantId String @map("tenant_id")
+  sourceCode     String @map("source_code")
+  sourceOwner    String @map("source_owner")
+  sourceUrl      String @map("source_url")
+  checkType      String @map("check_type")
+  automationMode String @map("automation_mode")
+  /// Входит ли в знаменатель покрытия этого batch.
+  required Boolean @default(true)
+  /// status и outcome — РАЗНЫЕ поля: «не выполнено» ≠ «ничего не найдено».
+  status  ClientCheckStatus
+  outcome ClientCheckOutcome?
+  /// Категория ошибки §12; null при успешном исходе.
+  errorCategory String? @map("error_category")
+  retryable     Boolean @default(false)
+  reason        String  @db.Text
+  upstreamCode  String? @map("upstream_code")
+  /// Три РАЗНЫЕ временные характеристики (§13); null означает явный UNKNOWN.
+  checkedAt      DateTime? @map("checked_at")
+  sourceDataAsOf DateTime? @map("source_data_as_of")
+  freshUntil     DateTime? @map("fresh_until")
+  legalBasisStatus String? @map("legal_basis_status")
+  consentRevisionId String? @map("consent_revision_id")
+  approvalId        String? @map("approval_id")
+  /// Evidence обязателен для completed-исхода (§14); raw payload не хранится.
+  evidenceRef       String? @map("evidence_ref")
+  evidenceHash      String? @map("evidence_hash")
+  retentionPolicyId String? @map("retention_policy_id")
+  attempt        Int     @default(1)
+  supersedesId   String? @map("supersedes_id")
+  supersededById String? @map("superseded_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  batch       ClientCheckBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  facts       ClientCheckFact[]
+  manualTasks ManualCheckTask[]
+
+  @@index([batchId])
+  @@index([tenantId])
+  @@map("client_check_results")
+}
+
+/// Иммутабельный нормализованный факт источника. Только allowlisted поля —
+/// данные третьих лиц и raw payload не сохраняются (§10 RAW MINIMIZATION).
+model ClientCheckFact {
+  id        String   @id @default(cuid())
+  resultId  String   @map("result_id")
+  tenantId  String   @map("tenant_id")
+  factKey   String   @map("fact_key")
+  factValue Json     @map("fact_value")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  result ClientCheckResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@index([resultId])
+  @@map("client_check_facts")
+}
+
+/// Ручная проверка на официальном сайте. Подтверждение БЕЗ evidence запрещено:
+/// кнопка «записей нет» сама по себе не является доказательством (§11).
+model ManualCheckTask {
+  id       String @id @default(cuid())
+  batchId  String @map("batch_id")
+  resultId String @map("result_id")
+  tenantId String @map("tenant_id")
+  sourceCode String @map("source_code")
+  checkType  String @map("check_type")
+  /// Только базовый официальный URL — без ИИН в query/path/referrer (§11).
+  officialUrl String @map("official_url")
+  instruction String @db.Text
+  assigneeId String?   @map("assignee_id")
+  dueAt      DateTime? @map("due_at")
+  expiresAt  DateTime? @map("expires_at")
+  status  ManualCheckTaskStatus @default(OPEN)
+  outcome ClientCheckOutcome?
+  evidenceRef  String? @map("evidence_ref")
+  evidenceHash String? @map("evidence_hash")
+  checkedAt      DateTime? @map("checked_at")
+  sourceDataAsOf DateTime? @map("source_data_as_of")
+  freshUntil     DateTime? @map("fresh_until")
+  confirmedByActorId String?   @map("confirmed_by_actor_id")
+  confirmedAt        DateTime? @map("confirmed_at")
+  comment            String?   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  batch  ClientCheckBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  result ClientCheckResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([tenantId, status])
+  @@map("manual_check_tasks")
 }

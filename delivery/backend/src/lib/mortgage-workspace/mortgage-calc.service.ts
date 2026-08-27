@@ -21,6 +21,7 @@ import {
   type InputStatus,
   type StatusedMoney,
 } from './m06-calc';
+import { M06_FORMULA_REGISTRY_VERSION } from './m06-formula-registry';
 import {
   computeCasaCjHashes,
   canonicalize,
@@ -36,7 +37,8 @@ export { canonicalize, canonicalHash, sha256Hex };
 /** §22/§29 envelope — точные строки замороженной спеки, не переименовывать. */
 export const M06_SCHEMA_VERSION = 'casa.calculation_snapshot/1.0.0';
 export const M06_ENGINE_VERSION = 'casa-calc-engine/1.0.0';
-export const M06_FORMULA_REGISTRY_VERSION = 'm06-registry/1.0.0';
+// Версия реестра живёт в одном месте — в самом реестре формул.
+export { M06_FORMULA_REGISTRY_VERSION } from './m06-formula-registry';
 export const M06_DECIMAL_CONTEXT_VERSION = 'casa.decimal_context/p50-half-even__money-half-up/1.0.0';
 export const M06_CANONICALIZATION_VERSION = CASA_CJ_CANONICALIZATION_VERSION;
 

@@ -11,6 +11,15 @@
 
 import { API_URL } from "@/lib/api-client";
 
+/** Строка списка кейсов (DEC-API-002): только то, что нужно для выбора. */
+export interface MortgageCaseListItem {
+  id: string;
+  status: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MortgageCase {
   id: string;
   client_id: string;
@@ -135,10 +144,10 @@ function idempotencyKey(prefix: string): string {
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-async function call<T>(
+async function callRaw<T, P = undefined>(
   path: string,
   init: RequestInit & { idempotency?: string } = {},
-): Promise<T> {
+): Promise<{ data: T; page_info?: P }> {
   const { idempotency, ...rest } = init;
   let response: Response;
   try {
@@ -165,7 +174,14 @@ async function call<T>(
       typeof error?.code === "string" ? error.code : undefined,
     );
   }
-  return (body as { data: T }).data;
+  return body as { data: T; page_info?: P };
+}
+
+async function call<T>(
+  path: string,
+  init: RequestInit & { idempotency?: string } = {},
+): Promise<T> {
+  return (await callRaw<T>(path, init)).data;
 }
 
 // --- M01 -------------------------------------------------------------------
@@ -179,9 +195,28 @@ export async function createMortgageCase(clientId: string): Promise<MortgageCase
   });
 }
 
-/** Операционный листинг (не входит в 45 канонических контрактов). */
-export async function listMortgageCases(): Promise<MortgageCase[]> {
-  return call<MortgageCase[]>("/v2/cases");
+/**
+ * DEC-API-002 — вспомогательный листинг кейсов. Не входит в 45 канонических
+ * контрактов. Отдаёт минимальный allowlist полей: ни client_id, ни owner_id,
+ * потому что для выбора кейса они не нужны, а в списке это лишние ПД.
+ */
+export async function listMortgageCases(
+  params: { limit?: number; cursor?: string } = {},
+): Promise<{ items: MortgageCaseListItem[]; nextCursor: string | null; hasMore: boolean }> {
+  const query = new URLSearchParams();
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.cursor) query.set("cursor", params.cursor);
+  const suffix = query.toString() ? `?${query}` : "";
+
+  const raw = await callRaw<
+    MortgageCaseListItem[],
+    { has_more: boolean; next_cursor: string | null; limit: number }
+  >(`/v2/cases${suffix}`);
+  return {
+    items: raw.data,
+    nextCursor: raw.page_info?.next_cursor ?? null,
+    hasMore: raw.page_info?.has_more ?? false,
+  };
 }
 
 export async function getMortgageCase(caseId: string): Promise<MortgageCase> {

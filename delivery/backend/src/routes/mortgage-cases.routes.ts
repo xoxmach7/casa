@@ -15,10 +15,14 @@ import {
   M06_SCHEMA_VERSION,
   M06_ENGINE_VERSION,
   M06_DECIMAL_CONTEXT_VERSION,
-  M06_FORMULA_REGISTRY_VERSION,
   type CalculationRunContext,
 } from '../lib/mortgage-workspace/mortgage-calc.service';
 import type { InputStatus } from '../lib/mortgage-workspace/m06-calc';
+import {
+  resolveRequestedCalculations,
+  FormulaNotAllowedError,
+  M06_FORMULA_REGISTRY_VERSION,
+} from '../lib/mortgage-workspace/m06-formula-registry';
 import { aggregateMoney, profileContentHash, type MoneySource } from '../lib/mortgage-workspace/mortgage-profile.service';
 
 export const mortgageCasesRouter = Router();
@@ -149,7 +153,9 @@ mortgageCasesRouter.post('/', async (req: Request, res: Response): Promise<void>
         data: { clientId: client.id, ownerId: actorId },
       });
       await tx.mortgageCaseParty.create({
-        data: { caseId: mortgageCase.id, clientId: client.id, role: 'PRIMARY' },
+        // M01-CAN-0138: основной заёмщик включён в анализ по своему профилю.
+        // Остальные роли добавляются с included_in_analysis=false.
+        data: { caseId: mortgageCase.id, clientId: client.id, role: 'PRIMARY', includedInAnalysis: true },
       });
 
       const body = { data: caseResponse(mortgageCase) };
@@ -328,23 +334,71 @@ mortgageCasesRouter.post(['/:id/participants', '/:id/parties'], async (req: Requ
   }
 });
 /**
- * GET /api/v2/cases — операционный листинг кейсов оператора.
+ * GET /api/v2/cases — DEC-API-002, auxiliary case-list read endpoint.
  *
- * НЕ ВХОДИТ в 45 канонических API-контрактов (06_API_CONTRACTS.csv): там на этом
- * пути определён только POST (API-M01-001). Эндпоинт существует ровно для того,
- * чтобы рабочий экран мог выбрать РЕАЛЬНЫЙ case_id вместо демо-константы, и при
- * подсчёте покрытия контрактов считаться не должен. Отдаёт только кейсы,
- * доступные актору; никаких PII сверх client_id.
+ * НЕ является 46-м каноническим контрактом: в 06_API_CONTRACTS.csv на этом пути
+ * определён только POST (API-M01-001), и список 45 frozen API не меняется. Это
+ * вспомогательная read surface над уже существующим case: без неё UI обязан
+ * либо знать case_id заранее, либо снова скатиться в mock.
+ *
+ * Требования (owner decision): только доступные актору кейсы, изоляция области
+ * доступа, пагинация, детерминированный порядок, минимальный allowlist полей,
+ * никаких лишних ПД, read-only, отсутствие cross-scope existence leak.
  */
+const listCasesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z.string().trim().min(1).max(128).optional(),
+}).strict();
+
+/**
+ * Минимальный allowlist полей списка. Сознательно НЕ отдаём client_id и
+ * owner_id: для выбора кейса они не нужны, а любое лишнее поле здесь — это
+ * персональные данные в списковой выдаче.
+ */
+function caseListItem(value: {
+  id: string; status: string; version: number; updatedAt: Date; createdAt: Date;
+}) {
+  return {
+    id: value.id,
+    status: value.status,
+    version: value.version,
+    created_at: value.createdAt,
+    updated_at: value.updatedAt,
+  };
+}
+
 mortgageCasesRouter.get('/', async (req: Request, res: Response): Promise<void> => {
+  const parsed = listCasesQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    apiError(res, 400, 'validation_error', 'Некорректные параметры списка', parsed.error.flatten());
+    return;
+  }
   try {
     const isAdmin = req.user!.role === 'ADMIN';
+    const { limit, cursor } = parsed.data;
+
+    // Сортировка по updatedAt может давать одинаковые значения, поэтому id —
+    // обязательный tie-breaker: без него курсорная страница способна потерять
+    // или продублировать строку.
     const rows = await prisma.mortgageCase.findMany({
       where: isAdmin ? {} : { ownerId: req.user!.userId },
-      orderBy: { updatedAt: 'desc' },
-      take: 100,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: { id: true, status: true, version: true, createdAt: true, updatedAt: true },
     });
-    res.json({ data: rows.map(caseResponse) });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+
+    res.json({
+      data: page.map(caseListItem),
+      page_info: {
+        has_more: hasMore,
+        next_cursor: hasMore ? page[page.length - 1].id : null,
+        limit,
+      },
+    });
   } catch {
     apiError(res, 500, 'internal_error', 'Не удалось получить список кейсов');
   }
@@ -484,10 +538,16 @@ mortgageCasesRouter.patch('/:id', async (req: Request, res: Response): Promise<v
  */
 const calcRunSchema = z.object({
   client_profile_snapshot_id: z.string().trim().min(1).max(128),
+  /// §21: упорядоченные formula_id. Не передан — берётся allowlist релиза 1.0,
+  /// но выбранные id/версии всё равно сохраняются в прогоне.
+  requested_calculations: z.array(z.string().trim().min(1).max(64)).min(1).max(16).optional(),
   parameters: z.object({
     annual_nominal_rate_percent: z.union([z.number(), z.string()]),
     term_months: z.number().int(),
     payment_frequency: z.literal('MONTHLY').default('MONTHLY'),
+    /// §21 parameters несут провенанс: откуда взяты ставка и срок.
+    source: z.string().trim().min(1).max(64).default('OPERATOR_INPUT'),
+    channel: z.string().trim().min(1).max(64).default('CASA_PRO_UI'),
   }).strict(),
 }).strict();
 
@@ -520,11 +580,50 @@ function amountFromSnapshot(
   return { amount, status };
 }
 
+/**
+ * Полный execution context прогона (§21). Отдаётся целиком: аудит должен
+ * видеть, на чём именно считали, не заглядывая в БД руками.
+ */
+function calcRunResponse(run: any) {
+  return {
+    calculation_run_id: run.id,
+    case_id: run.caseId,
+    tenant_id: run.tenantId,
+    tenant_scope_kind: run.tenantScopeKind,
+    actor_id: run.actorId,
+    status: run.status,
+    engine_version: run.engineVersion,
+    decimal_context_version: run.decimalContextVersion,
+    formula_registry_version: run.formulaRegistryVersion,
+    client_profile_snapshot: {
+      snapshot_id: run.clientProfileSnapshotId,
+      snapshot_hash: run.clientProfileSnapshotHash,
+    },
+    participant_scope: run.participantScopeJson,
+    selected_upstream_refs: run.selectedUpstreamRefsJson,
+    requested_calculations: run.requestedCalculationsJson,
+    parameters: run.parametersJson,
+    inputs: run.inputsJson,
+    input_hash: run.inputHash,
+    results: run.resultsJson,
+    blockers: run.blockersJson,
+    idempotency_key: run.idempotencyKey,
+    request_hash: run.requestHash,
+    calculated_at: run.calculatedAt,
+    created_at: run.createdAt,
+    ...(run.snapshot === undefined
+      ? {}
+      : { snapshot: run.snapshot ? calcSnapshotResponse(null, run.snapshot) : null }),
+  };
+}
+
 function calcSnapshotResponse(run: any, snap: any) {
   return {
     id: snap.id,
     run_id: snap.runId,
     case_id: snap.caseId,
+    tenant_id: snap.tenantId,
+    tenant_scope_kind: snap.tenantScopeKind,
     schema_version: snap.schemaVersion,
     engine_version: snap.engineVersion,
     decimal_context_version: snap.decimalContextVersion,
@@ -540,6 +639,7 @@ function calcSnapshotResponse(run: any, snap: any) {
     status: snap.status,
     results: snap.resultsJson,
     replay_payload: snap.replayPayloadJson,
+    calculated_at: snap.calculatedAt,
     created_at: snap.createdAt,
     ...(run ? { run: { id: run.id, status: run.status, created_at: run.createdAt } } : {}),
   };
@@ -575,7 +675,10 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
       }
       if (existing) await tx.mortgageIdempotencyRecord.delete({ where: uniqueWhere });
 
-      const current = await tx.mortgageCase.findUnique({ where: { id: req.params.caseId } });
+      const current = await tx.mortgageCase.findUnique({
+        where: { id: req.params.caseId },
+        include: { parties: true },
+      });
       if (!current || !canAccessMortgageCase(current, req.user!)) return { kind: 'not_found' as const };
 
       // §21: единственный источник данных профиля — опубликованный снапшот M05.
@@ -583,6 +686,18 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
         where: { id: parsed.data.client_profile_snapshot_id },
       });
       if (!cps || cps.caseId !== current.id) return { kind: 'snapshot_not_found' as const };
+
+      // §21 requested_calculations: неизвестная/отключённая формула отвергается,
+      // а не заменяется молча на «похожую».
+      let requestedCalculations;
+      try {
+        requestedCalculations = resolveRequestedCalculations(parsed.data.requested_calculations);
+      } catch (error) {
+        if (error instanceof FormulaNotAllowedError) {
+          return { kind: 'formula_rejected' as const, code: error.code, message: error.message };
+        }
+        throw error;
+      }
 
       const payload = (cps.payloadJson ?? {}) as Record<string, unknown>;
       const targetPrice = amountFromSnapshot(payload.purchase_goal, 'target_price_max');
@@ -607,22 +722,60 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
       };
       const calc = runCalculation(runContext);
 
+      // §21 participant_scope: точные id/роли/included_in_analysis. Основной
+      // заёмщик — сам кейс; добавленные участники включаются в анализ только
+      // явным решением (M01: супруг ≠ созаёмщик), поэтому флаг читается, а не
+      // предполагается.
+      const participantScope = [...current.parties]
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .map((party) => ({
+          participant_id: party.id,
+          client_id: party.clientId,
+          role: party.role,
+          included_in_analysis: party.includedInAnalysis,
+        }));
+
+      const parameters = {
+        annual_nominal_rate_percent: String(parsed.data.parameters.annual_nominal_rate_percent),
+        term_months: parsed.data.parameters.term_months,
+        payment_frequency: parsed.data.parameters.payment_frequency,
+        source: parsed.data.parameters.source,
+        channel: parsed.data.parameters.channel,
+        actor_id: actorId,
+      };
+
       const run = await tx.mortgageCalculationRun.create({
         data: {
           caseId: current.id,
+          // Область доступа M01 = владелец кейса. Отдельной сущности tenant в
+          // модели нет; вид области пишем явно, чтобы аудит видел, что именно
+          // проверялось, а не догадывался по дефолту столбца.
+          tenantId: current.ownerId,
+          tenantScopeKind: 'CASE_OWNER',
           actorId,
           engineVersion: M06_ENGINE_VERSION,
           decimalContextVersion: M06_DECIMAL_CONTEXT_VERSION,
+          formulaRegistryVersion: M06_FORMULA_REGISTRY_VERSION,
           clientProfileSnapshotId: cps.id,
           clientProfileSnapshotHash: cps.contentHash,
+          participantScopeJson: participantScope as unknown as Prisma.InputJsonValue,
+          selectedUpstreamRefsJson: runContext.selectedUpstreamRefs as Prisma.InputJsonValue,
+          requestedCalculationsJson: requestedCalculations as unknown as Prisma.InputJsonValue,
+          parametersJson: parameters as Prisma.InputJsonValue,
           inputsJson: calc.canonicalInputs as Prisma.InputJsonValue,
           inputHash: calc.inputHash,
+          resultsJson: calc.results as unknown as Prisma.InputJsonValue,
+          blockersJson: calc.results.blockers as unknown as Prisma.InputJsonValue,
+          idempotencyKey: key,
+          requestHash,
           status: calc.results.status,
         },
       });
       const snapshot = await tx.mortgageCalculationSnapshot.create({
         data: {
           caseId: current.id,
+          tenantId: current.ownerId,
+          tenantScopeKind: 'CASE_OWNER',
           runId: run.id,
           schemaVersion: M06_SCHEMA_VERSION,
           engineVersion: M06_ENGINE_VERSION,
@@ -654,7 +807,13 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
         },
       });
 
-      const body = { data: calcSnapshotResponse(run, snapshot) };
+      const body = {
+        data: {
+          ...calcSnapshotResponse(run, snapshot),
+          // §21: контекст исполнения предъявляется вместе с результатом.
+          calculation_run: calcRunResponse(run),
+        },
+      };
       await tx.mortgageIdempotencyRecord.create({
         data: {
           actorId, operation, key, requestHash,
@@ -669,6 +828,10 @@ mortgageCasesRouter.post('/:caseId/calculation-runs', async (req: Request, res: 
     if (result.kind === 'conflict') { apiError(res, 409, 'idempotency_conflict', 'Idempotency-Key уже использован с другим запросом'); return; }
     if (result.kind === 'in_progress') { apiError(res, 409, 'request_in_progress', 'Запрос с этим Idempotency-Key ещё выполняется'); return; }
     if (result.kind === 'not_found') { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    if (result.kind === 'formula_rejected') {
+      apiError(res, 422, result.code.toLowerCase(), result.message);
+      return;
+    }
     if (result.kind === 'snapshot_not_found') {
       apiError(res, 409, 'client_profile_snapshot_required',
         'Снапшот профиля M05 не найден для этого кейса: расчёт без опубликованного профиля невозможен');
@@ -698,12 +861,7 @@ mortgageCasesRouter.get('/:caseId/calculation-runs/:runId', async (req: Request,
     if (!run || run.caseId !== req.params.caseId || !canAccessMortgageCase(run.mortgageCase, req.user!)) {
       apiError(res, 404, 'not_found', 'Расчётный прогон не найден'); return;
     }
-    res.json({ data: {
-      id: run.id, case_id: run.caseId, status: run.status,
-      engine_version: run.engineVersion, input_hash: run.inputHash,
-      inputs: run.inputsJson, created_at: run.createdAt,
-      snapshot: run.snapshot ? calcSnapshotResponse(null, run.snapshot) : null,
-    } });
+    res.json({ data: calcRunResponse(run) });
   } catch {
     apiError(res, 500, 'internal_error', 'Не удалось получить прогон');
   }

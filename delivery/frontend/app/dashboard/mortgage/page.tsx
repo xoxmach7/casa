@@ -37,7 +37,7 @@ import {
   publishProfileSnapshot,
   createCalculationRun,
   MortgageCaseApiError,
-  type MortgageCase,
+  type MortgageCaseListItem,
   type ClientProfile,
   type CalculationSnapshot,
   type CalcStatus,
@@ -102,7 +102,7 @@ function StatusPill({ status }: { status: CalcStatus }) {
 // --- Пустое состояние -------------------------------------------------------
 
 function NoCaseSelected({ cases, loading, onPick }: {
-  cases: MortgageCase[]; loading: boolean; onPick: (id: string) => void;
+  cases: MortgageCaseListItem[]; loading: boolean; onPick: (id: string) => void;
 }) {
   return (
     <Card>
@@ -125,10 +125,9 @@ function NoCaseSelected({ cases, loading, onPick }: {
             {cases.map((c) => (
               <li key={c.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <p className="truncate font-medium">Клиент {c.client_id}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {c.id} · {c.status}
-                  </p>
+                  {/* В списке намеренно нет персональных данных: только кейс. */}
+                  <p className="truncate font-medium">Кейс {c.id}</p>
+                  <p className="truncate text-xs text-muted-foreground">{c.status}</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => onPick(c.id)}>Открыть</Button>
               </li>
@@ -148,7 +147,7 @@ function MortgageWorkspace() {
   const searchParams = useSearchParams();
   const caseId = searchParams.get("case");
 
-  const [cases, setCases] = useState<MortgageCase[]>([]);
+  const [cases, setCases] = useState<MortgageCaseListItem[]>([]);
   const [casesLoading, setCasesLoading] = useState(true);
 
   const [profile, setProfile] = useState<ClientProfile | null>(null);
@@ -166,7 +165,7 @@ function MortgageWorkspace() {
   useEffect(() => {
     let alive = true;
     listMortgageCases()
-      .then((rows) => { if (alive) setCases(rows); })
+      .then((page) => { if (alive) setCases(page?.items ?? []); })
       .catch(() => { if (alive) setCases([]); })
       .finally(() => { if (alive) setCasesLoading(false); });
     return () => { alive = false; };

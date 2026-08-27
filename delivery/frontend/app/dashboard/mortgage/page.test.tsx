@@ -64,7 +64,7 @@ const PROFILE = {
 beforeEach(() => {
   vi.clearAllMocks();
   searchParams = new URLSearchParams();
-  api.listMortgageCases.mockResolvedValue([]);
+  api.listMortgageCases.mockResolvedValue({ items: [], nextCursor: null, hasMore: false });
   api.getClientProfile.mockResolvedValue(PROFILE);
   api.publishProfileSnapshot.mockResolvedValue({ id: "cps_1", content_hash: "f".repeat(64) });
 });
@@ -73,9 +73,14 @@ afterEach(() => { vi.clearAllMocks(); });
 
 describe("без выбранного кейса", () => {
   it("показывает нейтральное состояние и ни одной финансовой цифры", async () => {
-    api.listMortgageCases.mockResolvedValue([
-      { id: "case_real_1", client_id: "client_7", status: "DRAFT", version: 1 },
-    ]);
+    api.listMortgageCases.mockResolvedValue({
+      items: [{
+        id: "case_real_1", status: "DRAFT", version: 1,
+        created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-20T00:00:00Z",
+      }],
+      nextCursor: null,
+      hasMore: false,
+    });
     render(<MortgagePage />);
 
     expect(

@@ -30,7 +30,14 @@ function app() {
   return i;
 }
 
-const theCase = { id: 'case_1', clientId: 'client_1', ownerId: 'broker_1', status: 'DRAFT', version: 1 };
+const theCase = {
+  id: 'case_1', clientId: 'client_1', ownerId: 'broker_1', status: 'DRAFT', version: 1,
+  parties: [
+    { id: 'party_1', clientId: 'client_1', role: 'PRIMARY', includedInAnalysis: true },
+    // Супруг добавлен, но НЕ включён в анализ (M01: связь ≠ созаёмщик).
+    { id: 'party_2', clientId: 'client_2', role: 'CO_BORROWER', includedInAnalysis: false },
+  ],
+};
 
 /** Снапшот профиля M05 — единственный источник денег для прогона (§21). */
 const profileSnapshot = {
@@ -197,5 +204,92 @@ describe('M06 calculation-runs API', () => {
     expect(res.body.data.id).toBe('snap_1');
     expect(res.body.data.replay_hash).toBe('c');
     expect(res.body.data.canonicalization_version).toBe('CASA-CJ-1');
+  });
+
+  it('§21: прогон сохраняет полный execution context, а не только суммы', async () => {
+    const res = await request(app())
+      .post('/api/v2/cases/case_1/calculation-runs')
+      .set('Idempotency-Key', 'k-context')
+      .send(runBody);
+    expect(res.status).toBe(201);
+
+    const runArg = txMock.mortgageCalculationRun.create.mock.calls[0][0].data;
+
+    // Область доступа и актор
+    expect(runArg.tenantId).toBe('broker_1');
+    expect(runArg.tenantScopeKind).toBe('CASE_OWNER');
+    expect(runArg.actorId).toBe('broker_1');
+
+    // Профиль
+    expect(runArg.clientProfileSnapshotId).toBe('cps_1');
+    expect(runArg.clientProfileSnapshotHash).toBe('f'.repeat(64));
+
+    // participant_scope: точные id/роли/included_in_analysis, без неявных сумм
+    expect(runArg.participantScopeJson).toEqual([
+      { participant_id: 'party_1', client_id: 'client_1', role: 'PRIMARY', included_in_analysis: true },
+      { participant_id: 'party_2', client_id: 'client_2', role: 'CO_BORROWER', included_in_analysis: false },
+    ]);
+
+    // Выбранные формулы с версиями — сохранены явно
+    expect(runArg.requestedCalculationsJson).toEqual([
+      expect.objectContaining({ formula_id: 'CALC-F-001', formula_version: '1.0.0' }),
+      expect.objectContaining({ formula_id: 'CALC-F-002', formula_version: '1.0.0' }),
+    ]);
+    expect(runArg.formulaRegistryVersion).toBe('m06-registry/1.0.0');
+
+    // Параметры с провенансом
+    expect(runArg.parametersJson).toEqual({
+      annual_nominal_rate_percent: '12.5',
+      term_months: 240,
+      payment_frequency: 'MONTHLY',
+      source: 'OPERATOR_INPUT',
+      channel: 'CASA_PRO_UI',
+      actor_id: 'broker_1',
+    });
+
+    // Upstream refs, результаты, блокеры, идемпотентность
+    expect(runArg.selectedUpstreamRefsJson).toEqual({
+      iin_check_batch_id: null, credit_history_snapshot_id: null, pension_snapshot_id: null,
+    });
+    expect(runArg.resultsJson.annuity.value).toBe('284035.14');
+    expect(runArg.blockersJson).toEqual([]);
+    expect(runArg.idempotencyKey).toBe('k-context');
+    expect(runArg.requestHash).toMatch(/^[0-9a-f]+$/);
+
+    // Снапшот тоже несёт tenant (DC-M06-CAN-0059)
+    const snapArg = txMock.mortgageCalculationSnapshot.create.mock.calls[0][0].data;
+    expect(snapArg.tenantId).toBe('broker_1');
+  });
+
+  it('запрошенные формулы сохраняются в указанном порядке', async () => {
+    const res = await request(app())
+      .post('/api/v2/cases/case_1/calculation-runs')
+      .set('Idempotency-Key', 'k-order')
+      .send({ ...runBody, requested_calculations: ['CALC-F-002', 'CALC-F-001'] });
+    expect(res.status).toBe(201);
+    const runArg = txMock.mortgageCalculationRun.create.mock.calls[0][0].data;
+    expect(runArg.requestedCalculationsJson.map((f: any) => f.formula_id))
+      .toEqual(['CALC-F-002', 'CALC-F-001']);
+  });
+
+  it('запрос отключённой REG-F-001 (банковский КДН) → 422, прогон не создаётся', async () => {
+    const res = await request(app())
+      .post('/api/v2/cases/case_1/calculation-runs')
+      .set('Idempotency-Key', 'k-kdn')
+      .send({ ...runBody, requested_calculations: ['REG-F-001'] });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('formula_disabled');
+    expect(txMock.mortgageCalculationRun.create).not.toHaveBeenCalled();
+    expect(txMock.mortgageCalculationSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it('запрос неизвестной формулы → 422, прогон не создаётся', async () => {
+    const res = await request(app())
+      .post('/api/v2/cases/case_1/calculation-runs')
+      .set('Idempotency-Key', 'k-unknown')
+      .send({ ...runBody, requested_calculations: ['CALC-F-999'] });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('unknown_formula');
+    expect(txMock.mortgageCalculationRun.create).not.toHaveBeenCalled();
   });
 });

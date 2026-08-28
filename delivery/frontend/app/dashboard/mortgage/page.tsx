@@ -46,6 +46,7 @@ import {
 } from "@/lib/mortgage/case-api";
 import { legacyMortgageToolsEnabled } from "@/lib/mortgage/release-flags";
 import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
+import { DocumentIntakeSection } from "@/components/mortgage/DocumentIntakeSection";
 
 // --- Ярлыки -----------------------------------------------------------------
 
@@ -335,7 +336,15 @@ function MortgageWorkspace() {
             </div>
           </Card>
 
-          {/* Профиль (M05) */}
+          {/* Шаг 1. ИИН и проверка по официальным реестрам (M02) */}
+          {primaryPartyId && (
+            <SourceCheckSection caseId={profile.case_id} partyId={primaryPartyId} />
+          )}
+
+          {/* Шаг 2. Документы клиента (M03 / M04) */}
+          <DocumentIntakeSection caseId={profile.case_id} />
+
+          {/* Шаг 3. Профиль (M05) */}
           <Card>
             <CardHead
               icon={<ShieldCheck className="h-5 w-5" />}
@@ -389,16 +398,11 @@ function MortgageWorkspace() {
             </div>
           </Card>
 
-          {/* Проверка по официальным реестрам (M02) */}
-          {primaryPartyId && (
-            <SourceCheckSection caseId={profile.case_id} partyId={primaryPartyId} />
-          )}
-
           {/* Расчёт (M06) */}
           <Card>
             <CardHead
               icon={<Calculator className="h-5 w-5" />}
-              title="Расчёт (M06)"
+              title="Шаг 4. Расчёт (M06)"
               sub="CALC-F-001 required_financing = max(цена − взнос, 0); CALC-F-002 аннуитетный платёж. Считает сервер."
             />
             <div className="grid gap-5 px-5 py-4 md:grid-cols-2">

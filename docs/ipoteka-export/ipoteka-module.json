@@ -1,0 +1,995 @@
+{
+  "_note": "Опись ипотечного модуля CASA Pro для независимой сверки. Все статусы получены из кода на указанном коммите, не из отчётов.",
+  "generated_at_utc": "2026-08-28T17:09:49Z",
+  "repository": {
+    "commit": "9c3a2cb13242389f9dddeda2686bd59457333c5c",
+    "branch": "master",
+    "subject": "feat(РёРїРѕС‚РµРєР°): РєР°Р»СЊРєСѓР»СЏС‚РѕСЂ Рё РїСЂРѕРіСЂР°РјРјС‹ РІРѕР·РІСЂР°С‰РµРЅС‹ вЂ” РїРµСЂРµСЃРѕР±СЂР°РЅС‹ РЅР° РґРІРёР¶РєРµ M06"
+  },
+  "delivery_status": {
+    "vocabulary": [
+      "IMPLEMENTED_IN_BRANCH",
+      "TESTED_IN_BRANCH",
+      "PRODUCTION_VERIFIED",
+      "ACCEPTANCE_PASS"
+    ],
+    "note": "Это РАЗНЫЕ статусы. PRODUCTION_VERIFIED не проставлен нигде: аутентифицированный smoke на реальном кейсе не выполнялся — нет тестовой учётной записи.",
+    "modules": {
+      "M01_client_and_consent": {
+        "IMPLEMENTED_IN_BRANCH": "PARTIAL",
+        "TESTED_IN_BRANCH": "PARTIAL",
+        "PRODUCTION_VERIFIED": false,
+        "ACCEPTANCE_PASS": false,
+        "note": "есть кейс, участники, привязка согласия, consent-preflight, included_in_analysis; identity-versions и lifecycle согласий (выдача, подтверждение, отзыв) не реализованы"
+      },
+      "M02_iin_check_R0": {
+        "IMPLEMENTED_IN_BRANCH": true,
+        "TESTED_IN_BRANCH": true,
+        "PRODUCTION_VERIFIED": false,
+        "ACCEPTANCE_PASS": false,
+        "note": "R0 работает без единого внешнего production-вызова, коннекторы deny-by-default. Открыто до DoD: traceability и RG5, schema quarantine, админский CRUD реестра, движок ретенции"
+      },
+      "M03_credit_history": {
+        "IMPLEMENTED_IN_BRANCH": false,
+        "TESTED_IN_BRANCH": false,
+        "PRODUCTION_VERIFIED": false,
+        "ACCEPTANCE_PASS": false,
+        "note": "канонических моделей и API нет; на экране работает приём PDF через прежний парсер"
+      },
+      "M04_pension": {
+        "IMPLEMENTED_IN_BRANCH": false,
+        "TESTED_IN_BRANCH": false,
+        "PRODUCTION_VERIFIED": false,
+        "ACCEPTANCE_PASS": false,
+        "note": "канонических моделей и API нет; на экране работает приём PDF через прежний парсер"
+      },
+      "M05_client_profile": {
+        "IMPLEMENTED_IN_BRANCH": "PARTIAL",
+        "TESTED_IN_BRANCH": "PARTIAL",
+        "PRODUCTION_VERIFIED": false,
+        "ACCEPTANCE_PASS": false,
+        "note": "purchase_goal, источники взноса, дохода, активов и обязательств, агрегаты, иммутабельный снапшот. Нет: household, provenance, conflicts и corrections, динамической анкеты, reconcile, completeness gates, PATCH под-ресурсов"
+      },
+      "M06_calculation_engine": {
+        "IMPLEMENTED_IN_BRANCH": true,
+        "TESTED_IN_BRANCH": true,
+        "PRODUCTION_VERIFIED": false,
+        "ACCEPTANCE_PASS": false,
+        "note": "CALC-F-001/002 и CASA-CJ-1 §29; три golden-хэша воспроизводятся. RG11 НЕ закрыт: те же хэши должны получиться из сквозного M01-M06 E2E, которого нет"
+      }
+    }
+  },
+  "api_contracts": {
+    "canonical_total": 45,
+    "summary": {
+      "DONE": 14,
+      "MISSING": 24,
+      "PARTIAL_PATH_DEVIATION": 7
+    },
+    "by_module": {
+      "M01": {
+        "total": 7,
+        "DONE": 2,
+        "PARTIAL_PATH_DEVIATION": 1,
+        "MISSING": 4
+      },
+      "M02": {
+        "total": 6,
+        "DONE": 6,
+        "PARTIAL_PATH_DEVIATION": 0,
+        "MISSING": 0
+      },
+      "M03": {
+        "total": 11,
+        "DONE": 0,
+        "PARTIAL_PATH_DEVIATION": 0,
+        "MISSING": 11
+      },
+      "M04": {
+        "total": 8,
+        "DONE": 0,
+        "PARTIAL_PATH_DEVIATION": 0,
+        "MISSING": 8
+      },
+      "M05": {
+        "total": 10,
+        "DONE": 3,
+        "PARTIAL_PATH_DEVIATION": 6,
+        "MISSING": 1
+      },
+      "M06": {
+        "total": 3,
+        "DONE": 3,
+        "PARTIAL_PATH_DEVIATION": 0,
+        "MISSING": 0
+      }
+    },
+    "contracts": [
+      {
+        "api_id": "API-M01-001",
+        "module_id": "M01",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:106",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M01-002",
+        "module_id": "M01",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{case_id}/participants",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:234",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M01-003",
+        "module_id": "M01",
+        "method": "POST",
+        "canonical_path": "/api/v2/participants/{participant_id}/identity-versions",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M01-004",
+        "module_id": "M01",
+        "method": "POST",
+        "canonical_path": "/api/v2/participants/{participant_id}/consent-requests",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M01-005",
+        "module_id": "M01",
+        "method": "POST",
+        "canonical_path": "/api/v2/consents/{consent_id}:record-confirmation",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M01-006",
+        "module_id": "M01",
+        "method": "POST",
+        "canonical_path": "/api/v2/consents/{consent_id}:revoke",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M01-007",
+        "module_id": "M01",
+        "method": "POST",
+        "canonical_path": "/api/v2/consent-preflight",
+        "status": "PARTIAL_PATH_DEVIATION",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:1151",
+        "deviation": "case-scoped вместо корневого /consent-preflight"
+      },
+      {
+        "api_id": "API-M02-001",
+        "module_id": "M02",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{case_id}/iin-check-batches",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/m02-iin-check.routes.ts:285",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M02-002",
+        "module_id": "M02",
+        "method": "GET",
+        "canonical_path": "/api/v2/iin-check-batches/{batch_id}",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/m02-iin-check.routes.ts:471",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M02-003",
+        "module_id": "M02",
+        "method": "GET",
+        "canonical_path": "/api/v2/iin-check-batches/{batch_id}/results",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/m02-iin-check.routes.ts:483",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M02-004",
+        "module_id": "M02",
+        "method": "POST",
+        "canonical_path": "/api/v2/iin-check-results/{result_id}/retry",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/m02-iin-check.routes.ts:505",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M02-005",
+        "module_id": "M02",
+        "method": "POST",
+        "canonical_path": "/api/v2/manual-check-tasks/{task_id}/confirm",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/m02-iin-check.routes.ts:580",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M02-006",
+        "module_id": "M02",
+        "method": "POST",
+        "canonical_path": "/api/v2/iin-check-batches/{batch_id}/refresh",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/m02-iin-check.routes.ts:713",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-001",
+        "module_id": "M03",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{caseId}/participants/{participantId}/credit-reports/upload-grant",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-002",
+        "module_id": "M03",
+        "method": "POST",
+        "canonical_path": "/api/v2/credit-reports/{reportId}/versions/{versionId}:process",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-003",
+        "module_id": "M03",
+        "method": "GET",
+        "canonical_path": "/api/v2/credit-reports/{reportId}",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-004",
+        "module_id": "M03",
+        "method": "GET",
+        "canonical_path": "/api/v2/credit-reports/{reportId}/versions/{versionId}/results",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-005",
+        "module_id": "M03",
+        "method": "GET",
+        "canonical_path": "/api/v2/credit-reports/{reportId}/review-tasks",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-006",
+        "module_id": "M03",
+        "method": "POST",
+        "canonical_path": "/api/v2/credit-reports/{reportId}/review-tasks/{taskId}:resolve",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-007",
+        "module_id": "M03",
+        "method": "POST",
+        "canonical_path": "/api/v2/credit-reports/{reportId}/lineage-links/{linkId}:decide",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-008",
+        "module_id": "M03",
+        "method": "POST",
+        "canonical_path": "/api/v2/credit-reports/{reportId}:verify-authenticity-manually",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-009",
+        "module_id": "M03",
+        "method": "POST",
+        "canonical_path": "/api/v2/credit-reports/{reportId}:publish-snapshot",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-010",
+        "module_id": "M03",
+        "method": "GET",
+        "canonical_path": "/api/v2/credit-history-snapshots/{snapshotId}",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M03-011",
+        "module_id": "M03",
+        "method": "POST",
+        "canonical_path": "/api/v2/credit-reports/{reportId}:supersede",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-001",
+        "module_id": "M04",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{caseId}/pension-documents",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-002",
+        "module_id": "M04",
+        "method": "POST",
+        "canonical_path": "/api/v2/pension-documents/{id}:complete-upload",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-003",
+        "module_id": "M04",
+        "method": "POST",
+        "canonical_path": "/api/v2/pension-documents/{id}:parse",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-004",
+        "module_id": "M04",
+        "method": "GET",
+        "canonical_path": "/api/v2/pension-documents/{id}/review",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-005",
+        "module_id": "M04",
+        "method": "PATCH",
+        "canonical_path": "/api/v2/pension-records/{id}",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-006",
+        "module_id": "M04",
+        "method": "POST",
+        "canonical_path": "/api/v2/pension-documents/{id}:confirm",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-007",
+        "module_id": "M04",
+        "method": "POST",
+        "canonical_path": "/api/v2/pension-documents/{id}:publish-snapshot",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M04-008",
+        "module_id": "M04",
+        "method": "GET",
+        "canonical_path": "/api/v2/pension-contribution-snapshots/{id}",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M05-001",
+        "module_id": "M05",
+        "method": "GET",
+        "canonical_path": "/api/v2/cases/{caseId}/client-profile",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:952",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M05-002",
+        "module_id": "M05",
+        "method": "PATCH",
+        "canonical_path": "/api/v2/cases/{caseId}/client-profile",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:997",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M05-003",
+        "module_id": "M05",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{caseId}/participants",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:234",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M05-004",
+        "module_id": "M05",
+        "method": "POST/PATCH",
+        "canonical_path": "/api/v2/employments",
+        "status": "PARTIAL_PATH_DEVIATION",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:1073",
+        "deviation": "case-scoped вместо /employments; PATCH-вариант не реализован"
+      },
+      {
+        "api_id": "API-M05-005",
+        "module_id": "M05",
+        "method": "POST/PATCH",
+        "canonical_path": "/api/v2/income-sources",
+        "status": "PARTIAL_PATH_DEVIATION",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:1068",
+        "deviation": "case-scoped вместо /income-sources; PATCH-вариант не реализован"
+      },
+      {
+        "api_id": "API-M05-006",
+        "module_id": "M05",
+        "method": "POST/PATCH",
+        "canonical_path": "/api/v2/assets",
+        "status": "PARTIAL_PATH_DEVIATION",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:1069",
+        "deviation": "case-scoped вместо /assets; PATCH-вариант не реализован"
+      },
+      {
+        "api_id": "API-M05-007",
+        "module_id": "M05",
+        "method": "POST/PATCH",
+        "canonical_path": "/api/v2/down-payment-sources",
+        "status": "PARTIAL_PATH_DEVIATION",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:1067",
+        "deviation": "case-scoped вместо /down-payment-sources; PATCH-вариант не реализован"
+      },
+      {
+        "api_id": "API-M05-008",
+        "module_id": "M05",
+        "method": "POST/PATCH",
+        "canonical_path": "/api/v2/non-credit-commitments",
+        "status": "PARTIAL_PATH_DEVIATION",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:1070",
+        "deviation": "case-scoped вместо /non-credit-commitments; PATCH-вариант не реализован"
+      },
+      {
+        "api_id": "API-M05-009",
+        "module_id": "M05",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{caseId}/client-profile:reconcile",
+        "status": "MISSING",
+        "implementation": null,
+        "deviation": null
+      },
+      {
+        "api_id": "API-M05-010",
+        "module_id": "M05",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{caseId}/client-profile:publish-snapshot",
+        "status": "PARTIAL_PATH_DEVIATION",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:1091",
+        "deviation": "сегмент /publish-snapshot вместо action-формы :publish-snapshot"
+      },
+      {
+        "api_id": "API-M06-001",
+        "module_id": "M06",
+        "method": "POST",
+        "canonical_path": "/api/v2/cases/{caseId}/calculation-runs",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:649",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M06-002",
+        "module_id": "M06",
+        "method": "GET",
+        "canonical_path": "/api/v2/cases/{caseId}/calculation-runs/{runId}",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:855",
+        "deviation": null
+      },
+      {
+        "api_id": "API-M06-003",
+        "module_id": "M06",
+        "method": "GET",
+        "canonical_path": "/api/v2/cases/{caseId}/calculation-snapshots/{snapshotId}",
+        "status": "DONE",
+        "implementation": "delivery/backend/src/routes/mortgage-cases.routes.ts:871",
+        "deviation": null
+      }
+    ],
+    "auxiliary_routes_outside_45": [
+      {
+        "method": "GET",
+        "path": "/api/v2/cases",
+        "file": "delivery/backend/src/routes/mortgage-cases.routes.ts",
+        "line": 370
+      },
+      {
+        "method": "GET",
+        "path": "/api/v2/cases/:id",
+        "file": "delivery/backend/src/routes/mortgage-cases.routes.ts",
+        "line": 407
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/v2/cases/:id",
+        "file": "delivery/backend/src/routes/mortgage-cases.routes.ts",
+        "line": 426
+      },
+      {
+        "method": "GET",
+        "path": "/api/v2/source-registry",
+        "file": "delivery/backend/src/routes/m02-iin-check.routes.ts",
+        "line": 258
+      },
+      {
+        "method": "POST",
+        "path": "/api/v2/calculation-tools/quote",
+        "file": "delivery/backend/src/routes/mortgage-calc-tools.routes.ts",
+        "line": 115
+      },
+      {
+        "method": "POST",
+        "path": "/api/v2/calculation-tools/program-quotes",
+        "file": "delivery/backend/src/routes/mortgage-calc-tools.routes.ts",
+        "line": 142
+      }
+    ],
+    "governance": [
+      {
+        "id": "DEC-API-001",
+        "status": "APPROVED",
+        "decision": "канонический корень кейса = /api/v2/cases"
+      },
+      {
+        "id": "DEC-API-002",
+        "status": "APPROVED",
+        "decision": "GET /api/v2/cases — вспомогательный листинг, НЕ 46-й контракт"
+      },
+      {
+        "id": "DEC-API-003",
+        "status": "CANDIDATE",
+        "decision": "/api/v2/calculation-tools/* — калькулятор брокера; артефактов кейса не создаёт, хэшей не имеет, evidence не является"
+      }
+    ]
+  },
+  "m06_engine": {
+    "engine_version": "casa-calc-engine/1.0.0",
+    "schema_version": "casa.calculation_snapshot/1.0.0",
+    "formula_registry_version": "m06-registry/1.0.0",
+    "decimal_context_version": "casa.decimal_context/p50-half-even__money-half-up/1.0.0",
+    "canonicalization": "CASA-CJ-1 (M06 Production Spec v1.4, §29)",
+    "precision": "внутри 50 знаков ROUND_HALF_EVEN без промежуточной квантизации; персист Decimal(20,2) ROUND_HALF_UP; показ целые тенге ROUND_HALF_UP",
+    "formulas": [
+      {
+        "id": "CALC-F-001",
+        "machine_name": "casa.required_financing",
+        "version": "1.0.0",
+        "status": "APPROVED"
+      },
+      {
+        "id": "CALC-F-002",
+        "machine_name": "casa.annuity_payment_by_parameters",
+        "version": "1.0.0",
+        "status": "APPROVED"
+      },
+      {
+        "id": "REG-F-001",
+        "machine_name": "reg.kz.kdn.bank",
+        "version": "2025-52/2026-92",
+        "status": "DISABLED",
+        "note": "банковский КДН: норматив №52 в редакции №92; правило 0.25 из №86 действует с 01.07.2027. В релизе 1.0 значение null, REGULATORY_INPUT_REQUIRED"
+      }
+    ],
+    "golden_fixture": {
+      "id": "FX-CALC-GOLDEN-001",
+      "reproduced_by_engine": true,
+      "verified_in": "delivery/backend/src/__tests__/m06-golden.test.ts",
+      "input_hash": "cb88c168e277aeae3d28d91f46643999fad2f6284b9a31c555f3e3665953fb47",
+      "output_hash": "c1674aea4b8d1bc8bbc9fc8d1ecb76db85ee28f833be1971b81f19d2db642e60",
+      "replay_hash": "a7be2c777298f1d563e3f794fbe2f0b13b59549dda3f2dafc0deaee321693737",
+      "required_financing": "25000000.00",
+      "annuity_raw": "284035.13742859237380498879610315991992807755394768",
+      "annuity_persisted": "284035.14",
+      "annuity_display": "284035 ₸"
+    },
+    "hash_definition": {
+      "input_hash": "SHA-256(canonical(inputs))",
+      "output_hash": "SHA-256(canonical(outputs))",
+      "replay_hash": "SHA-256(canonical(replay payload по allowlist §29))",
+      "canonical_rules": [
+        "рекурсивная лексикографическая сортировка ключей",
+        "порядок массивов сохраняется",
+        "UTF-8, Unicode NFC",
+        "без незначащих пробелов",
+        "money/percent/ratio — десятичные строки, не binary float"
+      ],
+      "replay_allowlist": [
+        "schema_version",
+        "case_id",
+        "client_profile_snapshot",
+        "selected_upstream_refs",
+        "formula_registry_version",
+        "formula_versions",
+        "inputs",
+        "outputs",
+        "blockers",
+        "engine_version",
+        "decimal_context_version"
+      ]
+    }
+  },
+  "m02_r0": {
+    "registry_version": "casa.m02.source-registry/1.0.0",
+    "manifest_version": "casa.m02.manifest/1.0.0",
+    "consent_purpose": "mortgage_preanalysis_official_registry_checks",
+    "sources_total": 19,
+    "required_checks_in_manifest_v1": 7,
+    "any_connector_enabled": false,
+    "smartbridge_required_for_R0": false,
+    "iin_storage": "полный ИИН не хранится: маска (две последние цифры) и HMAC-токен поиска",
+    "not_found_rule": "completed + документированный no-match конкретного источника + совпадение upstream-кода + evidence. HTTP 404 и 403, CAPTCHA, таймаут, пустая страница, дрейф схемы, null и незавершённая ручная задача — НИКОГДА не not_found",
+    "clean_rule": "COMPLETE_NO_RECORDS только при полном доказанном покрытии; любой manual, unavailable, blocked, unknown, error или stale даёт PARTIAL"
+  },
+  "deliberately_absent": [
+    {
+      "item": "числовой КДН",
+      "source": "M06 §8, §10-§11",
+      "reason": "REG-F-001 DISABLED; нормативные входы для релиза 1.0 не определены"
+    },
+    {
+      "item": "принимаемый банком доход",
+      "source": "M06 §17",
+      "reason": "запрещено передавать как факт"
+    },
+    {
+      "item": "вердикты программ подходит/не подходит",
+      "source": "MASTER v1.2",
+      "reason": "Bank Rules — релиз 1.1; соответствие требованиям определяет банк"
+    },
+    {
+      "item": "сценарии",
+      "source": "MASTER v1.2",
+      "reason": "релиз 1.2"
+    },
+    {
+      "item": "вероятность одобрения и CASA Score",
+      "source": "M06 §17",
+      "reason": "запрещено отдавать как факт"
+    },
+    {
+      "item": "публичное ипотечное заключение /z/...",
+      "source": "MASTER v1.2",
+      "reason": "клиентское заключение — релиз 1.3. Выдача закрыта флагом MORTGAGE_PUBLIC_CONCLUSION_ENABLED (по умолчанию OFF): 410 и нейтральная страница. Токены и история НЕ удалены"
+    },
+    {
+      "item": "переплата и общая сумма выплат",
+      "source": "M06 §8, §12",
+      "reason": "таких формул нет в утверждённом реестре; по §12 разработчик не вправе утверждать формулы сам"
+    },
+    {
+      "item": "расчёт на клиенте (Math.pow)",
+      "source": "M06 §18",
+      "reason": "единственный numeric authority — серверный детерминированный движок"
+    }
+  ],
+  "open_items": [
+    "RG11: golden-хэши получены unit-тестом; сквозной M01-M06 E2E не построен",
+    "M02: traceability T-001…T-048 и AT-IIN-001…020 не оформлена, RG5 без evidence",
+    "M02: schema quarantine не реализован (P1); реестр версионирован в коде, админского CRUD нет",
+    "tenant_id: отдельной сущности арендатора в модели нет, областью доступа является владелец кейса (tenant_scope_kind=CASE_OWNER) — требует решения владельца",
+    "selected_upstream_refs в снапшоте M05 = null, пока M02/M03/M04 не связаны; фиктивные id запрещены",
+    "PRODUCTION_VERIFIED недостижим без тестовой учётной записи брокера",
+    "PATCH-варианты API-M05-004…008 не реализованы",
+    "7 контрактов реализованы по иной форме пути — статус PARTIAL_PATH_DEVIATION"
+  ],
+  "verification": {
+    "backend_tests": "789 passed",
+    "frontend_tests": "70 passed",
+    "typecheck": "backend и frontend чисто",
+    "frontend_build": "ok",
+    "migrations": "применяются на чистой БД, дрейфа схемы нет",
+    "how_to_verify_yourself": [
+      "cd delivery/backend && npm ci && npx prisma generate && npx vitest run",
+      "cd delivery/frontend && npm ci && npx vitest run && npm run build",
+      "golden-хэши: npx vitest run src/__tests__/m06-golden.test.ts",
+      "целостность файлов: сверить sha256 из files[] этой описи"
+    ]
+  },
+  "files": [
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/backend/src/lib/mortgage-m02/iin.ts",
+      "lines": 122,
+      "bytes": 5985,
+      "sha256": "75d7b3bfef36bdd2798a766c4c6c825ba7d089b39c0c64760363ffb16058a3f6"
+    },
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/backend/src/lib/mortgage-m02/source-registry.ts",
+      "lines": 454,
+      "bytes": 17473,
+      "sha256": "cc02082afe412b018f6fdc98f2fcca72eccf9e67192e5b79756adf8634f6895d"
+    },
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/backend/src/lib/mortgage-m02/not-found-mapper.ts",
+      "lines": 283,
+      "bytes": 13364,
+      "sha256": "8f4adec708d92045c3bc6d193a94705d16dff1685289321b46bbdf87cb16d89f"
+    },
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/backend/src/lib/mortgage-m02/coverage.ts",
+      "lines": 229,
+      "bytes": 9772,
+      "sha256": "f7cd35278e70e4634d0b1e96a33e39c16d39cea96a22a6d6a84c352833526ba5"
+    },
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/backend/src/lib/mortgage-m02/batch.service.ts",
+      "lines": 282,
+      "bytes": 11834,
+      "sha256": "26259f97f62160d8def131100b5fe6ac0c100981c1e95690b2d2513b5d4f294b"
+    },
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/backend/src/routes/m02-iin-check.routes.ts",
+      "lines": 864,
+      "bytes": 36618,
+      "sha256": "2d1cf27da5397b21c6905d76f21370df1c1c1e21f292b24ef06359c81c9d697d"
+    },
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/frontend/lib/mortgage/m02-api.ts",
+      "lines": 178,
+      "bytes": 6146,
+      "sha256": "337c60e2464d355a0dd9fda608eeb4af257685e223417283b26ec126b918d9c4"
+    },
+    {
+      "group": "M02_iin_check",
+      "path": "delivery/frontend/components/mortgage/SourceCheckSection.tsx",
+      "lines": 378,
+      "bytes": 17737,
+      "sha256": "21ebf04556ea74b3c6909974f75f1a45ed27b3c761c5ed6ff3674f54c5b07b72"
+    },
+    {
+      "group": "M06_calculation_engine",
+      "path": "delivery/backend/src/lib/mortgage-workspace/m06-calc.ts",
+      "lines": 206,
+      "bytes": 8883,
+      "sha256": "9d5b50e10f1c6e36677e965aa767bc1c1311f992ef2184e127e5fa665193acd5"
+    },
+    {
+      "group": "M06_calculation_engine",
+      "path": "delivery/backend/src/lib/mortgage-workspace/casa-cj1.ts",
+      "lines": 220,
+      "bytes": 9193,
+      "sha256": "a4ef7256c64befab63243739a46f548210fc422e7645e3012c9cd5a047156042"
+    },
+    {
+      "group": "M06_calculation_engine",
+      "path": "delivery/backend/src/lib/mortgage-workspace/mortgage-calc.service.ts",
+      "lines": 292,
+      "bytes": 12675,
+      "sha256": "20b747de03214b2a088f34ea67b142983291c883927cfa0547da12d09911d979"
+    },
+    {
+      "group": "M06_calculation_engine",
+      "path": "delivery/backend/src/lib/mortgage-workspace/m06-formula-registry.ts",
+      "lines": 128,
+      "bytes": 4945,
+      "sha256": "afd409f86d187e7dedda402e1efe76aa0fc4a5d5f11d21ea22afd0cd7078fd05"
+    },
+    {
+      "group": "M01_M05_M06_api",
+      "path": "delivery/backend/src/routes/mortgage-cases.routes.ts",
+      "lines": 1183,
+      "bytes": 53690,
+      "sha256": "808b4ac3b6ca652ceb7e40646b030ef547b0093966c675832ca4be26746c1370"
+    },
+    {
+      "group": "M01_M05_M06_api",
+      "path": "delivery/backend/src/lib/mortgage-case.service.ts",
+      "lines": 66,
+      "bytes": 2427,
+      "sha256": "c79643de1777627c8b9391775af48d3e82670c5afbc09da6eddd54221f427739"
+    },
+    {
+      "group": "M01_M05_M06_api",
+      "path": "delivery/backend/src/lib/mortgage-workspace/mortgage-profile.service.ts",
+      "lines": 74,
+      "bytes": 3043,
+      "sha256": "a327d7bc32ff46ee33125878cb4d3a17d7b7a13c179ec403b6ba7dfd110d89ad"
+    },
+    {
+      "group": "calculator_tools",
+      "path": "delivery/backend/src/routes/mortgage-calc-tools.routes.ts",
+      "lines": 198,
+      "bytes": 9447,
+      "sha256": "a35824b3b6494c00ba1ddc9bd24b1e961bab83cb5f34eed33dc72e93e7dfcf96"
+    },
+    {
+      "group": "calculator_tools",
+      "path": "delivery/frontend/lib/mortgage/calc-tools-api.ts",
+      "lines": 96,
+      "bytes": 3362,
+      "sha256": "c2780dbaba382a66d4eb6a085633db27f7ec9938f80c2c151c7757d0463af85b"
+    },
+    {
+      "group": "calculator_tools",
+      "path": "delivery/frontend/app/dashboard/mortgage/tools/page.tsx",
+      "lines": 297,
+      "bytes": 14245,
+      "sha256": "fcfb1da33b0c7115fd472be1a5ffc3c529e9206347db259771904cf4210544b6"
+    },
+    {
+      "group": "calculator_tools",
+      "path": "delivery/frontend/components/apartments/MortgageQuickCalcDialog.tsx",
+      "lines": 270,
+      "bytes": 11198,
+      "sha256": "54c9c7eb7a1705c4308cce9d99476a8fd18d6814304125187d7abf0544cf9e76"
+    },
+    {
+      "group": "broker_screen",
+      "path": "delivery/frontend/app/dashboard/mortgage/page.tsx",
+      "lines": 579,
+      "bytes": 26920,
+      "sha256": "52af96b477da6ef38b283a4e503342c308c9e0be21759f22c35de6ff970dc85a"
+    },
+    {
+      "group": "broker_screen",
+      "path": "delivery/frontend/lib/mortgage/case-api.ts",
+      "lines": 298,
+      "bytes": 9881,
+      "sha256": "a19993a0a1d957403b56d90cbd00f418f33d7fc8544600efc44ada2ed5d91a48"
+    },
+    {
+      "group": "broker_screen",
+      "path": "delivery/frontend/components/mortgage/DocumentIntakeSection.tsx",
+      "lines": 192,
+      "bytes": 8211,
+      "sha256": "389a1146b215780996d10598269ddfa04ed0bd05c7f464b6ecf4a66d302191b4"
+    },
+    {
+      "group": "public_conclusion_gate",
+      "path": "delivery/backend/src/routes/public-mortgage.routes.ts",
+      "lines": 168,
+      "bytes": 7136,
+      "sha256": "d22a7951d981f21b9d51d9e9e284741d6e98a1ef5490f0469f24f79f04487edc"
+    },
+    {
+      "group": "public_conclusion_gate",
+      "path": "delivery/frontend/app/z/[token]/page.tsx",
+      "lines": 56,
+      "bytes": 2920,
+      "sha256": "62c0f891f2fb500047471054f0fb14a35f382beec94fbbf676b140513878c67e"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/m06-golden.test.ts",
+      "lines": 183,
+      "bytes": 8548,
+      "sha256": "d9a56d3bd8070b98d362f1507991642c119545a93e2c02908fd56689cc042ec5"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/m02-core.test.ts",
+      "lines": 411,
+      "bytes": 18410,
+      "sha256": "fe481b19ab80621797f5e78a45c5841b4f2932fe5249dc163170168288dda9ea"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/m02-iin-check.routes.test.ts",
+      "lines": 561,
+      "bytes": 25471,
+      "sha256": "69773e5fc3f326394df89700f988816c64d1d394cc5d48ab0bfdaea9c111823e"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/m02-prohibited-automation.test.ts",
+      "lines": 93,
+      "bytes": 4766,
+      "sha256": "6acbda9af2deae5885618da3071d9e8b2377074d19cf20b518aa0431ff086d1c"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/mortgage-calc.routes.test.ts",
+      "lines": 296,
+      "bytes": 14316,
+      "sha256": "a1f0743c9d765870a658e0eba6f7290c6104eb7207d729ecae115cd18e75e044"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/mortgage-calc.service.test.ts",
+      "lines": 88,
+      "bytes": 4248,
+      "sha256": "1e1a8718622555744be743ba36c29b1345d4a40c31d0c4715b1929c4d54d5246"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/mortgage-calc-tools.routes.test.ts",
+      "lines": 156,
+      "bytes": 7663,
+      "sha256": "0905da28e1d7ffc92ecfcaed8c7639b6a44292cee5adf08ae1750a2c6c40cb2a"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/mortgage-profile.routes.test.ts",
+      "lines": 145,
+      "bytes": 7277,
+      "sha256": "6a7490eecff886b58a78f275b236047bd06ebff22c4be379e57643a46d9f23d4"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/mortgage-cases-list.routes.test.ts",
+      "lines": 139,
+      "bytes": 5998,
+      "sha256": "654db0b695a779ab01662e2952279396551a0644db738a623802cc1725808f78"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/m06-formula-registry.test.ts",
+      "lines": 81,
+      "bytes": 3380,
+      "sha256": "5ccb67ff16d894c82e57a127e985e3818fd858d552ed18994602398a9a59ff7e"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/backend/src/__tests__/public-mortgage-conclusion-gate.test.ts",
+      "lines": 66,
+      "bytes": 3165,
+      "sha256": "cdd6966516ae207ebeaab51c04495d8b54fefbb689b09894fa00f54924452668"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/frontend/app/dashboard/mortgage/page.test.tsx",
+      "lines": 195,
+      "bytes": 9407,
+      "sha256": "713e9dd015b7978f9e391f50ad121c443119ef4abb9b31b2201055c5346ee11b"
+    },
+    {
+      "group": "tests",
+      "path": "delivery/frontend/components/mortgage/SourceCheckSection.test.tsx",
+      "lines": 208,
+      "bytes": 10336,
+      "sha256": "468bf13e01cb8a4c5ef3a515a0d9f1ed68e068a637e0333f7c227571c70e206c"
+    },
+    {
+      "group": "migrations",
+      "path": "delivery/backend/prisma/migrations/20260827120000_m06_casa_cj1_replay_and_purchase_goal/migration.sql",
+      "lines": 82,
+      "bytes": 4012,
+      "sha256": "a810ed26e08fb1755b1f6680fabd3d058e972abee862d6d1345e55b710cabfd0"
+    },
+    {
+      "group": "migrations",
+      "path": "delivery/backend/prisma/migrations/20260827140000_m06_full_run_context/migration.sql",
+      "lines": 91,
+      "bytes": 4425,
+      "sha256": "b913da31c1faab86fac7d6055bdbe931a33cd795ec5eab8403c26bfb281e218c"
+    },
+    {
+      "group": "migrations",
+      "path": "delivery/backend/prisma/migrations/20260827160000_m02_iin_check_r0/migration.sql",
+      "lines": 181,
+      "bytes": 7467,
+      "sha256": "142d90ab1c8f333ffc2446ec0ae118fcda264494fe5044d23a6ac29ed61ded53"
+    }
+  ]
+}

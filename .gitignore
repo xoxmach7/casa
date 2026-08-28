@@ -24,3 +24,4 @@ server.txt
 # Реальные персональные документы (ПКБ/ЕНПФ) для калибровки парсера — НЕ коммитить (PII)
 docs/handoff/PKO.pdf
 docs/handoff/OPVReport-*.pdf
+docs/ipoteka-export/*.zip

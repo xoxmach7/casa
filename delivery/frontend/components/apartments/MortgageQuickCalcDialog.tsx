@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
-import { legacyMortgageToolsEnabled } from "@/lib/mortgage/release-flags"
+import { getQuote, type Quote } from "@/lib/mortgage/calc-tools-api"
 import type { ApartmentCardData } from "./ApartmentCard"
 
 interface MortgageProgram {
@@ -38,6 +38,13 @@ function formatPrice(price: number) {
   }).format(price)
 }
 
+/** Показ денежной строки сервера: группировка разрядов, без пересчёта. */
+function formatKzt(serverValue: string): string {
+  const [whole, fraction] = serverValue.split(".")
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+  return `${grouped}${fraction && fraction !== "00" ? `,${fraction}` : ""} ₸`
+}
+
 export function MortgageQuickCalcDialog({ apartment, onClose }: MortgageQuickCalcDialogProps) {
   const open = !!apartment
 
@@ -53,6 +60,10 @@ export function MortgageQuickCalcDialog({ apartment, onClose }: MortgageQuickCal
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Результат серверного расчёта M06. Локальной арифметики в этом диалоге нет.
+  const [quote, setQuote] = useState<Quote | null>(null)
+  const [quoteError, setQuoteError] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -84,10 +95,25 @@ export function MortgageQuickCalcDialog({ apartment, onClose }: MortgageQuickCal
     return () => clearTimeout(timeout)
   }, [clientSearch])
 
-  // Гейт релиза 1.0: диалог считает аннуитет локально (Math.pow) и опирается на
-  // банковские программы — обе поверхности переносятся на канонический M06/1.1.
-  // Пока флаг выключен, диалог не показывает ни одной ипотечной цифры.
-  if (!apartment || !legacyMortgageToolsEnabled()) return null
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!apartment) return
+    const rateNow = programs.find((p) => p.id === selectedProgramId)?.interestRate ?? 15
+    const monthsNow = (Number(termYears) || 20) * 12
+    let alive = true
+    setQuoteError(false)
+    getQuote({
+      target_price: String(apartment.price),
+      available_now_down_payment: String(Number(initialPayment) || 0),
+      annual_nominal_rate_percent: String(rateNow),
+      term_months: monthsNow,
+    })
+      .then((q) => { if (alive) setQuote(q) })
+      .catch(() => { if (alive) { setQuote(null); setQuoteError(true) } })
+    return () => { alive = false }
+  }, [apartment, programs, selectedProgramId, initialPayment, termYears])
+
+  if (!apartment) return null
 
   const program = programs.find((p) => p.id === selectedProgramId)
   const rate = program?.interestRate ?? 15
@@ -95,13 +121,19 @@ export function MortgageQuickCalcDialog({ apartment, onClose }: MortgageQuickCal
   const down = Number(initialPayment) || 0
   const principal = Math.max(price - down, 0)
   const months = (Number(termYears) || 20) * 12
-  const monthlyRate = rate / 100 / 12
-  const monthlyPayment =
-    principal > 0 && monthlyRate > 0
-      ? (principal * (monthlyRate * Math.pow(1 + monthlyRate, months))) / (Math.pow(1 + monthlyRate, months) - 1)
-      : 0
-  const totalPayment = monthlyPayment * months
-  const overpayment = totalPayment - principal
+
+  // Платёж считает СЕРВЕР утверждёнными формулами M06. Прежняя версия считала
+  // аннуитет здесь же через Math.pow — это запрещено: единственный numeric
+  // authority — детерминированный движок. Если сервер недоступен, показываем
+  // «—», а не приблизительное число.
+  const monthlyPaymentText = quoteError
+    ? "Расчёт временно недоступен"
+    : quote?.annuity_payment.value
+      ? formatKzt(quote.annuity_payment.value)
+      : "—"
+  const loanAmountText = quote?.required_financing.value
+    ? formatKzt(quote.required_financing.value)
+    : "—"
 
   async function handleSave() {
     if (!selectedClient) return
@@ -119,9 +151,8 @@ export function MortgageQuickCalcDialog({ apartment, onClose }: MortgageQuickCal
           loanAmount: principal,
           interestRate: rate,
           termMonths: months,
-          monthlyPayment: Math.round(monthlyPayment),
-          totalPayment: Math.round(totalPayment),
-          overpayment: Math.round(overpayment),
+          // Отправляем ровно то, что вернул движок; локально ничего не считаем.
+          monthlyPayment: quote?.annuity_payment.display_kzt ?? null,
           bankName: program?.bankName,
           programName: program?.programName,
           apartmentInfo: `№ ${apartment!.number}, ${apartment!.rooms}-комн., ${apartment!.area} м²`,
@@ -179,16 +210,19 @@ export function MortgageQuickCalcDialog({ apartment, onClose }: MortgageQuickCal
             <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-1">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Ежемесячный платёж</span>
-                <span className="font-semibold">{formatPrice(Math.round(monthlyPayment))}</span>
+                <span className="font-semibold">{monthlyPaymentText}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Сумма кредита</span>
-                <span>{formatPrice(Math.round(principal))}</span>
+                <span>{loanAmountText}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Переплата</span>
-                <span>{formatPrice(Math.round(overpayment))}</span>
-              </div>
+              {/* «Переплата» не показывается: такой формулы нет в утверждённом
+                  реестре M06, а выводить её на клиенте — то же нарушение, из-за
+                  которого этот диалог и переделан. Вернётся, когда владелец
+                  утвердит формулу в реестре. */}
+              <p className="pt-1 text-[11px] text-muted-foreground">
+                Расчёт предварительный, выполнен на сервере. Не является решением банка.
+              </p>
             </div>
 
             <Input

@@ -69,6 +69,7 @@ import { mortgageApplicationsRouter } from './routes/mortgage-applications.route
 import { mortgageWorkspaceRouter } from './routes/mortgage-workspace.routes';
 import { mortgageCasesRouter } from './routes/mortgage-cases.routes';
 import { m02Router } from './routes/m02-iin-check.routes';
+import { mortgageCalcToolsRouter } from './routes/mortgage-calc-tools.routes';
 import { publicMortgageRouter } from './routes/public-mortgage.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { auditMiddleware } from './middleware/audit.middleware';
@@ -243,6 +244,9 @@ app.use('/api/v2/cases', mortgageCasesRouter);
 // M02 R0 (API-M02-001..006). Пути частично вне /cases (batch/result/task —
 // самостоятельные ресурсы), поэтому роутер монтируется на корень /api/v2.
 app.use('/api/v2', m02Router);
+// Калькулятор брокера: считает СЕРВЕР теми же формулами M06, но артефактов
+// кейса не создаёт. Вспомогательный, вне 45 канонических контрактов.
+app.use('/api/v2/calculation-tools', mortgageCalcToolsRouter);
 // Демо-рабочий экран (whatif/documents/conclusions/demo) — отдельная
 // demo-поверхность, НЕ canonical case-ресурс; остаётся на своём пути.
 app.use('/api/mortgage-workspace', mortgageWorkspaceRouter);

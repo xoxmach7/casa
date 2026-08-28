@@ -44,7 +44,6 @@ import {
   type CalculationSnapshot,
   type CalcStatus,
 } from "@/lib/mortgage/case-api";
-import { legacyMortgageToolsEnabled } from "@/lib/mortgage/release-flags";
 import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
 import { DocumentIntakeSection } from "@/components/mortgage/DocumentIntakeSection";
 
@@ -291,11 +290,9 @@ function MortgageWorkspace() {
               <FolderOpen className="mr-1.5 h-4 w-4" />Другой кейс
             </Button>
           )}
-          {legacyMortgageToolsEnabled() && (
-            <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/mortgage/tools"><Wrench className="mr-1.5 h-4 w-4" />Инструменты</Link>
-            </Button>
-          )}
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/mortgage/tools"><Wrench className="mr-1.5 h-4 w-4" />Калькулятор</Link>
+          </Button>
         </div>
       </header>
 

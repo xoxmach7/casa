@@ -164,7 +164,7 @@ describe('ПКБ агрегатор договоров — постро́чны�
     expect(agg.activeContracts).toBe(2);
   });
   it('суммирует остаток ТОЛЬКО по действующим (3.2M + 400k = 3.6M)', () => {
-    expect(agg.outstandingActiveSum).toBe(3_600_000);
+    expect(agg.outstandingActiveSum).toBe('3600000.00');
     expect(agg.outstandingComplete).toBe(true);
   });
   it('текущий DPD = макс по действующим; макс.DPD за всё время — по всем', () => {
@@ -172,9 +172,20 @@ describe('ПКБ агрегатор договоров — постро́чны�
     expect(agg.lifetimeMaxDpd).toBe(12); // 12 из завершённого договора учитывается
   });
   it('ежемесячный платёж — только там где есть; покрытие честное (1 из 2)', () => {
-    expect(agg.existingMonthlyPaymentSum).toBe(40_000);
+    expect(agg.existingMonthlyPaymentSum).toBe('40000.00');
     expect(agg.monthlyPaymentCovered).toBe(1);
   });
+  it('копейки сохраняются: деньги считаются Decimal, а не round(parseFloat)', () => {
+    const withKopecks = aggregateCreditContracts([
+      'Информация по состоянию на:01.08.2026Непогашенная сумма по кредиту :4 737 798.64 KZT',
+      'Вид финансирования:Займ',
+      'Фаза договора :Действующий',
+      'Количество дней просрочки :0',
+    ]);
+    // Раньше Math.round давал 4737799 — точное значение отчёта было недостижимо.
+    expect(withKopecks.outstandingActiveSum).toBe('4737798.64');
+  });
+
   it('если по активному остаток UNKNOWN — сумма не выдумывается (null)', () => {
     const partial = aggregateCreditContracts([
       'Вид финансирования:Займ',

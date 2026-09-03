@@ -17,6 +17,8 @@
  *    — CONTRACT_REQUIRED. Движок честно отмечает эти gate, а не блефует.
  */
 
+import { Prisma } from '@prisma/client';
+
 export type Presence =
   | 'PRESENT'
   | 'EXPLICIT_ZERO'
@@ -148,20 +150,40 @@ export function pensionContributionBase(): PensionContributionBase {
  */
 export interface CreditContractsAggregate {
   activeContracts: number;
-  outstandingActiveSum: number | null; // null, если хоть по одному активному остаток UNKNOWN
+  /** Точная сумма Decimal(20,2) строкой; null, если хоть по одному активному остаток UNKNOWN. */
+  outstandingActiveSum: string | null;
   outstandingComplete: boolean;
   currentDpdMaxActive: number | null;
   lifetimeMaxDpd: number | null;
-  existingMonthlyPaymentSum: number | null; // сумма «Минимальный платёж» где есть
+  /** Точная сумма Decimal(20,2) строкой; «Минимальный платёж» есть не по всем. */
+  existingMonthlyPaymentSum: string | null;
   monthlyPaymentCovered: number; // по скольким активным нашли платёж
 }
 
-function moneyBeforeKzt(win: string[], labels: string[]): number | null {
+/**
+ * Точная денежная сумма как Decimal. Спека M03 §7.3 C: деньги — decimal,
+ * никаких binary float. `parseMoney` идёт через parseFloat и вместе с
+ * Math.round превращал 4 737 798,64 в 4 737 799 — точные значения отчёта
+ * становились недостижимыми конструктивно.
+ */
+function parseMoneyDecimal(raw: string): Prisma.Decimal | null {
+  const cleaned = raw.replace(/[^\d.,]/g, '').replace(/\s/g, '');
+  if (!cleaned) return null;
+  const norm = cleaned.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
+  if (!/^\d+(\.\d+)?$/.test(norm)) return null;
+  try {
+    return new Prisma.Decimal(norm);
+  } catch {
+    return null;
+  }
+}
+
+function moneyBeforeKzt(win: string[], labels: string[]): Prisma.Decimal | null {
   for (const lbl of labels) {
     for (const ln of win) {
       const m = new RegExp(lbl + '\\s*:\\s*([\\d  .,]+?)\\s*KZT', 'i').exec(ln);
       if (m) {
-        const v = parseMoney(m[1]);
+        const v = parseMoneyDecimal(m[1]);
         if (v !== null) return v;
       }
     }
@@ -185,11 +207,11 @@ export function aggregateCreditContracts(lines: string[]): CreditContractsAggreg
   });
 
   let activeContracts = 0;
-  let outstandingActiveSum = 0;
+  let outstandingActiveSum = new Prisma.Decimal(0);
   let outstandingComplete = true;
   let currentDpdMaxActive: number | null = null;
   let lifetimeMaxDpd: number | null = null;
-  let existingMonthlyPaymentSum = 0;
+  let existingMonthlyPaymentSum = new Prisma.Decimal(0);
   let monthlyPaymentCovered = 0;
 
   phases.forEach((p, idx) => {
@@ -209,7 +231,7 @@ export function aggregateCreditContracts(lines: string[]): CreditContractsAggreg
       'Использованная сумма \\(подлежащая погашению\\)',
       'Использованная сумма',
     ]);
-    if (out !== null) outstandingActiveSum += out;
+    if (out !== null) outstandingActiveSum = outstandingActiveSum.add(out);
     else outstandingComplete = false; // не подставляем ноль вместо UNKNOWN
 
     const dpd = intAfterLabel(win, 'Количество дней просрочки');
@@ -217,18 +239,22 @@ export function aggregateCreditContracts(lines: string[]): CreditContractsAggreg
 
     const mp = moneyBeforeKzt(win, ['Минимальный платеж']);
     if (mp !== null) {
-      existingMonthlyPaymentSum += mp;
+      existingMonthlyPaymentSum = existingMonthlyPaymentSum.add(mp);
       monthlyPaymentCovered += 1;
     }
   });
 
   return {
     activeContracts,
-    outstandingActiveSum: activeContracts > 0 && outstandingComplete ? Math.round(outstandingActiveSum) : null,
+    outstandingActiveSum: activeContracts > 0 && outstandingComplete
+      ? outstandingActiveSum.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2)
+      : null,
     outstandingComplete,
     currentDpdMaxActive,
     lifetimeMaxDpd,
-    existingMonthlyPaymentSum: monthlyPaymentCovered > 0 ? Math.round(existingMonthlyPaymentSum) : null,
+    existingMonthlyPaymentSum: monthlyPaymentCovered > 0
+      ? existingMonthlyPaymentSum.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2)
+      : null,
     monthlyPaymentCovered,
   };
 }

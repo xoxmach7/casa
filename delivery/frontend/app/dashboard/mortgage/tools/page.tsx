@@ -232,7 +232,7 @@ export default function MortgageToolsPage() {
           <div className="flex items-start gap-3 border-b border-border px-5 py-4">
             <Building2 className="mt-0.5 h-5 w-5 text-primary" aria-hidden />
             <div>
-              <h2 className="text-base font-semibold leading-tight">Программы банков</h2>
+              <h2 id="programs" className="scroll-mt-24 text-base font-semibold leading-tight">Программы банков</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 Платёж по ставке каждой программы, посчитанный тем же движком.
               </p>

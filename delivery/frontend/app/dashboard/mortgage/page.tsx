@@ -25,6 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calculator, User2, ShieldCheck, Wrench, Info, TriangleAlert, RefreshCw, FolderOpen,
+  Plus, ArrowRight, FileText, Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -104,41 +105,128 @@ function StatusPill({ status }: { status: CalcStatus }) {
 
 // --- Пустое состояние -------------------------------------------------------
 
+const CASE_STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Черновик",
+  CONSENT_PENDING: "Ждёт согласия",
+  DOCUMENTS_PENDING: "Ждёт документы",
+  PROCESSING: "В обработке",
+  REVIEW_REQUIRED: "Нужна проверка",
+  READY_TO_CALCULATE: "Готов к расчёту",
+  ACTIVE: "В работе",
+  CONSENT_REVOKED: "Согласие отозвано",
+  CANCELLED: "Отменён",
+  ARCHIVED: "В архиве",
+};
+
+function CaseStatusBadge({ status }: { status: string }) {
+  const tone = status === "ACTIVE" || status === "READY_TO_CALCULATE"
+    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+    : status === "CONSENT_REVOKED" || status === "CANCELLED"
+      ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+      : status === "REVIEW_REQUIRED"
+        ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+        : "bg-muted text-muted-foreground";
+  return (
+    <span className={cn("inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium", tone)}>
+      {CASE_STATUS_LABEL[status] ?? status}
+    </span>
+  );
+}
+
+/** Три шага работы — чтобы экран без выбранного кейса не выглядел пустым. */
+function HowItWorks() {
+  const steps = [
+    { n: 1, icon: <User2 className="h-4 w-4" />, title: "Кейс и согласие", text: "Открываете кейс клиента и фиксируете согласие на обработку." },
+    { n: 2, icon: <FileText className="h-4 w-4" />, title: "Документы", text: "Загружаете кредитную историю и выписку ЕНПФ, проверяете распознанные поля." },
+    { n: 3, icon: <Calculator className="h-4 w-4" />, title: "Расчёт", text: "Движок считает требуемое финансирование и платёж по утверждённым формулам." },
+  ];
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {steps.map((s) => (
+        <div key={s.n} className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-primary">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold">{s.n}</span>
+            {s.icon}
+          </div>
+          <p className="mt-2 font-medium leading-tight">{s.title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{s.text}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function NoCaseSelected({ cases, loading, onPick }: {
   cases: MortgageCaseListItem[]; loading: boolean; onPick: (id: string) => void;
 }) {
   return (
-    <Card>
-      <CardHead
-        icon={<FolderOpen className="h-5 w-5" />}
-        title="Выберите или создайте ипотечный кейс"
-        sub="Пока кейс не выбран, экран не показывает никаких финансовых значений."
-      />
-      <div className="px-5 py-4">
-        {loading && <p className="text-sm text-muted-foreground">Загрузка списка кейсов…</p>}
+    <div className="space-y-4">
+      <Card>
+        <CardHead
+          icon={<FolderOpen className="h-5 w-5" />}
+          title="Выберите или создайте ипотечный кейс"
+          sub="Пока кейс не выбран, экран не показывает никаких финансовых значений."
+        />
+
+        {loading && (
+          <div className="space-y-2 px-5 py-4">
+            {[0, 1].map((i) => (
+              <div key={i} className="h-14 animate-pulse rounded-lg bg-muted/60" />
+            ))}
+          </div>
+        )}
 
         {!loading && cases.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Доступных кейсов нет. Создайте ипотечный кейс для клиента, чтобы начать работу.
-          </p>
+          <div className="flex flex-col items-center px-5 py-10 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <FolderOpen className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="mt-3 font-medium">Пока нет ни одного кейса</p>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Ипотечный кейс заводится на клиента: он хранит согласие, документы и расчёты.
+            </p>
+            <Button asChild className="mt-4">
+              <Link href="/dashboard/clients">
+                <Plus className="mr-1.5 h-4 w-4" />Перейти к клиентам
+              </Link>
+            </Button>
+          </div>
         )}
 
         {!loading && cases.length > 0 && (
           <ul className="divide-y divide-border">
             {cases.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="min-w-0">
-                  {/* В списке намеренно нет персональных данных: только кейс. */}
-                  <p className="truncate font-medium">Кейс {c.id}</p>
-                  <p className="truncate text-xs text-muted-foreground">{c.status}</p>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => onPick(c.id)}>Открыть</Button>
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => onPick(c.id)}
+                  className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <FolderOpen className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      {/* В списке намеренно нет персональных данных: только кейс. */}
+                      <p className="truncate font-medium">Кейс {c.id}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        обновлён {new Date(c.updated_at ?? c.created_at ?? Date.now()).toLocaleDateString("ru-RU")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <CaseStatusBadge status={c.status} />
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </button>
               </li>
             ))}
           </ul>
         )}
-      </div>
-    </Card>
+      </Card>
+
+      <HowItWorks />
+    </div>
   );
 }
 
@@ -284,14 +372,18 @@ function MortgageWorkspace() {
             Профиль (M05) → детерминированный расчёт (M06). Итоговое решение принимает банк.
           </p>
         </div>
-        <div className="flex gap-2">
+        {/* Инструменты — отдельными кнопками, а не одной общей «Инструменты». */}
+        <div className="flex flex-wrap gap-2">
           {caseId && (
             <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/mortgage")}>
               <FolderOpen className="mr-1.5 h-4 w-4" />Другой кейс
             </Button>
           )}
           <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/mortgage/tools"><Wrench className="mr-1.5 h-4 w-4" />Калькулятор</Link>
+            <Link href="/dashboard/mortgage/tools"><Calculator className="mr-1.5 h-4 w-4" />Калькулятор</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/mortgage/tools#programs"><Landmark className="mr-1.5 h-4 w-4" />Условия банков</Link>
           </Button>
         </div>
       </header>

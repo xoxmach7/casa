@@ -497,8 +497,12 @@ function MortgageWorkspace() {
                   {showMoney(availableNow?.value)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  статус: {FIELD_LABEL[String(availableNow?.status)] ?? "—"}
-                  {availableNow && !availableNow.complete && " · агрегат неполон"}
+                  {profile.down_payment_sources.length === 0
+                    ? "источники взноса не добавлены"
+                    : <>
+                        статус: {FIELD_LABEL[String(availableNow?.status)] ?? "—"}
+                        {availableNow && !availableNow.complete && " · не у всех источников указана сумма"}
+                      </>}
                 </p>
                 <ul className="mt-2 space-y-1 text-sm">
                   {profile.down_payment_sources.map((s) => (

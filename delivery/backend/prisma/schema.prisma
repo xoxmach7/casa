@@ -79,6 +79,14 @@ model User {
   mortgageFieldReviews   MortgageFieldReview[]        @relation("MortgageFieldReviewer")
   mortgageSnapshots      MortgageVerifiedSnapshot[]   @relation("MortgageSnapshotConfirmer")
 
+  // === Контур вторички ===
+  ownerSellerProfile     Seller?                      @relation("OwnerSellerProfile")
+  agentFixations         SecondaryFixation[]          @relation("AgentFixations")
+  agencyFixations        SecondaryFixation[]          @relation("AgencyFixations")
+  partnerCommissions     Commission[]                 @relation("PartnerCommissions")
+  agencySubscriptions    AgencySubscription[]         @relation("AgencySubscriptions")
+  declaredListingExits   ListingExit[]                @relation("ListingExitDeclarant")
+
   @@map("users")
 }
 
@@ -599,6 +607,9 @@ enum UserRole {
   // собирает аналоги и считает, но решения не принимает.
   COORDINATOR
   ANALYST
+  // Собственник квартиры на вторичке. Единственная роль, которая может
+  // создавать объекты вторички: агенты приходят только с покупателем.
+  OWNER
 }
 
 // Статус аккаунта. Нужен для само­регистрации застройщика: он создаётся как
@@ -835,20 +846,30 @@ enum CommissionStatus {
   CANCELLED           // Отменена
 }
 
+// Комиссия обслуживает обе сделки: `dealId` — канбан новостроек, а
+// `secondaryDealId` — сделка вторички. Ровно одна из двух ссылок заполнена;
+// инвариант держит commission.service.ts, потому что Prisma не выражает
+// декларативно «XOR по двум nullable-полям».
 model Commission {
-  id           String           @id @default(cuid())
-  dealId       String           @unique @map("deal_id")
-  amount       Decimal          @db.Decimal(15, 2)
-  casaShare    Decimal?         @map("casa_share") @db.Decimal(15, 2)
-  partnerShare Decimal?         @map("partner_share") @db.Decimal(15, 2)
-  status       CommissionStatus @default(ESTIMATED)
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
+  id              String           @id @default(cuid())
+  dealId          String?          @unique @map("deal_id")
+  secondaryDealId String?          @unique @map("secondary_deal_id")
+  amount          Decimal          @db.Decimal(15, 2)
+  casaShare       Decimal?         @map("casa_share") @db.Decimal(15, 2)
+  partnerShare    Decimal?         @map("partner_share") @db.Decimal(15, 2)
+  // Кому причитается partnerShare на вторичке — агент, приведший покупателя.
+  partnerAgentId  String?          @map("partner_agent_id")
+  status          CommissionStatus @default(ESTIMATED)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  deal          Deal                   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  deal          Deal?                  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  secondaryDeal SecondaryDeal?         @relation(fields: [secondaryDealId], references: [id], onDelete: Cascade)
+  partnerAgent  User?                  @relation("PartnerCommissions", fields: [partnerAgentId], references: [id])
   statusHistory CommissionStatusLog[]
 
   @@index([status])
+  @@index([partnerAgentId])
   @@map("commissions")
 }
 
@@ -1271,10 +1292,15 @@ model Seller {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
   brokerId   String   @map("broker_id")
-  
+  // Аккаунт собственника (роль OWNER), если продавец завёл себя сам.
+  // У продавцов, созданных координатором из CRM, ссылки нет.
+  userId     String?  @unique @map("user_id")
+
   // === Relations ===
   broker     User          @relation("BrokerSellers", fields: [brokerId], references: [id])
+  ownerAccount User?       @relation("OwnerSellerProfile", fields: [userId], references: [id])
   properties CrmProperty[]
+  listingAgreements ListingAgreement[]
   documents  SellerDocument[]
   customStageId String? @map("custom_stage_id")
   customStage   CustomStage? @relation(fields: [customStageId], references: [id])
@@ -1588,6 +1614,14 @@ model CrmProperty {
   propertyInterests     ClientPropertyInterest[]
   publicListingOps      PublicListingOps?
   publicListingLeads    PublicListingLead[]
+  listingAgreements     ListingAgreement[]
+  secondaryFixations    SecondaryFixation[]
+  listingExits          ListingExit[]
+
+  // Кто завёл объект. OWNER_SELF — собственник через свой кабинет,
+  // COORDINATOR — сотрудник CASA от его имени, LEGACY — записи, созданные
+  // до появления контура вторички.
+  listingSource         ListingSource @default(LEGACY) @map("listing_source")
 
   aiRecommendation      String?         @map("ai_recommendation") @db.Text
 
@@ -2125,6 +2159,8 @@ model SecondaryDeal {
   deposit  DealDeposit?
   booking  DealBooking?
   risks    DealRisk[]
+  commission Commission?
+  fixation   SecondaryFixation? @relation("FixationDeal")
 
   // Раздел 5 из 05_CASA_Data_API_Security: не более одного active Deal на
   // property_id + buyer_id — гарантируется на уровне сервиса (частичный

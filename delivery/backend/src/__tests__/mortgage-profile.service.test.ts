@@ -32,10 +32,20 @@ describe('aggregateMoney — available_now_total (UNKNOWN ≠ 0)', () => {
     expect(a.complete).toBe(false);
   });
 
-  it('пустой список → value 0.00 CONFIRMED (нет неизвестных)', () => {
+  it('пустой список → UNKNOWN, а не подтверждённый ноль', () => {
+    // Ничего не заполнено ≠ клиент подтвердил, что денег нет. Иначе новый
+    // кейс показывал бы «0,00 ₸ · подтверждено», а M06 считал бы по этому нулю.
     const a = aggregateMoney([]);
+    expect(a.value).toBeNull();
+    expect(a.status).toBe('UNKNOWN');
+    expect(a.complete).toBe(false);
+  });
+
+  it('источник с суммой 0 → это и есть подтверждённый ноль', () => {
+    const a = aggregateMoney([{ amount: '0', status: 'VERIFIED' }]);
     expect(a.value).toBe('0.00');
     expect(a.status).toBe('CONFIRMED');
+    expect(a.complete).toBe(true);
   });
 
   it('profileContentHash детерминирован', () => {

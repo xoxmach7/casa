@@ -49,10 +49,18 @@ export function aggregateMoney(sources: MoneySource[]): AggregatedMoney {
     if (s.status === 'DECLARED') sawDeclared = true;
   }
 
-  const status: AggregatedMoney['status'] = incomplete ? 'UNKNOWN' : sawDeclared ? 'DECLARED' : 'CONFIRMED';
-  const value = incomplete ? null : sum.toDecimalPlaces(2, D.ROUND_HALF_UP).toFixed(2);
+  // Пустой список источников — это «не заполнено», а не «подтверждённый ноль».
+  // Раньше он давал 0.00/CONFIRMED: на новом кейсе брокер видел «взнос 0,00 ₸,
+  // статус: подтверждено», а M06 получал этот ноль как подтверждённый вход и
+  // считал по нему требуемое финансирование. Настоящий нулевой взнос
+  // выражается источником с суммой 0, а не отсутствием источников.
+  const empty = sources.length === 0;
+  const unfilled = incomplete || empty;
 
-  return { value, status, complete: !incomplete, currency: 'KZT', counted, total: sources.length };
+  const status: AggregatedMoney['status'] = unfilled ? 'UNKNOWN' : sawDeclared ? 'DECLARED' : 'CONFIRMED';
+  const value = unfilled ? null : sum.toDecimalPlaces(2, D.ROUND_HALF_UP).toFixed(2);
+
+  return { value, status, complete: !unfilled, currency: 'KZT', counted, total: sources.length };
 }
 
 /** Статус агрегата M05 → статус входа M06. */

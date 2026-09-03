@@ -619,9 +619,13 @@ crmPropertiesRouter.post(
 // =========================================
 // POST /api/crm-properties - Создание объекта
 // =========================================
+// Гейт 1 портала вторички: объект вторички заводит только собственник (через
+// свой кабинет) или сотрудник CASA от его имени. Агент приходит исключительно
+// с покупателем — если бы он мог выложить объект, он мог бы и увести его с
+// площадки вместе с собственником.
 crmPropertiesRouter.post(
     '/',
-    requireRole('BROKER', 'ADMIN', 'REALTOR', 'AGENCY', 'DEVELOPER'),
+    requireRole('ADMIN', 'COORDINATOR'),
     validate(CrmPropertyMinimalSchema),
     async (req: Request, res: Response): Promise<void> => {
         try {
@@ -648,6 +652,7 @@ crmPropertiesRouter.post(
                     ...data,
                     brokerId: req.user!.userId,
                     funnelStage: 'CREATED',
+                    listingSource: 'COORDINATOR',
                 },
             });
 

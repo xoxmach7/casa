@@ -1353,6 +1353,7 @@ model Buyer {
   offers Offer[] // New
   propertyInterests ClientPropertyInterest[]
   secondaryDeals    SecondaryDeal[]
+  secondaryFixations SecondaryFixation[]
 
   @@index([brokerId])
   @@index([status])
@@ -3260,4 +3261,223 @@ model ManualCheckTask {
   @@index([batchId])
   @@index([tenantId, status])
   @@map("manual_check_tasks")
+}
+
+// =========================================
+// ПОРТАЛ ВТОРИЧКИ
+// Спека: docs/superpowers/specs/2026-09-03-vtorichka-marketplace-business-model-design.md
+//
+// Модель: объекты выкладывает только собственник; агент приходит
+// исключительно с покупателем и обязан зафиксировать его на объекте.
+// Комиссию платит собственник при закрытии, из неё агенту покупателя
+// причитается объявленная доля.
+// =========================================
+
+// Кто завёл объект вторички.
+enum ListingSource {
+  LEGACY      // создан до появления контура (все существующие записи)
+  OWNER_SELF  // собственник через свой кабинет
+  COORDINATOR // сотрудник CASA от имени собственника
+}
+
+// Уровень договора с собственником. Различаются экономически, а не
+// риторически: см. раздел 5.2 спеки.
+enum ListingTier {
+  BASIC     // без эксклюзива: комиссия выше, услуг меньше, маскировка жёстче
+  EXCLUSIVE // эксклюзив: комиссия ниже, полный пакет услуг, приоритет в выдаче
+}
+
+enum ListingAgreementStatus {
+  DRAFT      // создан, собственник ещё не принял условия
+  ACTIVE     // принят — объект допущен к публикации
+  EXPIRED    // истёк срок
+  TERMINATED // расторгнут
+}
+
+// Договор с собственником. Гейт публикации: нет активного договора —
+// объекта в базе нет. Обязательство по комиссии возникает здесь, в момент
+// публикации, а не в момент сделки — иначе обход платформы ничем не
+// удерживается (раздел 3, Р-1/Р-2 спеки).
+model ListingAgreement {
+  id                     String                 @id @default(cuid())
+  propertyId             String                 @map("property_id")
+  sellerId               String                 @map("seller_id")
+  tier                   ListingTier            @default(BASIC)
+  // Процент от цены сделки, который платит собственник.
+  commissionPercent      Decimal                @map("commission_percent") @db.Decimal(5, 2)
+  // Доля агента покупателя ВНУТРИ комиссии, в процентах. Показывается агенту
+  // на карточке объекта до фиксации — без объявленного сплита он не приведёт
+  // покупателя к чужой квартире.
+  buyerAgentSharePercent Decimal                @map("buyer_agent_share_percent") @db.Decimal(5, 2)
+  // Сколько дней после истечения фиксации сделка с тем же покупателем всё
+  // ещё порождает комиссию.
+  protectionPeriodDays   Int                    @map("protection_period_days")
+  status                 ListingAgreementStatus @default(DRAFT)
+  acceptedAt             DateTime?              @map("accepted_at")
+  // Чем подтверждено принятие условий: оферта в кабинете, скан документа.
+  acceptanceEvidence     String?                @map("acceptance_evidence") @db.Text
+  expiresAt              DateTime?              @map("expires_at")
+  terminatedAt           DateTime?              @map("terminated_at")
+  terminationReason      String?                @map("termination_reason") @db.Text
+  createdAt              DateTime               @default(now()) @map("created_at")
+  updatedAt              DateTime               @updatedAt @map("updated_at")
+
+  property CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  seller   Seller      @relation(fields: [sellerId], references: [id])
+
+  // Не более одного ACTIVE-договора на объект — держит
+  // listing-agreement.service.ts: частичный уникальный индекс по статусу
+  // декларативно в Prisma не выражается.
+  @@index([propertyId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("listing_agreements")
+}
+
+// Статусы фиксации покупателя. По смыслу повторяют FixationStatus из
+// новостроек, но живут отдельно: тот привязан к projectId и обслуживает
+// живой контур застройщиков.
+enum SecondaryFixationStatus {
+  DRAFT
+  SENT
+  DUPLICATE_CHECK
+  CONFIRMED
+  SHOWN
+  OFFER_MADE
+  DEAL
+  REJECTED_DUPLICATE
+  REJECTED_OTHER
+  EXPIRED
+  CANCELLED
+}
+
+// Фиксация покупателя на объекте.
+//
+// Здесь у фиксации две работы, и вторая важнее первой: развести агентов
+// между собой (дубль-чек) и ДОКАЗАТЬ, что покупателя привела платформа.
+// Цепочка улик «фиксация → показ → оффер → сделка» и защитный период — то,
+// на чём держится комиссия, когда собственник висит ещё и на Krisha.
+model SecondaryFixation {
+  id         String                  @id @default(cuid())
+  propertyId String                  @map("property_id")
+  buyerId    String                  @map("buyer_id")
+  agentId    String                  @map("agent_id")
+  agencyId   String?                 @map("agency_id")
+  // Необратимый отпечаток личности покупателя (HMAC от ИИН или телефона).
+  // По нему идёт дубль-чек и сверка при снятии объекта; полные ПД в поле
+  // сравнения не хранятся.
+  buyerIdentityHash String            @map("buyer_identity_hash")
+  status     SecondaryFixationStatus @default(DRAFT)
+  // Условия, действовавшие в момент фиксации. Снимок, а не ссылка:
+  // договор может быть перезаключён, а обещание агенту — нет.
+  declaredSharePercent Decimal        @map("declared_share_percent") @db.Decimal(5, 2)
+  sentAt          DateTime?           @map("sent_at")
+  confirmedAt     DateTime?           @map("confirmed_at")
+  expiresAt       DateTime            @map("expires_at")
+  protectionUntil DateTime            @map("protection_until")
+  rejectionReason String?             @map("rejection_reason") @db.Text
+  secondaryDealId String?             @unique @map("secondary_deal_id")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  property      CrmProperty    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  buyer         Buyer          @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  agent         User           @relation("AgentFixations", fields: [agentId], references: [id])
+  agency        User?          @relation("AgencyFixations", fields: [agencyId], references: [id])
+  secondaryDeal SecondaryDeal? @relation("FixationDeal", fields: [secondaryDealId], references: [id])
+  statusHistory SecondaryFixationStatusLog[]
+
+  @@index([propertyId])
+  @@index([agentId])
+  @@index([status])
+  @@index([buyerIdentityHash])
+  @@index([propertyId, buyerIdentityHash])
+  @@map("secondary_fixations")
+}
+
+model SecondaryFixationStatusLog {
+  id         String                   @id @default(cuid())
+  fixationId String                   @map("fixation_id")
+  fromStatus SecondaryFixationStatus? @map("from_status")
+  toStatus   SecondaryFixationStatus  @map("to_status")
+  changedBy  String?                  @map("changed_by")
+  note       String?                  @db.Text
+  createdAt  DateTime                 @default(now()) @map("created_at")
+
+  fixation SecondaryFixation @relation(fields: [fixationId], references: [id], onDelete: Cascade)
+
+  @@index([fixationId])
+  @@map("secondary_fixation_status_logs")
+}
+
+// Чем закончился листинг.
+enum ListingExitOutcome {
+  SOLD_VIA_PLATFORM // продано покупателю с площадки
+  SOLD_OUTSIDE      // продано мимо площадки
+  NOT_SOLD          // не продано
+  WITHDRAWN         // снято собственником
+}
+
+// Снятие объекта с обязательным опросом — момент, в который рождается
+// комиссия или спор. Снять объект, не заполнив это, нельзя.
+model ListingExit {
+  id                String             @id @default(cuid())
+  propertyId        String             @map("property_id")
+  outcome           ListingExitOutcome
+  buyerIdentityHash String?            @map("buyer_identity_hash")
+  declaredPrice     Decimal?           @map("declared_price") @db.Decimal(15, 2)
+  declaredBy        String             @map("declared_by")
+  comment           String?            @db.Text
+  // Заполняется сверкой: нашлась ли фиксация, покрывающая этого покупателя.
+  matchedFixationId String?            @map("matched_fixation_id")
+  disputeOpened     Boolean            @default(false) @map("dispute_opened")
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  property  CrmProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  declarant User        @relation("ListingExitDeclarant", fields: [declaredBy], references: [id])
+
+  @@index([propertyId])
+  @@index([buyerIdentityHash])
+  @@map("listing_exits")
+}
+
+// Тариф агентства на портале вторички.
+enum MarketplacePlan {
+  TRIAL // пробный: базовый доступ, жёсткие лимиты
+  START
+  PRO
+  ENTERPRISE
+}
+
+enum MarketplaceSubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// Подписка агентства. Существующая Subscription висит на пользователе,
+// ставится руками админом и не проверяется нигде в коде — как рычаг она
+// не работает. Эта проверяется в middleware: без активной подписки агент
+// не видит контакты и не может фиксировать.
+model AgencySubscription {
+  id        String                        @id @default(cuid())
+  // Владелец подписки: пользователь с ролью AGENCY либо независимый агент.
+  agencyId  String                        @map("agency_id")
+  plan      MarketplacePlan               @default(TRIAL)
+  status    MarketplaceSubscriptionStatus @default(ACTIVE)
+  // Лимиты тарифа. Хранятся на подписке, а не в коде, чтобы менять их
+  // конкретному агентству без релиза.
+  maxActiveFixations Int                  @map("max_active_fixations")
+  maxAgents          Int                  @map("max_agents")
+  startsAt  DateTime                      @default(now()) @map("starts_at")
+  expiresAt DateTime?                     @map("expires_at")
+  amount    Decimal?                      @db.Decimal(15, 2)
+  createdAt DateTime                      @default(now()) @map("created_at")
+  updatedAt DateTime                      @updatedAt @map("updated_at")
+
+  agency User @relation("AgencySubscriptions", fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([agencyId])
+  @@index([status])
+  @@map("agency_subscriptions")
 }

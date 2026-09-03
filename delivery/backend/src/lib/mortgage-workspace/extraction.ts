@@ -199,14 +199,77 @@ function intAfterLabel(win: string[], lbl: string): number | null {
   return null;
 }
 
-export function aggregateCreditContracts(lines: string[]): CreditContractsAggregate {
-  const phases: { i: number; active: boolean }[] = [];
-  lines.forEach((l, i) => {
-    const m = /Фаза договора\s*:\s*([А-Яа-яЁё]+)/.exec(l);
-    if (m) phases.push({ i, active: /Действ/i.test(m[1]) });
-  });
+/**
+ * Границы блока одного договора.
+ *
+ * Раньше блок строился окном вокруг строки «Фаза договора» (±N строк). На
+ * реальном отчёте ПКБ это давало неверные суммы: числовая строка договора
+ * («Информация по состоянию на:…») стоит на 30+ строк ВЫШЕ своей фазы, а окна
+ * соседних договоров перекрывались. На документе заказчика это давало остаток
+ * 3 318 060,48 вместо 4 737 798,64 (сумма чужого договора вместо своего,
+ * первый договор потерян) и платёж 26 710 вместо 211 711,02.
+ *
+ * Якорь блока — сама строка состояния: она уникальна для договора и содержит
+ * его остаток, просрочку и платёж. Фаза определяется по строке «Фаза договора»,
+ * попавшей внутрь блока.
+ */
+const CONTRACT_STATE_ANCHOR = /Информация по состоянию на\s*:/;
 
-  let activeContracts = 0;
+interface ContractBlock {
+  text: string;
+  phases: string[];
+}
+
+export function splitCreditContracts(lines: string[]): ContractBlock[] {
+  const anchors: number[] = [];
+  lines.forEach((l, i) => { if (CONTRACT_STATE_ANCHOR.test(l)) anchors.push(i); });
+  if (anchors.length === 0) return [];
+
+  return anchors.map((start, k) => {
+    const end = k + 1 < anchors.length ? anchors[k + 1] : lines.length;
+    const slice = lines.slice(start, end);
+    const phases: string[] = [];
+    for (const ln of slice) {
+      const m = /Фаза договора\s*:\s*([А-Яа-яЁё]+)/.exec(ln);
+      if (m) phases.push(m[1]);
+    }
+    // Строка состояния переносится: «Использованная сумма (подлежащая» /
+    // «погашению):» / «2 990 763.9». Склейка блока в одну строку это лечит.
+    return { text: slice.join(' '), phases };
+  });
+}
+
+/** Число после метки, но метка не должна быть хвостом более длинной. */
+function intAfterLabelIn(text: string, label: string, notPrecededBy?: string): number | null {
+  const guard = notPrecededBy ? `(?<!${notPrecededBy})` : '';
+  const m = new RegExp(`${guard}${label}\\s*:?\\s*(\\d+)`, 'i').exec(text);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function moneyIn(text: string, labels: string[]): Prisma.Decimal | null {
+  for (const lbl of labels) {
+    const m = new RegExp(`${lbl}\\s*:?\\s*([\\d  .,]+?)\\s*KZT`, 'i').exec(text);
+    if (m) {
+      const v = parseMoneyDecimal(m[1]);
+      if (v !== null) return v;
+    }
+  }
+  return null;
+}
+
+export function aggregateCreditContracts(lines: string[]): CreditContractsAggregate {
+  const blocks = splitCreditContracts(lines);
+
+  // Число договоров считается по «Фаза договора» — это надёжный счётчик и он не
+  // зависит от того, удалось ли привязать к договору его числовую строку.
+  // Числа берутся из блоков; если блоки покрыли не все действующие договоры,
+  // сумма объявляется неполной, а не занижается молча.
+  const activeContracts = lines.reduce((n, l) => {
+    const m = /Фаза договора\s*:\s*([А-Яа-яЁё]+)/.exec(l);
+    return m && /Действ/i.test(m[1]) ? n + 1 : n;
+  }, 0);
+  let activeCovered = 0;
+
   let outstandingActiveSum = new Prisma.Decimal(0);
   let outstandingComplete = true;
   let currentDpdMaxActive: number | null = null;
@@ -214,35 +277,43 @@ export function aggregateCreditContracts(lines: string[]): CreditContractsAggreg
   let existingMonthlyPaymentSum = new Prisma.Decimal(0);
   let monthlyPaymentCovered = 0;
 
-  phases.forEach((p, idx) => {
-    const prev = idx > 0 ? phases[idx - 1].i : -1;
-    const next = idx + 1 < phases.length ? phases[idx + 1].i : lines.length;
-    const win = lines.slice(Math.max(prev + 1, p.i - 16), Math.min(next, p.i + 74));
-
-    // Максимальный DPD за всё время — по ЛЮБОМУ договору (факт прошлого).
-    const md = intAfterLabel(win, 'Максимальное количество дней просрочки[^:]*');
+  for (const block of blocks) {
+    // Максимальный DPD за всё время — факт прошлого по ЛЮБОМУ договору.
+    const md = intAfterLabelIn(block.text, 'Максимальное количество дней просрочки[^:]*');
     if (md !== null) lifetimeMaxDpd = Math.max(lifetimeMaxDpd ?? 0, md);
 
-    if (!p.active) return;
-    activeContracts += 1;
+    const activeInBlock = block.phases.filter((p) => /Действ/i.test(p)).length;
+    if (activeInBlock === 0) continue;
+    activeCovered += activeInBlock;
+    // Два действующих договора в одном блоке — числа не разделить честно.
+    if (activeInBlock > 1) outstandingComplete = false;
 
-    const out = moneyBeforeKzt(win, [
+    const out = moneyIn(block.text, [
       'Непогашенная сумма по кредиту',
-      'Использованная сумма \\(подлежащая погашению\\)',
+      'Использованная сумма \\(подлежащая\\s*погашению\\)',
       'Использованная сумма',
     ]);
     if (out !== null) outstandingActiveSum = outstandingActiveSum.add(out);
     else outstandingComplete = false; // не подставляем ноль вместо UNKNOWN
 
-    const dpd = intAfterLabel(win, 'Количество дней просрочки');
+    // Текущая просрочка ≠ исторический максимум. Без этого стража шаблон
+    // «Количество дней просрочки» ловил хвост «Максимальное количество дней
+    // просрочки» и клиенту с нулевой текущей просрочкой приписывалось 60 дней.
+    const dpd = intAfterLabelIn(block.text, 'Количество дней просрочки', 'Максимальное\\s');
     if (dpd !== null) currentDpdMaxActive = Math.max(currentDpdMaxActive ?? 0, dpd);
 
-    const mp = moneyBeforeKzt(win, ['Минимальный платеж']);
+    // ПКБ печатает платёж по-разному: «Минимальный платеж» у карт,
+    // «Сумма периодического платежа» у займов. Учитываем оба, иначе месячная
+    // нагрузка занижается кратно.
+    const mp = moneyIn(block.text, ['Минимальный платеж', 'Сумма периодического платежа']);
     if (mp !== null) {
       existingMonthlyPaymentSum = existingMonthlyPaymentSum.add(mp);
       monthlyPaymentCovered += 1;
     }
-  });
+  }
+
+  // Блоки покрыли не все действующие договоры → сумма заведомо неполна.
+  if (activeCovered < activeContracts) outstandingComplete = false;
 
   return {
     activeContracts,
@@ -297,8 +368,16 @@ export function extractCreditHistory(rawText: string): DocumentExtraction {
     evidence: dt ?? undefined,
   }));
 
-  // pages declared (footer N/29)
-  const pagesDecl = firstMatch(text, /\b\d{1,3}\s*\/\s*(\d{1,3})\b/);
+  // Число страниц берётся из колонтитула — ОТДЕЛЬНОЙ строки вида «4/29».
+  // Поиск «первого N/M во всём тексте» ловил номер дома из адреса клиента
+  // («УЛИЦА …,3/2,136») и объявлял отчёт двухстраничным.
+  const footerTotals = text.split('\n')
+    .map((l) => /^\s*(\d{1,3})\s*\/\s*(\d{1,3})\s*$/.exec(l.trim()))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map((m) => m[2]);
+  const pagesDecl = footerTotals.length > 0
+    ? String(Math.max(...footerTotals.map((v) => parseInt(v, 10))))
+    : null;
   fields.push(fld({
     key: 'report_pages_declared', label: 'Страниц (по footer)', presence: pagesDecl ? 'PRESENT' : 'UNKNOWN',
     rawValue: pagesDecl, normalizedValue: pagesDecl ? parseInt(pagesDecl, 10) : null,
@@ -377,17 +456,18 @@ export function extractCreditHistory(rawText: string): DocumentExtraction {
       confidence: val !== null ? 0.85 : 0, critical, level: 'SOURCE_FACT',
     }));
   };
-  pushCount('active_without_overdue', 'Действующие договоры без просрочки', cnt(/(\d+)\s*Действующие\s+договор[а-яё]*\s+без\s+просрочки/i), true);
-  pushCount('active_with_overdue', 'Действующие договоры с просрочкой', cnt(/(\d+)\s*Действующие\s+договор[а-яё]*\s+с\s+просрочкой/i), true);
-  pushCount('closed_without_overdue', 'Завершённые договоры без просрочки', cnt(/(\d+)\s*Завершенн[а-яё]*\s+договор[а-яё]*\s+без\s+просрочки/i), false);
-  pushCount('closed_with_overdue', 'Завершённые договоры с просрочкой', cnt(/(\d+)\s*Завершенн[а-яё]*\s+договор[а-яё]*\s+с\s+просрочкой/i), false);
-  pushCount('recalled_contracts', 'Отозванные договоры', cnt(/(\d+)\s*Отозванн[а-яё]*\s+договор/i), false);
+  pushCount('active_without_overdue', 'Действующих договоров без просрочек 30+ дней', cnt(/(\d+)\s*Действующие\s+договор[а-яё]*\s+без\s+просрочки/i), true);
+  pushCount('active_with_overdue', 'Действующих договоров с просрочками 30+ дней', cnt(/(\d+)\s*Действующие\s+договор[а-яё]*\s+с\s+просрочкой/i), true);
+  pushCount('closed_without_overdue', 'Завершённых договоров без просрочек 30+ дней', cnt(/(\d+)\s*Завершенн[а-яё]*\s+договор[а-яё]*\s+без\s+просрочки/i), false);
+  pushCount('closed_with_overdue', 'Завершённых договоров с просрочками 30+ дней', cnt(/(\d+)\s*Завершенн[а-яё]*\s+договор[а-яё]*\s+с\s+просрочкой/i), false);
+  pushCount('recalled_contracts', 'Отозванных договоров', cnt(/(\d+)\s*Отозванн[а-яё]*\s+договор/i), false);
+  notes.push('Счётчики бюро учитывают только просрочки 30 и более дней (сноска отчёта ПКБ). Текущая просрочка по действующим договорам показана отдельным полем.');
 
   const template = full && bureau === 'FCB' ? 'FCB_FULL_PERSONAL_PDF' : 'UNKNOWN';
   const supported = template === 'FCB_FULL_PERSONAL_PDF';
-  if (!supported) gates.push('SAMPLE_REQUIRED: авто-разбор подтверждён только для полного персонального отчёта ПКБ; для этого файла нужен золотой образец шаблона.');
-  gates.push('CONTRACT_REQUIRED: криптографическая проверка подлинности PDF не выполняется (нужен договор/канал бюро) — подлинность UNVERIFIED, требуется ручная проверка.');
-  gates.push('LEGAL_REVIEW_REQUIRED: текст согласия, роли controller/processor, срок хранения — вне кода.');
+  if (!supported) gates.push('SAMPLE_REQUIRED: автоматический разбор проверен только на полном персональном отчёте ПКБ; в этом файле часть полей может быть прочитана неточно — проверьте их глазами.');
+  gates.push('CONTRACT_REQUIRED: подлинность PDF автоматически не проверяется (для этого нужен договор с бюро) — сверьте документ с оригиналом вручную.');
+  gates.push('LEGAL_REVIEW_REQUIRED: текст согласия и срок хранения документа утверждает юрист — в системе они пока не заданы.');
   notes.push(`Найдено напечатанных упоминаний договоров/контрактов: ~${contractHits} (грубая оценка до полного разбора блоков).`);
 
   return {
@@ -539,10 +619,10 @@ export function extractPension(rawText: string): DocumentExtraction {
   notes.push(`Доход из ОПВ не рассчитывается: ${base.reason} Банковский/официальный КДН не считается (REG-F-001 DISABLED).`);
 
   if (template.includes('?') || template === 'UNKNOWN') {
-    gates.push('SAMPLE_REQUIRED: точный разбор строк ЕНПФ подтверждён только на золотом образце шаблона GOVCORP; на произвольной выписке распознавание частичное.');
+    gates.push('SAMPLE_REQUIRED: строки взносов распознаются точно только на типовой выписке ЕНПФ; здесь часть строк может быть прочитана неполно — сверьте суммы глазами.');
   }
-  gates.push('CONTRACT_REQUIRED: проверка подлинности (штрих-код ЕНПФ) не выполняется — только ручная.');
-  gates.push('LEGAL_REVIEW_REQUIRED: срок хранения и роли обработки — вне кода.');
+  gates.push('CONTRACT_REQUIRED: подлинность выписки (штрих-код ЕНПФ) автоматически не проверяется — сверьте вручную.');
+  gates.push('LEGAL_REVIEW_REQUIRED: срок хранения выписки и роли обработки данных утверждает юрист — в системе они пока не заданы.');
   notes.push('covered_month_count и NO_CONTRIBUTION не выставляются (нет доказанного покрытия) — только «наблюдаемые месяцы».');
 
   return {

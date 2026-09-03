@@ -31,10 +31,66 @@ type DocType = "credit_history" | "enpf_statement";
 interface ExtractedField {
   key: string;
   label: string;
-  value: string | number;
+  value: string;
   presence: string;
   confidence: number;
   critical?: boolean;
+}
+
+/**
+ * Машинные значения парсера → человеческий язык. Брокер не обязан знать, что
+ * FULL_PERSONAL — это полный персональный отчёт, а 010 — код ОПВ.
+ */
+const VALUE_LABEL: Record<string, string> = {
+  FCB: "Первое кредитное бюро (ПКБ)",
+  SCB: "Государственное кредитное бюро (ГКБ)",
+  FULL_PERSONAL: "Полный персональный кредитный отчёт",
+  PROCESSED: "Обработанные",
+  BLANK: "нет данных",
+  UNKNOWN: "нет данных",
+  NOT_APPLICABLE: "неприменимо",
+  OPV: "ОПВ — обязательные пенсионные взносы",
+  OPPV: "ОППВ — обязательные профессиональные взносы",
+  OPVR: "ОПВР — взносы работодателя",
+  DPV: "ДПВ — добровольные взносы",
+  PENALTY_OPV: "Пеня по ОПВ",
+  PENALTY_OPPV: "Пеня по ОППВ",
+  PENALTY_OPVR: "Пеня по ОПВР",
+};
+
+/** Подписи полей, где парсер говорит своим внутренним словарём. */
+const FIELD_LABEL_OVERRIDE: Record<string, string> = {
+  bureau: "Кредитное бюро",
+  report_generated_at: "Дата формирования отчёта",
+  report_pages_declared: "Страниц в отчёте",
+  bureau_rating: "Кредитный рейтинг бюро (ПКР)",
+  active_contracts_detected: "Действующих договоров",
+  current_dpd_active: "Текущая просрочка, дней",
+  max_dpd_lifetime_reported: "Максимальная просрочка за всё время, дней",
+  existing_monthly_payment: "Платежи по действующим кредитам в месяц, ₸",
+  payment_code: "Код назначения платежа (КНП)",
+  report_query_period: "Период, за который запрошена выписка",
+  source_status: "Статус строк выписки",
+  observed_month_count: "Месяцев с взносами в выписке",
+  observed_amount_avg: "Средний взнос, ₸",
+  estimated_contribution_base: "Расчётная база по пенсионным взносам",
+};
+
+/** Деньги и счётчики — с разрядами, а не 3318060.48. */
+function formatValue(label: string, raw: string): string {
+  if (VALUE_LABEL[raw]) return VALUE_LABEL[raw];
+  const money = /^-?\d+(?:[.,]\d{1,2})?$/.test(raw);
+  if (!money) return raw;
+  const [whole, fraction] = raw.replace(",", ".").split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const withFraction = fraction ? `${grouped},${fraction.padEnd(2, "0")}` : grouped;
+  return label.includes("₸") ? `${withFraction} ₸` : withFraction;
+}
+
+/** «CODE: человеческое объяснение» → объяснение (код уходит в подсказку). */
+function splitGate(gate: string): { code: string | null; text: string } {
+  const m = gate.match(/^([A-Z_]+):\s*([\s\S]+)$/);
+  return m ? { code: m[1], text: m[2] } : { code: null, text: gate };
 }
 
 interface DocState {
@@ -76,15 +132,24 @@ export function DocumentIntakeSection({ caseId }: { caseId: string }) {
       const d = await res.json();
 
       const fields: ExtractedField[] = (Array.isArray(d.extraction?.fields) ? d.extraction.fields : [])
-        .map((f: any) => ({
-          key: f.key,
-          label: f.label,
-          // Нераспознанное показываем как «нет данных», а не как ноль.
-          value: (f.normalizedValue ?? f.rawValue ?? (f.presence === "UNKNOWN" ? "нет данных" : f.presence)) as string | number,
-          presence: f.presence,
-          confidence: typeof f.confidence === "number" ? f.confidence : 0,
-          critical: f.critical,
-        }));
+        .map((f: any) => {
+          const label = FIELD_LABEL_OVERRIDE[f.key] ?? f.label;
+          // rawValue — то, что написано в документе по-человечески;
+          // normalizedValue — машинный код для расчёта. Показываем человеку
+          // первое: раньше приоритет был обратный, и брокер видел FULL_PERSONAL.
+          // Нераспознанное остаётся «нет данных», а не превращается в ноль.
+          const source = f.rawValue ?? f.normalizedValue;
+          return {
+            key: f.key,
+            label,
+            value: source === null || source === undefined
+              ? "нет данных"
+              : formatValue(label, String(source)),
+            presence: f.presence,
+            confidence: typeof f.confidence === "number" ? f.confidence : 0,
+            critical: f.critical,
+          };
+        });
 
       setDocs((p) => ({
         ...p,
@@ -168,7 +233,7 @@ export function DocumentIntakeSection({ caseId }: { caseId: string }) {
                           )}
                           title={uncertain ? "Низкая уверенность распознавания — требуется проверка" : undefined}
                         >
-                          {String(f.value)}
+                          {f.value}
                         </span>
                       </li>
                     );
@@ -177,10 +242,22 @@ export function DocumentIntakeSection({ caseId }: { caseId: string }) {
               )}
 
               {doc.gates.length > 0 && (
-                <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                  <span>{doc.gates[0]}</span>
-                </p>
+                <div className="mt-3 rounded-md bg-muted/40 px-3 py-2">
+                  <p className="flex items-center gap-1.5 text-xs font-medium">
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+                    Проверить вручную
+                  </p>
+                  <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                    {doc.gates.map((gate) => {
+                      const { code, text } = splitGate(gate);
+                      return (
+                        // Код гейта остаётся в подсказке: он нужен поддержке
+                        // и аудиту, но брокеру про CONTRACT_REQUIRED читать нечего.
+                        <li key={gate} title={code ?? undefined}>{text}</li>
+                      );
+                    })}
+                  </ul>
+                </div>
               )}
             </div>
           );

@@ -45,7 +45,13 @@ commissionsRouter.get('/', async (req: Request, res: Response): Promise<void> =>
         const where: any = {};
         if (status) where.status = status;
         if (RESTRICTED_ROLES.includes(req.user?.role || '')) {
-            where.deal = { brokerId: req.user!.userId };
+            // Комиссия теперь бывает двух видов: по сделке новостройки (там
+            // «своя» определяется брокером сделки) и по сделке вторички (там
+            // — агентом, приведшим покупателя). Видеть агент должен обе свои.
+            where.OR = [
+                { deal: { brokerId: req.user!.userId } },
+                { partnerAgentId: req.user!.userId },
+            ];
         }
 
         const [commissions, total] = await Promise.all([
@@ -83,6 +89,7 @@ commissionsRouter.get('/:id', async (req: Request, res: Response): Promise<void>
             where: { id: req.params.id },
             include: {
                 deal: { select: { id: true, brokerId: true, amount: true } },
+                secondaryDeal: { select: { id: true, propertyId: true, finalPrice: true, stage: true } },
                 statusHistory: { orderBy: { createdAt: 'desc' } },
             },
         });
@@ -92,7 +99,12 @@ commissionsRouter.get('/:id', async (req: Request, res: Response): Promise<void>
             return;
         }
 
-        if (RESTRICTED_ROLES.includes(req.user?.role || '') && commission.deal.brokerId !== req.user!.userId) {
+        // `deal` теперь может быть null — комиссия вторички привязана к
+        // secondaryDeal. Своей она считается для агента, приведшего покупателя.
+        const isOwn =
+            commission.deal?.brokerId === req.user!.userId ||
+            commission.partnerAgentId === req.user!.userId;
+        if (RESTRICTED_ROLES.includes(req.user?.role || '') && !isOwn) {
             res.status(403).json({ error: 'Доступ запрещен' });
             return;
         }

@@ -16,6 +16,8 @@
     "db:seed:almaty": "tsx prisma/seed-almaty.ts",
     "demo:seed": "tsx prisma/seed-secondary-demo.ts",
     "demo:purge": "tsx prisma/seed-secondary-demo.ts --purge",
+    "marketplace:seed": "tsx prisma/seed-marketplace-demo.ts",
+    "marketplace:purge": "tsx prisma/seed-marketplace-demo.ts --purge",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

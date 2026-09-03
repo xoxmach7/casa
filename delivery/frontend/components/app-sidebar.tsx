@@ -304,6 +304,46 @@ export function AppSidebar() {
                   ? pathname === item.url
                   : item.subItems?.some(sub => pathname === sub.url || pathname.startsWith(sub.url.split("?")[0]))
 
+                // Раздел без своей страницы: пункты живут ВНУТРИ него, а не
+                // висят отдельными строками под ним. Поэтому это не кнопка с
+                // выпадашкой, а панель-контейнер с заголовком и содержимым.
+                if (item.subItems && item.alwaysOpen) {
+                  const subs = item.subItems.filter(
+                    (subItem) => !subItem.roles || subItem.roles.includes(user?.role || "BROKER"),
+                  )
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <div className="rounded-lg border border-sidebar-border/60 bg-sidebar-accent/30 p-1">
+                        <div className="flex items-center gap-2 px-2 pb-1 pt-1.5">
+                          <item.icon className="h-4 w-4 shrink-0 text-sidebar-foreground/60" />
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+                            {item.title}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5">
+                          {subs.map((subItem) => {
+                            const isSubActive =
+                              pathname === subItem.url || pathname.startsWith(subItem.url.split("?")[0])
+                            return (
+                              <a
+                                key={subItem.title}
+                                href={subItem.url}
+                                className={cn(
+                                  "flex h-8 items-center rounded-md px-2 text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                                  isSubActive && "bg-sidebar-accent text-[#FFD700] hover:text-[#FFD700]",
+                                )}
+                              >
+                                {subItem.icon && <subItem.icon className="mr-2 h-3.5 w-3.5 shrink-0" />}
+                                <span className="text-[13px] font-medium">{subItem.title}</span>
+                              </a>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </SidebarMenuItem>
+                  )
+                }
+
                 return item.subItems ? (
                   <Collapsible
                     key={item.title}

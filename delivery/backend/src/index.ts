@@ -52,6 +52,9 @@ import { fixationsRouter } from './routes/fixations.routes';
 import { valuationsRouter } from './routes/valuations.routes';
 import { clientPropertyInterestsRouter } from './routes/client-property-interests.routes';
 import { dealRoomRouter } from './routes/deal-room.routes';
+import { marketplaceCatalogRouter } from './routes/marketplace-catalog.routes';
+import { marketplaceOwnerRouter } from './routes/marketplace-owner.routes';
+import { marketplaceAdminRouter } from './routes/marketplace-admin.routes';
 import { scoringRouter } from './routes/scoring.routes';
 import { legacyScoringEnabled } from './lib/release-flags';
 import { uploadsRouter } from './routes/uploads.routes';
@@ -220,6 +223,11 @@ app.use('/api/fixations', fixationsRouter);
 app.use('/api/valuations', valuationsRouter);
 app.use('/api/client-property-interests', clientPropertyInterestsRouter);
 app.use('/api/deal-room', dealRoomRouter);
+// Портал вторички. Кабинет собственника монтируется ДО витрины: иначе
+// '/owner' попал бы в ':id' карточки объекта.
+app.use('/api/marketplace/owner', marketplaceOwnerRouter);
+app.use('/api/marketplace', marketplaceCatalogRouter);
+app.use('/api/admin/marketplace', marketplaceAdminRouter);
 // Легаси-скоринг закрыт: выдаёт запрещённые релизом 1.0 выходы — ярлык КИ
 // GOOD/HAS_DELAYS/BAD (M03 §14.2/§16.2/§21.3, CH-082), «вероятность одобрения»,
 // оценку дохода из ОПВ (M04 §21/§22 REMOVE + governance-решение 2026-08-25) и

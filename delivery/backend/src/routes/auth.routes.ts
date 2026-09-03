@@ -24,6 +24,21 @@ const registerDeveloperSchema = z.object({
   password: z.string().min(6),
 });
 
+// Саморегистрация собственника квартиры на портале вторички.
+//
+// В отличие от застройщика, собственник заводится сразу ACTIVE и входит без
+// ожидания. Модерация перенесена на его ОБЪЕКТ: аккаунт без объявления
+// безвреден, а требовать одобрения до первого шага — верный способ не
+// набрать предложение вовсе.
+const registerOwnerSchema = z.object({
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  email: z.string().email(),
+  phone: z.string().min(5).max(30),
+  city: z.string().max(100).optional(),
+  password: z.string().min(6),
+});
+
 const developerProfileSchema = z.object({
   companyName: z.string().min(2).max(200).optional(),
   bin: z.string().max(20).optional().nullable(),
@@ -319,6 +334,67 @@ authRouter.post('/register-developer', async (req: Request, res: Response): Prom
       return;
     }
     console.error('Register developer error:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// POST /api/auth/register-owner - саморегистрация собственника квартиры.
+//
+// Заводит User(role=OWNER) и его карточку Seller одной транзакцией: без
+// Seller собственнику некуда привязать объект, а заводить её потом руками
+// координатора — лишний шаг, на котором теряется половина регистраций.
+authRouter.post('/register-owner', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = registerOwnerSchema.parse(req.body);
+
+    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    if (existing) {
+      res.status(409).json({ error: 'Пользователь с таким email уже существует' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: data.email,
+          password: hashedPassword,
+          role: 'OWNER',
+          status: 'ACTIVE',
+          isActive: true,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          city: data.city || null,
+        },
+      });
+
+      // brokerId у Seller обязателен и означает «кто ведёт продавца». У
+      // самостоятельно зарегистрированного собственника ведущего ещё нет,
+      // поэтому до назначения координатора он ведёт сам себя.
+      await tx.seller.create({
+        data: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          email: data.email,
+          city: data.city || null,
+          source: 'SELF_REGISTRATION',
+          brokerId: user.id,
+          userId: user.id,
+          funnelStage: 'CONTACT',
+        },
+      });
+    });
+
+    res.status(201).json({ message: 'Аккаунт создан. Теперь можно войти и разместить квартиру.' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Неверные данные', details: error.errors });
+      return;
+    }
+    console.error('Register owner error:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

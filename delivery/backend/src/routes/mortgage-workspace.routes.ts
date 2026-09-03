@@ -9,6 +9,9 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.middleware';
+import { prisma } from '../lib/prisma';
+import { canAccessMortgageCase, isActiveMortgageConsent } from '../lib/mortgage-case.service';
+import { documentConsentEnforced } from '../lib/release-flags';
 import {
   computeWhatIf,
   demoAnalysis,
@@ -150,15 +153,51 @@ mortgageWorkspaceRouter.post(
         return;
       }
 
+      // Подпись файла проверяется ДО парсера: раньше extractTextFromPdf
+      // получал непроверенный буфер (M03 §6.2 шаг 4, CH-005).
+      if (!file.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+        res.status(422).json({ code: 'PDF_SIGNATURE_INVALID', error: 'Файл не является корректным PDF' });
+        return;
+      }
+
+      // Привязка к делу и согласие (M03/M04 §17). Раньше документ с ПДн
+      // принимался без case/participant, без проверки согласия и без аудита.
+      const caseId = typeof req.body?.case_id === 'string' ? req.body.case_id : null;
+      const purpose = type === 'credit_history' ? 'credit_report_upload' : 'pension_contribution_processing';
+      let consentStatus: 'GRANTED' | 'MISSING' | 'NO_CASE' = 'NO_CASE';
+      let boundCase: { id: string } | null = null;
+
+      if (caseId) {
+        const mortgageCase = await prisma.mortgageCase.findUnique({
+          where: { id: caseId },
+          include: { parties: { include: { consentRevision: true } } },
+        });
+        if (!mortgageCase || !canAccessMortgageCase(mortgageCase, req.user!)) {
+          res.status(404).json({ code: 'not_found', error: 'Ипотечный кейс не найден' });
+          return;
+        }
+        boundCase = { id: mortgageCase.id };
+        const anyConsent = mortgageCase.parties.some((party) =>
+          party.consentRevision
+          && isActiveMortgageConsent(party.consentRevision, type === 'credit_history'
+            ? 'upload_credit_report' : 'upload_pension_document'));
+        consentStatus = anyConsent ? 'GRANTED' : 'MISSING';
+      }
+
+      if (documentConsentEnforced() && consentStatus !== 'GRANTED') {
+        res.status(409).json({
+          code: 'CONSENT_REQUIRED',
+          error: 'Нужно активное согласие клиента на приём этого документа.',
+          purpose,
+        });
+        return;
+      }
+
       let text: string;
       try {
         text = await extractTextFromPdf(file.buffer);
       } catch {
         res.status(422).json({ code: 'TEXT_LAYER_REQUIRED', error: 'Не удалось извлечь текстовый слой PDF' });
-        return;
-      }
-      if (!file.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
-        res.status(422).json({ code: 'PDF_SIGNATURE_INVALID', error: 'Файл не является корректным PDF' });
         return;
       }
 
@@ -173,15 +212,31 @@ mortgageWorkspaceRouter.post(
         sha256,
         status: 'needs_review',
         uploadedBy: req.user?.userId,
-        caseRef: typeof req.body?.caseRef === 'string' ? req.body.caseRef : undefined,
+        caseRef: boundCase?.id ?? (typeof req.body?.caseRef === 'string' ? req.body.caseRef : undefined),
         storedAt: new Date().toISOString(),
         extraction,
       };
       saveDocument(file.buffer, meta);
 
+      // Приём документа фиксируется в append-only аудите (без ПДн — только
+      // хэш файла). Статус согласия пишется всегда, даже когда не enforce.
+      if (boundCase) {
+        await prisma.mortgageAuditEvent.create({
+          data: {
+            caseId: boundCase.id, actorId: req.user?.userId ?? null,
+            action: 'document.uploaded', objectType: 'MortgageDocument', objectId: id,
+            purpose, result: consentStatus === 'GRANTED' ? 'SUCCESS' : 'CONSENT_MISSING',
+            reasonCode: type, metadataHash: sha256,
+          },
+        }).catch(() => { /* аудит не должен ломать приём документа */ });
+      }
+
       res.status(201).json({
         id, type, fileName: meta.fileName, size: meta.size, sha256,
         status: meta.status, storedAt: meta.storedAt, stored: true,
+        case_id: boundCase?.id ?? null,
+        consent_status: consentStatus,
+        consent_enforced: documentConsentEnforced(),
         extraction,
       });
     } catch (error) {

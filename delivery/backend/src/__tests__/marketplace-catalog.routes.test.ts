@@ -130,6 +130,7 @@ describe('выдача каталога', () => {
     p.crmProperty.findMany.mockResolvedValue([
       {
         ...LISTING,
+        seller: { id: 'seller_1', firstName: 'Айгуль', lastName: 'Сериккызы', phone: '+77011110001' },
         price: decimalish('30000000.00'),
         listingAgreements: [
           {
@@ -175,6 +176,15 @@ describe('выдача каталога', () => {
     expect(listing.expectedReward).toBe('300000');
   });
 
+  it('маскированная карточка не отдаёт продавца, хотя он выбран запросом', async () => {
+    const res = await request(app()).get('/api/marketplace/listings');
+
+    const listing = res.body.listings[0];
+    expect(listing.isMasked).toBe(true);
+    expect(listing.seller).toBeUndefined();
+    expect(JSON.stringify(listing)).not.toContain('77011110001');
+  });
+
   it('с живой фиксацией отдаёт объект целиком', async () => {
     p.secondaryFixation.findFirst.mockResolvedValue({
       id: 'fix_1',
@@ -188,6 +198,8 @@ describe('выдача каталога', () => {
     expect(listing.isMasked).toBe(false);
     expect(listing.address).toBe('ул. Достык, 12, кв. 45');
     expect(listing.fixation.id).toBe('fix_1');
+    // Обещание карточки «контакты открыты» должно быть выполнимым.
+    expect(listing.seller.phone).toBe('+77011110001');
   });
 });
 

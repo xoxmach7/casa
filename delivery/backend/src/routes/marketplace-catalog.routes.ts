@@ -105,6 +105,9 @@ marketplaceCatalogRouter.get('/listings', async (req: Request, res: Response): P
         where,
         select: {
           ...LIST_FIELDS,
+          // Продавца выбираем всегда, а прячет его маскировка. Иначе карточка
+          // с открытой фиксацией обещает контакты и не показывает их.
+          seller: { select: { id: true, firstName: true, lastName: true, phone: true } },
           listingAgreements: {
             where: { status: 'ACTIVE' },
             take: 1,

@@ -28,6 +28,9 @@ import {
   Inbox,
   Handshake,
   Ruler,
+  Store,
+  Home,
+  BadgeCheck,
 } from "lucide-react"
 import {
   Sidebar,
@@ -116,9 +119,19 @@ const menuItems: MenuSection[] = [
     roles: ["ADMIN", "BROKER", "AGENCY"],
     alwaysOpen: true,
     subItems: [
+      { title: "Площадка", url: "/dashboard/marketplace", icon: Store },
+      { title: "Мои фиксации", url: "/dashboard/marketplace/fixations", icon: BadgeCheck },
       { title: "Сделки", url: "/dashboard/deal-room", icon: Handshake },
       { title: "Оценка объектов", url: "/dashboard/valuations", icon: Ruler },
     ],
+  },
+  // 2a. Кабинет собственника (роль OWNER): единственный раздел. Собственник
+  // не покупатель и не агент — ему нечего делать в CRM, ипотеке и подборках.
+  {
+    title: "Мои квартиры",
+    icon: Home,
+    url: "/dashboard/owner",
+    roles: ["OWNER"],
   },
   // 2b. Кабинет застройщика (роль DEVELOPER): урезанное меню — только свои ЖК,
   // добавление ЖК и профиль компании. Остальные разделы (CRM/Ипотека/Клиенты)
@@ -202,6 +215,7 @@ const adminMenuItem: MenuSection = {
     { title: "Настройки AI", url: "/dashboard/admin/settings", icon: Settings },
     { title: "Импорт amoCRM", url: "/dashboard/admin/import", icon: Upload },
     { title: "Подписки", url: "/dashboard/admin/subscriptions", icon: CreditCard },
+    { title: "Портал вторички", url: "/dashboard/admin/marketplace", icon: Store },
   ],
 }
 

@@ -501,7 +501,13 @@ export function extractPension(rawText: string): DocumentExtraction {
   fields.push(fld({
     key: 'estimated_contribution_base', label: 'Расчётная база (М04)',
     presence: 'UNKNOWN', rawValue: null, normalizedValue: null,
-    confidence: 0, critical: true, level: 'CASA_DERIVED',
+    // critical=false НАМЕРЕННО. Это не непрочитанный исходный факт, а
+    // производная оценка, закрытая гейтом RG-04: она обязана оставаться
+    // UNKNOWN. Пока поле было critical, гейт подтверждения
+    // (hasUnresolvedCriticalFields) видел вечно нерешённое критичное поле и
+    // выписку ЕНПФ было НЕВОЗМОЖНО подтвердить — всегда 409. По M04 §14
+    // rate-context блокирует зависимую оценку, а не публикацию source-фактов.
+    confidence: 0, critical: false, level: 'CASA_DERIVED',
     evidence: base.estimate_status,
   }));
   notes.push(`Доход из ОПВ не рассчитывается: ${base.reason} Банковский/официальный КДН не считается (REG-F-001 DISABLED).`);

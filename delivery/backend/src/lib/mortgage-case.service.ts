@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { isPurposeApproved } from './mortgage-m01/purpose-registry';
 import type { MortgageCaseStatus } from '@prisma/client';
 
 function canonicalize(value: unknown): unknown {
@@ -56,8 +57,12 @@ export function isActiveMortgageConsent(
   operation: string,
   now = new Date(),
 ): boolean {
+  // M01 §8: цель берётся из реестра, а не хардкодится. Раньше здесь стояло
+  // `purposeCode === 'mortgage_prescore'`, из-за чего согласие на утверждённую
+  // цель M02 не открывало действий M01 — сквозной путь был непроходим.
+  // Неизвестная или отключённая цель → deny.
   return revision.status === 'ACTIVE'
-    && revision.purposeCode === 'mortgage_prescore'
+    && isPurposeApproved(revision.purposeCode)
     && revision.allowedOperations.includes(operation)
     && revision.grantedAt !== null
     && revision.grantedAt <= now

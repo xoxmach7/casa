@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { findPurpose, isKnownOperation } from '../lib/mortgage-m01/purpose-registry';
 import { Prisma, MortgageCaseStatus } from '@prisma/client';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
@@ -1179,5 +1180,131 @@ mortgageCasesRouter.post('/:caseId/consent-preflight', async (req: Request, res:
     apiError(res, 500, 'internal_error', 'Не удалось выполнить проверку согласий');
   }
 });
+
+// =========================================================================
+// M01 — выдача согласия участнику (включая PRIMARY).
+//
+// ЗАЧЕМ: до этого ни одна строка кода не создавала ConsentRevision, а у
+// основного заёмщика согласие негде было хранить (партия PRIMARY создавалась
+// без consentRevisionId и никогда не обновлялась). Из-за этого проверка по
+// ИИН всегда упиралась в BLOCKED_CONSENT, а перевод статуса кейса — в
+// CONSENT_REQUIRED: сквозной путь был непроходим.
+//
+// Спека: цель — только из утверждённого реестра (§8); evidence обязателен для
+// ACTIVE (§7); действие фиксируется в append-only аудите.
+// =========================================================================
+
+const grantConsentSchema = z.object({
+  purpose_code: z.string().trim().min(1).max(128),
+  allowed_operations: z.array(z.string().trim().min(1).max(128)).min(1).max(16),
+  legal_text_version: z.string().trim().min(1).max(64),
+  legal_text_hash: z.string().trim().length(64).optional(),
+  // Подтверждение обязательно: ACTIVE без доказательства спека запрещает.
+  evidence_type: z.string().trim().min(1).max(64),
+  evidence_ref: z.string().trim().min(1).max(256),
+  source_channel: z.string().trim().max(64).optional(),
+  data_categories: z.array(z.string().trim().min(1).max(64)).max(32).optional(),
+  expires_at: z.string().datetime().optional(),
+}).strict();
+
+mortgageCasesRouter.post(
+  '/:caseId/participants/:partyId/consent',
+  async (req: Request, res: Response): Promise<void> => {
+    const parsed = grantConsentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());
+      return;
+    }
+    const { purpose_code: purposeCode, allowed_operations: operations } = parsed.data;
+
+    // §8: неизвестная или отключённая цель не открывает действий.
+    const purpose = findPurpose(purposeCode);
+    if (!purpose) {
+      apiError(res, 422, 'purpose_unknown', 'Цель обработки отсутствует в утверждённом реестре');
+      return;
+    }
+    if (purpose.state !== 'APPROVED') {
+      apiError(res, 422, 'purpose_disabled',
+        `Цель обработки отключена: ${purpose.blockedBy ?? 'ожидает решения'}`);
+      return;
+    }
+    const unknownOps = operations.filter((op) => !isKnownOperation(op));
+    if (unknownOps.length > 0) {
+      apiError(res, 422, 'operation_unknown', `Неизвестные действия: ${unknownOps.join(', ')}`);
+      return;
+    }
+
+    try {
+      const result = await runSerializable(async (tx) => {
+        const current = await tx.mortgageCase.findUnique({ where: { id: req.params.caseId } });
+        if (!current || !canAccessMortgageCase(current, req.user!)) return { kind: 'not_found' as const };
+
+        const party = await tx.mortgageCaseParty.findUnique({ where: { id: req.params.partyId } });
+        if (!party || party.caseId !== current.id) return { kind: 'not_found' as const };
+
+        // Контейнер согласия на клиента — один; ревизии копятся внутри него.
+        const container = await tx.clientConsent.findFirst({ where: { clientId: party.clientId } })
+          ?? await tx.clientConsent.create({ data: { clientId: party.clientId } });
+
+        const revision = await tx.consentRevision.create({
+          data: {
+            consentId: container.id,
+            purposeCode,
+            purposeDescription: purpose.title,
+            allowedOperations: operations,
+            dataCategories: parsed.data.data_categories ?? [],
+            sourceChannel: parsed.data.source_channel,
+            legalTextVersion: parsed.data.legal_text_version,
+            legalTextHash: parsed.data.legal_text_hash,
+            evidenceType: parsed.data.evidence_type,
+            evidenceRef: parsed.data.evidence_ref,
+            status: 'ACTIVE',
+            grantedAt: new Date(),
+            expiresAt: parsed.data.expires_at ? new Date(parsed.data.expires_at) : null,
+            supersedesId: party.consentRevisionId,
+          },
+        });
+
+        // Привязка к участнику — то, чего не хватало для PRIMARY.
+        await tx.mortgageCaseParty.update({
+          where: { id: party.id },
+          data: { consentRevisionId: revision.id },
+        });
+
+        await tx.mortgageAuditEvent.create({
+          data: {
+            caseId: current.id, actorId: req.user!.userId,
+            action: 'consent.granted', objectType: 'ConsentRevision', objectId: revision.id,
+            purpose: purposeCode, result: 'SUCCESS',
+            metadataHash: mortgageRequestHash({
+              purposeCode, operations, legalTextVersion: parsed.data.legal_text_version,
+            }),
+          },
+        });
+
+        return { kind: 'granted' as const, revision, partyId: party.id };
+      });
+
+      if (result.kind === 'not_found') {
+        apiError(res, 404, 'not_found', 'Кейс или участник не найден');
+        return;
+      }
+      res.status(201).json({ data: {
+        consent_revision_id: result.revision.id,
+        participant_id: result.partyId,
+        purpose_code: result.revision.purposeCode,
+        allowed_operations: result.revision.allowedOperations,
+        status: result.revision.status,
+        granted_at: result.revision.grantedAt,
+        expires_at: result.revision.expiresAt,
+        supersedes_id: result.revision.supersedesId,
+      } });
+    } catch (error) {
+      const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined;
+      console.error('Grant consent failed', { code: code ?? 'unknown' });
+      apiError(res, 500, 'internal_error', 'Не удалось выдать согласие');
+    }
+  },
+);
 
 export default mortgageCasesRouter;

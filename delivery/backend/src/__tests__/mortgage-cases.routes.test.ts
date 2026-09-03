@@ -14,10 +14,11 @@ vi.mock('../middleware/auth.middleware', () => ({
 const txMock = vi.hoisted(() => ({
   client: { findUnique: vi.fn() },
   mortgageCase: { findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
-  mortgageCaseParty: { create: vi.fn() },
+  mortgageCaseParty: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   mortgageIdempotencyRecord: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn() },
   mortgageAuditEvent: { create: vi.fn() },
-  consentRevision: { findUnique: vi.fn() },
+  consentRevision: { findUnique: vi.fn(), create: vi.fn() },
+  clientConsent: { findFirst: vi.fn(), create: vi.fn() },
 }));
 
 vi.mock('../lib/prisma', () => ({
@@ -205,6 +206,80 @@ describe('mortgage case API', () => {
       .send({ client_id: '', role: 'BAD_ROLE', consent_revision_id: '', expected_version: 0 });
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('validation_error');
+  });
+
+  describe('выдача согласия участнику (разблокировка сквозного пути)', () => {
+    const primaryParty = { id: 'party_primary', caseId: 'case_1', clientId: 'client_1', role: 'PRIMARY', consentRevisionId: null };
+    const grantBody = {
+      purpose_code: 'mortgage_preanalysis_official_registry_checks',
+      allowed_operations: ['official_registry_checks', 'collect_and_process_questionnaire_data'],
+      legal_text_version: 'v1.0',
+      evidence_type: 'SMS_CODE',
+      evidence_ref: 'sms://confirm/abc',
+    };
+
+    beforeEach(() => {
+      txMock.mortgageCase.findUnique.mockResolvedValue(createdCase);
+      txMock.mortgageCaseParty.findUnique.mockResolvedValue(primaryParty);
+      txMock.clientConsent.findFirst.mockResolvedValue({ id: 'cc_1', clientId: 'client_1' });
+      txMock.consentRevision.create.mockImplementation(async ({ data }: any) => ({ id: 'rev_1', ...data }));
+      txMock.mortgageCaseParty.update.mockResolvedValue({ ...primaryParty, consentRevisionId: 'rev_1' });
+      txMock.mortgageAuditEvent.create.mockResolvedValue({});
+    });
+
+    it('ОСНОВНОЙ заёмщик получает согласие и оно привязывается к участнику', async () => {
+      const res = await request(app())
+        .post('/api/v2/cases/case_1/participants/party_primary/consent')
+        .send(grantBody);
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.consent_revision_id).toBe('rev_1');
+      expect(res.body.data.status).toBe('ACTIVE');
+      // Именно этого не хватало: привязка ревизии к партии PRIMARY.
+      expect(txMock.mortgageCaseParty.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'party_primary' }, data: { consentRevisionId: 'rev_1' } }),
+      );
+      // Согласие фиксируется в аудите.
+      expect(txMock.mortgageAuditEvent.create).toHaveBeenCalled();
+    });
+
+    it('отключённая цель (ожидает юр. решения) → 422, согласие не создаётся', async () => {
+      const res = await request(app())
+        .post('/api/v2/cases/case_1/participants/party_primary/consent')
+        .send({ ...grantBody, purpose_code: 'pension_contribution_processing' });
+
+      expect(res.status).toBe(422);
+      expect(res.body.error.code).toBe('purpose_disabled');
+      expect(txMock.consentRevision.create).not.toHaveBeenCalled();
+    });
+
+    it('цели нет в утверждённом реестре → 422', async () => {
+      const res = await request(app())
+        .post('/api/v2/cases/case_1/participants/party_primary/consent')
+        .send({ ...grantBody, purpose_code: 'made_up_purpose' });
+
+      expect(res.status).toBe(422);
+      expect(res.body.error.code).toBe('purpose_unknown');
+      expect(txMock.consentRevision.create).not.toHaveBeenCalled();
+    });
+
+    it('без доказательства подтверждения (evidence) согласие не выдаётся', async () => {
+      const { evidence_ref: _drop, ...noEvidence } = grantBody;
+      const res = await request(app())
+        .post('/api/v2/cases/case_1/participants/party_primary/consent')
+        .send(noEvidence);
+
+      expect(res.status).toBe(400);
+      expect(txMock.consentRevision.create).not.toHaveBeenCalled();
+    });
+
+    it('чужой кейс → 404 без утечки существования', async () => {
+      txMock.mortgageCase.findUnique.mockResolvedValue({ ...createdCase, ownerId: 'other' });
+      const res = await request(app())
+        .post('/api/v2/cases/case_1/participants/party_primary/consent')
+        .send(grantBody);
+      expect(res.status).toBe(404);
+    });
   });
 
   it('consent-preflight: активное согласие всех участников → allowed=true', async () => {

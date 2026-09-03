@@ -202,6 +202,26 @@ describe('ЕНПФ — месяцы из колонки периода (MMYYYY �
   });
 });
 
+describe('М04: гейт RG-04 не должен делать выписку неподтверждаемой', () => {
+  const r = extractPension(ENPF_SAMPLE);
+
+  it('расчётная база остаётся UNKNOWN (гейт соблюдён)', () => {
+    const f = r.fields.find((x) => x.key === 'estimated_contribution_base');
+    expect(f?.presence).toBe('UNKNOWN');
+    expect(f?.normalizedValue).toBeNull();
+  });
+
+  it('но она НЕ критичная — иначе документ невозможно подтвердить никогда', () => {
+    const f = r.fields.find((x) => x.key === 'estimated_contribution_base');
+    expect(f?.critical).toBe(false);
+  });
+
+  it('среди критичных полей нет вечно-UNKNOWN — подтверждение достижимо', () => {
+    const blockers = r.fields.filter((f) => f.critical && f.presence === 'UNKNOWN');
+    expect(blockers.map((f) => f.key)).not.toContain('estimated_contribution_base');
+  });
+});
+
 describe('М04 расчётная база — строго по спеке (без ОПВ→доход)', () => {
   it('pensionContributionBase() = null + UNKNOWN_RATE_CONTEXT до RG-04', () => {
     const b = pensionContributionBase();

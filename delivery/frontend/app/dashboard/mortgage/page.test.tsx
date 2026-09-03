@@ -22,11 +22,13 @@ vi.mock("next/navigation", () => ({
 
 const api = vi.hoisted(() => ({
   listMortgageCases: vi.fn(),
+  getMortgageCase: vi.fn(),
   getClientProfile: vi.fn(),
   setPurchaseGoal: vi.fn(),
   addDownPaymentSource: vi.fn(),
   publishProfileSnapshot: vi.fn(),
   createCalculationRun: vi.fn(),
+  createMortgageCase: vi.fn(),
 }));
 
 vi.mock("@/lib/mortgage/case-api", async () => {
@@ -66,6 +68,10 @@ beforeEach(() => {
   searchParams = new URLSearchParams();
   api.listMortgageCases.mockResolvedValue({ items: [], nextCursor: null, hasMore: false });
   api.getClientProfile.mockResolvedValue(PROFILE);
+  api.getMortgageCase.mockResolvedValue({
+    id: "case_real_1", client_id: "cl_1", status: "DRAFT", version: 3,
+    client_name: "Сериков Асхат", parties: [],
+  });
   api.publishProfileSnapshot.mockResolvedValue({ id: "cps_1", content_hash: "f".repeat(64) });
 });
 
@@ -101,6 +107,28 @@ describe("без выбранного кейса", () => {
       expect(text).not.toContain(mock);
     }
   });
+
+  it("даёт брокеру способ начать проверку, а не только ссылку на список", async () => {
+    render(<MortgagePage />);
+    await screen.findByText("Расчёты по клиентам");
+    // Экран обещает «начните новый», значит кнопка обязана существовать.
+    expect(screen.getAllByRole("button", { name: /Новый расчёт/ }).length).toBeGreaterThan(0);
+  });
+
+  it("по кнопке открывает выбор клиента", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ clients: [{ id: "cl_1", firstName: "Асхат", lastName: "Сериков", city: "Астана" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MortgagePage />);
+    await screen.findByText("Расчёты по клиентам");
+    await userEvent.click(screen.getAllByRole("button", { name: /Новый расчёт/ })[0]);
+
+    expect(await screen.findByText("Сериков Асхат")).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("с выбранным реальным кейсом", () => {
@@ -109,9 +137,18 @@ describe("с выбранным реальным кейсом", () => {
   it("берёт цель и взнос из реального профиля M05", async () => {
     render(<MortgagePage />);
     await waitFor(() => expect(api.getClientProfile).toHaveBeenCalledWith("case_real_1"));
-    expect(await screen.findByText(/Кейс case_real_1/)).toBeInTheDocument();
+    // Шапка называет клиента по имени, а не идентификатором кейса.
+    expect(await screen.findByText("Сериков Асхат")).toBeInTheDocument();
     // Сумма встречается и в агрегате, и в строке источника — обе из профиля.
     expect(screen.getAllByText("5 000 000,00 ₸").length).toBeGreaterThan(0);
+  });
+
+  it("не выносит идентификатор кейса в рабочее поле зрения брокера", async () => {
+    render(<MortgagePage />);
+    await screen.findByText("Сериков Асхат");
+    // Идентификатор сохранён для поддержки, но спрятан в <details>.
+    expect(screen.queryByText(/^Кейс case_real_1/)).toBeNull();
+    expect(screen.getByText(/Служебные данные/)).toBeInTheDocument();
   });
 
   it("до прогона не показывает ни требуемого финансирования, ни платежа", async () => {
@@ -151,7 +188,7 @@ describe("с выбранным реальным кейсом", () => {
 
     render(<MortgagePage />);
     await screen.findByText(/Расчёт ещё не выполнялся/);
-    await userEvent.click(screen.getByRole("button", { name: /Рассчитать на сервере/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Рассчитать$/ }));
 
     expect(await screen.findByText("284 035,14 ₸")).toBeInTheDocument();
     expect(screen.getByText("25 000 000,00 ₸")).toBeInTheDocument();
@@ -167,7 +204,7 @@ describe("с выбранным реальным кейсом", () => {
 
     render(<MortgagePage />);
     await screen.findByText(/Расчёт ещё не выполнялся/);
-    await userEvent.click(screen.getByRole("button", { name: /Рассчитать на сервере/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Рассчитать$/ }));
 
     expect(await screen.findByText("Расчёт временно недоступен")).toBeInTheDocument();
     // Ни требуемого финансирования, ни платежа — никакого fallback.
@@ -177,7 +214,7 @@ describe("с выбранным реальным кейсом", () => {
 
   it("не показывает запрещённые для 1.0 выходы M06", async () => {
     render(<MortgagePage />);
-    await screen.findByText(/Кейс case_real_1/);
+    await screen.findByText("Сериков Асхат");
     // Дисклеймер перечисляет запрещённое, чтобы сказать «не показывается»;
     // проверяем ОСТАВШИЙСЯ экран, иначе тест ловил бы собственное отрицание.
     const note = screen.getByTestId("release-scope-note").textContent ?? "";

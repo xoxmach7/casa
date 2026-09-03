@@ -24,7 +24,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Calculator, User2, ShieldCheck, Wrench, Info, TriangleAlert, RefreshCw, FolderOpen,
+  Calculator, User2, ShieldCheck, Info, TriangleAlert, RefreshCw, FolderOpen,
   Plus, ArrowRight, FileText, Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ import {
 } from "@/lib/mortgage/case-api";
 import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
 import { DocumentIntakeSection } from "@/components/mortgage/DocumentIntakeSection";
+import { NewCaseDialog } from "@/components/mortgage/NewCaseDialog";
 
 // --- Ярлыки -----------------------------------------------------------------
 
@@ -156,17 +157,27 @@ function HowItWorks() {
   );
 }
 
-function NoCaseSelected({ cases, loading, onPick }: {
-  cases: MortgageCaseListItem[]; loading: boolean; onPick: (id: string) => void;
+function NoCaseSelected({ cases, loading, onPick, onNew }: {
+  cases: MortgageCaseListItem[]; loading: boolean; onPick: (id: string) => void; onNew: () => void;
 }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHead
-          icon={<FolderOpen className="h-5 w-5" />}
-          title="Расчёты по клиентам"
-          sub="Выберите клиента, чтобы продолжить, или начните новый расчёт. Суммы появятся после выбора клиента."
-        />
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 text-primary"><FolderOpen className="h-5 w-5" /></div>
+            <div>
+              <h2 className="text-base font-semibold leading-tight">Расчёты по клиентам</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Откройте расчёт клиента, чтобы продолжить, или начните новый.
+                Суммы появятся после выбора клиента.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" onClick={onNew}>
+            <Plus className="mr-1.5 h-4 w-4" />Новый расчёт
+          </Button>
+        </div>
 
         {loading && (
           <div className="space-y-2 px-5 py-4">
@@ -185,10 +196,8 @@ function NoCaseSelected({ cases, loading, onPick }: {
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
               Расчёт заводится на клиента: в нём хранятся его документы, проверки и итоговые суммы.
             </p>
-            <Button asChild className="mt-4">
-              <Link href="/dashboard/clients">
-                <Plus className="mr-1.5 h-4 w-4" />Выбрать клиента
-              </Link>
+            <Button className="mt-4" onClick={onNew}>
+              <Plus className="mr-1.5 h-4 w-4" />Новый расчёт
             </Button>
           </div>
         )}
@@ -254,6 +263,8 @@ function MortgageWorkspace() {
   const [calcError, setCalcError] = useState<string | null>(null);
   const [calcBusy, setCalcBusy] = useState(false);
 
+  const [newCaseOpen, setNewCaseOpen] = useState(false);
+
   // --- Загрузка списка кейсов ---
   useEffect(() => {
     let alive = true;
@@ -290,6 +301,12 @@ function MortgageWorkspace() {
   }, [caseId, loadProfile]);
 
   const pickCase = (id: string) => router.push(`/dashboard/mortgage?case=${encodeURIComponent(id)}`);
+
+  // Имя клиента приходит из списка кейсов: идентификатор расчёта брокеру ничего
+  // не говорит, а в шапке нужно видеть, чей это расчёт.
+  const clientName = mortgageCase?.client_name
+    ?? cases.find((c) => c.id === caseId)?.client_name
+    ?? null;
 
   // --- Действия профиля (M05) ---
   const saveGoal = async (raw: string) => {
@@ -376,9 +393,13 @@ function MortgageWorkspace() {
         </div>
         {/* Инструменты — отдельными кнопками, а не одной общей «Инструменты». */}
         <div className="flex flex-wrap gap-2">
-          {caseId && (
+          {caseId ? (
             <Button variant="outline" size="sm" onClick={() => router.push("/dashboard/mortgage")}>
-              <FolderOpen className="mr-1.5 h-4 w-4" />Другой кейс
+              <FolderOpen className="mr-1.5 h-4 w-4" />Все расчёты
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => setNewCaseOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" />Новый расчёт
             </Button>
           )}
           <Button asChild variant="outline" size="sm">
@@ -390,7 +411,16 @@ function MortgageWorkspace() {
         </div>
       </header>
 
-      {!caseId && <NoCaseSelected cases={cases} loading={casesLoading} onPick={pickCase} />}
+      <NewCaseDialog open={newCaseOpen} onOpenChange={setNewCaseOpen} onCreated={pickCase} />
+
+      {!caseId && (
+        <NoCaseSelected
+          cases={cases}
+          loading={casesLoading}
+          onPick={pickCase}
+          onNew={() => setNewCaseOpen(true)}
+        />
+      )}
 
       {caseId && profileError && (
         <Card>
@@ -409,21 +439,18 @@ function MortgageWorkspace() {
 
       {caseId && profile && (
         <>
-          {/* Кейс (M01) */}
+          {/* Чей это расчёт. Технический идентификатор ушёл в «Служебные
+              данные» внизу: брокеру он не нужен, а поддержке — нужен. */}
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
               <div className="flex items-center gap-3">
                 <User2 className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-semibold">Кейс {profile.case_id}</p>
-                  <p className="text-sm text-muted-foreground">Версия профиля {profile.version}</p>
+                  <p className="font-semibold">{clientName ?? "Клиент не указан"}</p>
+                  <p className="text-sm text-muted-foreground">Расчёт по ипотеке</p>
                 </div>
               </div>
-              {profile.latest_snapshot && (
-                <span className="text-xs text-muted-foreground">
-                  снапшот профиля {profile.latest_snapshot.content_hash.slice(0, 12)}…
-                </span>
-              )}
+              {mortgageCase && <CaseStatusBadge status={mortgageCase.status} />}
             </div>
           </Card>
 
@@ -435,18 +462,18 @@ function MortgageWorkspace() {
           {/* Шаг 2. Документы клиента (M03 / M04) */}
           <DocumentIntakeSection caseId={profile.case_id} />
 
-          {/* Шаг 3. Профиль (M05) */}
+          {/* Шаг 3. Деньги клиента (M05) */}
           <Card>
             <CardHead
               icon={<ShieldCheck className="h-5 w-5" />}
-              title="Профиль клиента (M05)"
-              sub="Цель покупки и источники взноса. Пустая или неизвестная сумма не считается нулём."
+              title="Шаг 3. Деньги клиента"
+              sub="Стоимость квартиры и первоначальный взнос. Пустая сумма не считается нулём — она остаётся неизвестной."
             />
             <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
               <div>
                 <label className="block">
                   <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Цель покупки, ₸ (purchase_goal.target_price_max)
+                    Стоимость квартиры, ₸
                   </span>
                   <input
                     type="text"
@@ -464,7 +491,7 @@ function MortgageWorkspace() {
 
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Доступно на взнос (available_now_total)
+                  Первоначальный взнос
                 </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
                   {showMoney(availableNow?.value)}
@@ -493,8 +520,8 @@ function MortgageWorkspace() {
           <Card>
             <CardHead
               icon={<Calculator className="h-5 w-5" />}
-              title="Шаг 4. Расчёт (M06)"
-              sub="CALC-F-001 required_financing = max(цена − взнос, 0); CALC-F-002 аннуитетный платёж. Считает сервер."
+              title="Шаг 4. Расчёт кредита"
+              sub="Сумма кредита = стоимость квартиры минус взнос. Платёж — аннуитетный. Считает сервер, не браузер."
             />
             <div className="grid gap-5 px-5 py-4 md:grid-cols-2">
               <div className="space-y-4">
@@ -521,11 +548,11 @@ function MortgageWorkspace() {
                 </label>
                 <Button onClick={() => void runCalculation()} disabled={calcBusy} className="w-full">
                   <Calculator className="mr-1.5 h-4 w-4" />
-                  {calcBusy ? "Расчёт…" : "Рассчитать на сервере"}
+                  {calcBusy ? "Считаем…" : "Рассчитать"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Расчёт публикует снапшот профиля и выполняется движком M06.
-                  Ставка и срок — параметры прогона, а не данные профиля.
+                  Ставка и срок — условия конкретного банка, а не данные клиента:
+                  меняйте их и пересчитывайте, данные клиента при этом не меняются.
                 </p>
               </div>
 
@@ -557,22 +584,22 @@ function MortgageWorkspace() {
                     </div>
 
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Требуемое финансирование</p>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Сумма кредита</p>
                       <p className="text-2xl font-bold tabular-nums">
                         {showMoney(calc.results.requiredFinancing.value)}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
-                        {calc.results.requiredFinancing.machineName}/{calc.results.requiredFinancing.formulaVersion}
+                        требуемое финансирование · {calc.results.requiredFinancing.machineName}/{calc.results.requiredFinancing.formulaVersion}
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Ежемесячный платёж (аннуитет)</p>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Ежемесячный платёж</p>
                       <p className="text-2xl font-bold tabular-nums">
                         {showMoney(calc.results.annuity.value)}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
-                        {calc.results.annuity.machineName}/{calc.results.annuity.formulaVersion}
+                        аннуитет · {calc.results.annuity.machineName}/{calc.results.annuity.formulaVersion}
                       </p>
                     </div>
 
@@ -614,6 +641,19 @@ function MortgageWorkspace() {
               на этом экране не показываются — они относятся к последующим релизам.
             </p>
           </div>
+
+          {/* Идентификаторы нужны поддержке при разборе обращения, поэтому они
+              сохранены — но убраны из рабочего поля зрения брокера. */}
+          <details className="rounded-lg border border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none">Служебные данные (для поддержки)</summary>
+            <dl className="mt-2 space-y-0.5 break-all">
+              <div>идентификатор расчёта: {profile.case_id}</div>
+              <div>версия профиля: {profile.version}</div>
+              {profile.latest_snapshot && (
+                <div>снапшот профиля: {profile.latest_snapshot.content_hash.slice(0, 16)}…</div>
+              )}
+            </dl>
+          </details>
         </>
       )}
     </div>

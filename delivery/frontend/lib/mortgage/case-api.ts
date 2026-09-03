@@ -38,6 +38,8 @@ export interface MortgageCase {
   created_at?: string;
   updated_at?: string;
   parties?: MortgageCaseParty[];
+  /** ФИО клиента — отдаётся владельцу кейса, чтобы шапка не была набором id. */
+  client_name?: string | null;
 }
 
 export type ProfileFieldStatus = "DECLARED" | "VERIFIED" | "UNKNOWN" | "CONFLICT";

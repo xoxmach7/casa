@@ -77,6 +77,11 @@ function caseResponse(value: any) {
     updated_at: value.updatedAt,
     ...(value.parties === undefined ? {} : { parties: value.parties }),
     ...(value.grants === undefined ? {} : { recipient_grants: value.grants }),
+    // Имя клиента отдаётся только там, где связь загружена явно (карточка
+    // кейса у его владельца). ИИН/телефон/e-mail сюда не попадают никогда.
+    ...(value.client == null ? {} : {
+      client_name: `${value.client.lastName ?? ''} ${value.client.firstName ?? ''}`.trim() || null,
+    }),
   };
 }
 
@@ -420,6 +425,7 @@ mortgageCasesRouter.get('/:id', async (req: Request, res: Response): Promise<voi
       include: {
         parties: { orderBy: { createdAt: 'asc' } },
         grants: { orderBy: { createdAt: 'asc' } },
+        client: { select: { firstName: true, lastName: true } },
       },
     });
     if (!mortgageCase || !canAccessMortgageCase(mortgageCase, req.user!)) {

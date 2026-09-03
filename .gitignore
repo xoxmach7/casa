@@ -25,3 +25,6 @@ server.txt
 docs/handoff/PKO.pdf
 docs/handoff/OPVReport-*.pdf
 docs/ipoteka-export/*.zip
+
+# Локальные проверочные скрипты (могут содержать учётные данные)
+verify-*.mjs

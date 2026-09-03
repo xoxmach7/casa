@@ -417,9 +417,11 @@ describe('ручная проверка (API-M02-005)', () => {
       .post(`/api/v2/manual-check-tasks/${task.id}/confirm`)
       .send({
         outcome: 'NOT_FOUND',
-        evidence_ref: 'screenshot://enis/2026-08-27',
+        evidence_ref: 'screenshot://enis/manual-confirm',
         evidence_hash: 'a'.repeat(64),
-        checked_at: '2026-08-27T10:00:00.000Z',
+        // Дата ОТНОСИТЕЛЬНАЯ: с зашитой датой тест протухал вместе с TTL
+        // источника (7 дней) и краснел сам по себе через неделю.
+        checked_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
       });
 
     expect(res.status).toBe(200);

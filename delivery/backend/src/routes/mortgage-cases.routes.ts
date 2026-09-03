@@ -24,7 +24,7 @@ import {
   FormulaNotAllowedError,
   M06_FORMULA_REGISTRY_VERSION,
 } from '../lib/mortgage-workspace/m06-formula-registry';
-import { aggregateMoney, profileContentHash, type MoneySource } from '../lib/mortgage-workspace/mortgage-profile.service';
+import { aggregateMoney, aggregateDownPayment, profileContentHash, type MoneySource } from '../lib/mortgage-workspace/mortgage-profile.service';
 
 export const mortgageCasesRouter = Router();
 mortgageCasesRouter.use(authenticate);
@@ -889,18 +889,30 @@ mortgageCasesRouter.get('/:caseId/calculation-snapshots/:snapshotId', async (req
 // Денежные поля несут статус; UNKNOWN ≠ 0; available_now_total → вход M06.
 // =========================================================================
 
+/**
+ * Статусы, которые КЛИЕНТ вправе выставить при вводе.
+ *
+ * VERIFIED сюда НЕ входит: по RG-CP-03 подтверждённым поле делает только
+ * утверждённая evidence-политика (кто и на каком доказательстве подтвердил), а
+ * она ещё не определена. Пока status приходил из тела запроса, любое поле
+ * можно было объявить подтверждённым простым запросом — это и попадало в
+ * агрегат как «подтверждённые деньги». CONFLICT ставится системой при сверке,
+ * а не вводом.
+ */
+/** Полный набор статусов поля (значения БД). */
 const FIELD_STATUS = ['DECLARED', 'VERIFIED', 'UNKNOWN', 'CONFLICT'] as const;
+const INPUT_FIELD_STATUS = ['DECLARED', 'UNKNOWN'] as const;
 const moneySubSchema = z.object({
   kind: z.string().min(1).max(64),
   amount: z.union([z.number(), z.string(), z.null()]).optional(),
   currency: z.string().length(3).default('KZT'),
-  status: z.enum(FIELD_STATUS).default('DECLARED'),
+  status: z.enum(INPUT_FIELD_STATUS).default('DECLARED'),
   party_id: z.string().max(128).optional(),
 }).strict();
 const employmentSchema = z.object({
   employer_name: z.string().min(1).max(256),
   employment_kind: z.string().min(1).max(64),
-  status: z.enum(FIELD_STATUS).default('DECLARED'),
+  status: z.enum(INPUT_FIELD_STATUS).default('DECLARED'),
   party_id: z.string().max(128).optional(),
 }).strict();
 
@@ -921,9 +933,9 @@ async function ensureProfileId(caseId: string): Promise<string> {
   return created.id;
 }
 
-function moneySourceRow(r: { amount?: any; monthlyAmount?: any; value?: any; status: string }): MoneySource {
+function moneySourceRow(r: { amount?: any; monthlyAmount?: any; value?: any; status: string; kind?: any }): MoneySource & { kind?: string | null } {
   const amount = r.amount ?? r.monthlyAmount ?? r.value ?? null;
-  return { amount, status: r.status as any };
+  return { amount, status: r.status as any, kind: r.kind ?? null };
 }
 
 /** purchase_goal в ответе/снапшоте: сумма строкой Decimal(20,2) либо null. */
@@ -964,7 +976,8 @@ mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Res
     });
     if (!profile) { apiError(res, 500, 'internal_error', 'Профиль не создан'); return; }
 
-    const availableNow = aggregateMoney(profile.downPaymentSources.map(moneySourceRow));
+    // Взнос агрегируется с учётом ТИПА источника: залог не деньги (§13).
+    const availableNow = aggregateDownPayment(profile.downPaymentSources.map(moneySourceRow));
     const monthlyIncome = aggregateMoney(profile.incomeSources.map(moneySourceRow));
     const monthlyCommitments = aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow));
     const latestSnapshot = await prisma.mortgageClientProfileSnapshot.findFirst({
@@ -1107,7 +1120,7 @@ mortgageCasesRouter.post('/:caseId/client-profile/publish-snapshot', async (req:
       // purchase_goal.target_price_max — вход CALC-F-001. Цель не задана →
       // status MISSING, а не ноль: M06 обязан заблокироваться, а не считать.
       purchase_goal: purchaseGoalNode(profile.purchaseGoal),
-      available_now_total: aggregateMoney(profile.downPaymentSources.map(moneySourceRow)),
+      available_now_total: aggregateDownPayment(profile.downPaymentSources.map(moneySourceRow)),
       monthly_income_total: aggregateMoney(profile.incomeSources.map(moneySourceRow)),
       monthly_commitments_total: aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow)),
       // §21: ссылки M02/M03/M04 в том виде, как их несёт M05. Пока канонические

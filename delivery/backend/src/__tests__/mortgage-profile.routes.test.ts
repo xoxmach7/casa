@@ -54,7 +54,8 @@ describe('M05 client-profile API', () => {
     p.mortgageClientProfile.findUnique
       .mockResolvedValueOnce(null) // ensureProfileId: не найден
       .mockResolvedValueOnce({ ...emptyProfile, downPaymentSources: [
-        { amount: '3000000.00', status: 'VERIFIED' }, { amount: '2000000.00', status: 'DECLARED' },
+        { amount: '3000000.00', status: 'VERIFIED', kind: 'CASH_SAVINGS' },
+        { amount: '2000000.00', status: 'DECLARED', kind: 'GIFT' },
       ] });
     const res = await request(app()).get('/api/v2/cases/case_1/client-profile');
     expect(res.status).toBe(200);
@@ -70,13 +71,47 @@ describe('M05 client-profile API', () => {
 
   it('POST down-payment-sources → 201, создаёт запись + аудит', async () => {
     p.mortgageClientProfile.findUnique.mockResolvedValue({ id: 'prof_1' });
-    p.mortgageDownPaymentSource.create.mockResolvedValue({ id: 'dp_1', amount: '3000000.00', status: 'VERIFIED' });
+    p.mortgageDownPaymentSource.create.mockResolvedValue({ id: 'dp_1', amount: '3000000.00', status: 'DECLARED' });
     const res = await request(app())
       .post('/api/v2/cases/case_1/down-payment-sources')
-      .send({ kind: 'SAVINGS', amount: 3000000, status: 'VERIFIED' });
+      .send({ kind: 'CASH_SAVINGS', amount: 3000000, status: 'DECLARED' });
     expect(res.status).toBe(201);
     expect(p.mortgageDownPaymentSource.create).toHaveBeenCalled();
     expect(p.mortgageAuditEvent.create).toHaveBeenCalled();
+  });
+
+  it('ЗАЛОГ не считается деньгами: ADDITIONAL_COLLATERAL исключён из взноса (§13)', async () => {
+    p.mortgageClientProfile.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...emptyProfile, downPaymentSources: [
+        { amount: '5000000.00', status: 'VERIFIED', kind: 'CASH_SAVINGS' },
+        { amount: '9000000.00', status: 'VERIFIED', kind: 'ADDITIONAL_COLLATERAL' },
+      ] });
+    const res = await request(app()).get('/api/v2/cases/case_1/client-profile');
+    expect(res.status).toBe(200);
+    // 9 млн залога НЕ прибавились — иначе занизили бы требуемое финансирование.
+    expect(res.body.data.aggregates.available_now_total.value).toBe('5000000.00');
+    expect(res.body.data.aggregates.available_now_total.excludedNonMonetary).toBe(1);
+  });
+
+  it('источник с неопределённой допустимостью (OTHER) делает агрегат неполным, а не нулём', async () => {
+    p.mortgageClientProfile.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...emptyProfile, downPaymentSources: [
+        { amount: '5000000.00', status: 'VERIFIED', kind: 'CASH_SAVINGS' },
+        { amount: '1000000.00', status: 'DECLARED', kind: 'OTHER' },
+      ] });
+    const res = await request(app()).get('/api/v2/cases/case_1/client-profile');
+    expect(res.body.data.aggregates.available_now_total.value).toBeNull();
+    expect(res.body.data.aggregates.available_now_total.status).toBe('UNKNOWN');
+  });
+
+  it('VERIFIED нельзя выставить из тела запроса (RG-CP-03)', async () => {
+    const res = await request(app())
+      .post('/api/v2/cases/case_1/down-payment-sources')
+      .send({ kind: 'CASH_SAVINGS', amount: 3000000, status: 'VERIFIED' });
+    expect(res.status).toBe(400);
+    expect(p.mortgageDownPaymentSource.create).not.toHaveBeenCalled();
   });
 
   it('POST down-payment-sources с плохим body → 400', async () => {
@@ -89,7 +124,7 @@ describe('M05 client-profile API', () => {
   it('POST client-profile/publish-snapshot → 201 с content_hash', async () => {
     p.mortgageClientProfile.findUnique.mockResolvedValue({
       ...emptyProfile,
-      downPaymentSources: [{ amount: '5000000.00', status: 'VERIFIED' }],
+      downPaymentSources: [{ amount: '5000000.00', status: 'VERIFIED', kind: 'CASH_SAVINGS' }],
     });
     p.mortgageClientProfileSnapshot.create.mockImplementation(async ({ data }: any) => ({ id: 'snap_1', ...data, createdAt: new Date() }));
     p.mortgageClientProfile.update.mockResolvedValue({});
@@ -129,7 +164,7 @@ describe('M05 client-profile API', () => {
     p.mortgageClientProfile.findUnique.mockResolvedValue({
       ...emptyProfile,
       purchaseGoal: { targetPriceMax: '30000000.00', currency: 'KZT', status: 'DECLARED' },
-      downPaymentSources: [{ amount: '5000000.00', status: 'VERIFIED' }],
+      downPaymentSources: [{ amount: '5000000.00', status: 'VERIFIED', kind: 'CASH_SAVINGS' }],
     });
     p.mortgageClientProfileSnapshot.create.mockImplementation(async ({ data }: any) => ({ id: 'snap_2', ...data, createdAt: new Date() }));
     p.mortgageClientProfile.update.mockResolvedValue({});

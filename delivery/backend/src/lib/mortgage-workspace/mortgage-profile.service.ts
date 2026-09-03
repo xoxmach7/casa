@@ -60,6 +60,83 @@ export function toM06InputStatus(agg: AggregatedMoney): 'CONFIRMED' | 'DECLARED'
   return agg.status;
 }
 
+// --- Источники первоначального взноса (M05 §13) ------------------------------
+
+/**
+ * Реестр типов источника взноса и их участие в ДЕНЕЖНЫХ итогах (§13).
+ *
+ * Критично: `ADDITIONAL_COLLATERAL` — залог, а НЕ деньги. Он «хранится
+ * отдельно; стоимость не cash down payment» и «не уменьшает cash gap и не
+ * входит в monetary totals». Пока фильтра не было, залог молча суммировался
+ * как взнос и занижал требуемое финансирование в M06.
+ *
+ * `OTHER` входит «только если monetary и registry/policy позволяет», а policy
+ * не определена (гейт RG-CP-04) → acceptance UNKNOWN: такой источник не
+ * считается деньгами и делает агрегат неполным (не занижаем и не завышаем).
+ * Неизвестный тип трактуется так же — своих типов заводить нельзя.
+ */
+export type CashEligibility = 'YES' | 'NO' | 'UNKNOWN';
+
+export const DOWN_PAYMENT_SOURCE_TYPES: Record<string, CashEligibility> = {
+  CASH_SAVINGS: 'YES',
+  BANK_DEPOSIT: 'YES',
+  OTBASY_SAVINGS: 'YES',
+  EPV_PENSION: 'YES',
+  HOUSING_CERTIFICATE: 'YES',
+  ASSET_SALE: 'YES',
+  GIFT: 'YES',
+  ADDITIONAL_COLLATERAL: 'NO',
+  OTHER: 'UNKNOWN',
+};
+
+export function cashEligibility(kind: string | null | undefined): CashEligibility {
+  if (!kind) return 'UNKNOWN';
+  return DOWN_PAYMENT_SOURCE_TYPES[kind] ?? 'UNKNOWN';
+}
+
+export interface DownPaymentSourceRow extends MoneySource {
+  kind?: string | null;
+}
+
+export interface AggregatedDownPayment extends AggregatedMoney {
+  /** Сколько источников исключено как неденежные (залог) — показываем отдельно. */
+  excludedNonMonetary: number;
+  /** Сколько источников с неопределённой допустимостью (OTHER/неизвестный тип). */
+  unknownEligibility: number;
+}
+
+/**
+ * Агрегат «доступно на взнос» — вход для M06 CALC-F-001.
+ * Учитывает тип источника, а не только сумму и статус.
+ */
+export function aggregateDownPayment(sources: DownPaymentSourceRow[]): AggregatedDownPayment {
+  const monetary: MoneySource[] = [];
+  let excludedNonMonetary = 0;
+  let unknownEligibility = 0;
+
+  for (const s of sources) {
+    const eligibility = cashEligibility(s.kind);
+    if (eligibility === 'NO') { excludedNonMonetary += 1; continue; } // залог — не деньги
+    if (eligibility === 'UNKNOWN') { unknownEligibility += 1; continue; } // допустимость не определена
+    monetary.push(s);
+  }
+
+  const base = aggregateMoney(monetary);
+  // Источник с неопределённой допустимостью делает агрегат неполным:
+  // молча включать нельзя (завысим взнос), молча выбрасывать — тоже (занизим).
+  const incomplete = !base.complete || unknownEligibility > 0;
+
+  return {
+    ...base,
+    value: incomplete ? null : base.value,
+    status: incomplete ? 'UNKNOWN' : base.status,
+    complete: !incomplete,
+    total: sources.length,
+    excludedNonMonetary,
+    unknownEligibility,
+  };
+}
+
 /** Детерминированный content_hash снапшота профиля (sorted-json-sha256). */
 export function profileContentHash(payload: unknown): string {
   const norm = (v: unknown): unknown => {

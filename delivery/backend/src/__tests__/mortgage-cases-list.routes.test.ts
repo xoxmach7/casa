@@ -44,6 +44,7 @@ function row(id: string, offsetMinutes = 0) {
     version: 1,
     createdAt: new Date('2026-08-01T00:00:00Z'),
     updatedAt: new Date(Date.UTC(2026, 7, 20, 0, offsetMinutes, 0)),
+    client: { firstName: 'Айдос', lastName: 'Мухамедов' },
   };
 }
 
@@ -78,12 +79,19 @@ describe('GET /api/v2/cases (DEC-API-002)', () => {
     const res = await request(app()).get('/api/v2/cases');
     expect(res.status).toBe(200);
     expect(Object.keys(res.body.data[0]).sort())
-      .toEqual(['created_at', 'id', 'status', 'updated_at', 'version']);
+      .toEqual(['client_name', 'created_at', 'id', 'status', 'updated_at', 'version']);
+
+    // Имя своего клиента брокеру нужно, чтобы понять, чей это расчёт.
+    expect(res.body.data[0].client_name).toBe('Мухамедов Айдос');
 
     const body = JSON.stringify(res.body);
     expect(body).not.toContain('client_id');
     expect(body).not.toContain('owner_id');
     expect(body).not.toContain('broker_1');
+    // ИИН и контакты в списке недопустимы даже вместе с именем.
+    expect(body).not.toContain('iin');
+    expect(body).not.toContain('phone');
+    expect(body).not.toContain('email');
   });
 
   it('в БД запрашиваются только разрешённые поля (select-allowlist)', async () => {
@@ -91,6 +99,8 @@ describe('GET /api/v2/cases (DEC-API-002)', () => {
     const args = p.mortgageCase.findMany.mock.calls[0][0];
     expect(args.select).toEqual({
       id: true, status: true, version: true, createdAt: true, updatedAt: true,
+      // Только имя и фамилия — ни ИИН, ни телефона, ни email из Client.
+      client: { select: { firstName: true, lastName: true } },
     });
   });
 

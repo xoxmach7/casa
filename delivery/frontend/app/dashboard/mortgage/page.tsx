@@ -136,9 +136,9 @@ function CaseStatusBadge({ status }: { status: string }) {
 /** Три шага работы — чтобы экран без выбранного кейса не выглядел пустым. */
 function HowItWorks() {
   const steps = [
-    { n: 1, icon: <User2 className="h-4 w-4" />, title: "Кейс и согласие", text: "Открываете кейс клиента и фиксируете согласие на обработку." },
-    { n: 2, icon: <FileText className="h-4 w-4" />, title: "Документы", text: "Загружаете кредитную историю и выписку ЕНПФ, проверяете распознанные поля." },
-    { n: 3, icon: <Calculator className="h-4 w-4" />, title: "Расчёт", text: "Движок считает требуемое финансирование и платёж по утверждённым формулам." },
+    { n: 1, icon: <User2 className="h-4 w-4" />, title: "Выберите клиента", text: "Откройте расчёт по клиенту из списка или заведите новый — согласие фиксируется на этом шаге." },
+    { n: 2, icon: <FileText className="h-4 w-4" />, title: "Загрузите документы", text: "Кредитная история (ПКБ) и выписка ЕНПФ в PDF. Система распознаёт поля — вы их проверяете." },
+    { n: 3, icon: <Calculator className="h-4 w-4" />, title: "Получите расчёт", text: "Сумма кредита и ежемесячный платёж по подтверждённым данным." },
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -164,8 +164,8 @@ function NoCaseSelected({ cases, loading, onPick }: {
       <Card>
         <CardHead
           icon={<FolderOpen className="h-5 w-5" />}
-          title="Выберите или создайте ипотечный кейс"
-          sub="Пока кейс не выбран, экран не показывает никаких финансовых значений."
+          title="Расчёты по клиентам"
+          sub="Выберите клиента, чтобы продолжить, или начните новый расчёт. Суммы появятся после выбора клиента."
         />
 
         {loading && (
@@ -181,13 +181,13 @@ function NoCaseSelected({ cases, loading, onPick }: {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
               <FolderOpen className="h-6 w-6 text-muted-foreground" />
             </div>
-            <p className="mt-3 font-medium">Пока нет ни одного кейса</p>
+            <p className="mt-3 font-medium">Пока нет ни одного расчёта</p>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Ипотечный кейс заводится на клиента: он хранит согласие, документы и расчёты.
+              Расчёт заводится на клиента: в нём хранятся его документы, проверки и итоговые суммы.
             </p>
             <Button asChild className="mt-4">
               <Link href="/dashboard/clients">
-                <Plus className="mr-1.5 h-4 w-4" />Перейти к клиентам
+                <Plus className="mr-1.5 h-4 w-4" />Выбрать клиента
               </Link>
             </Button>
           </div>
@@ -207,8 +207,9 @@ function NoCaseSelected({ cases, loading, onPick }: {
                       <FolderOpen className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
-                      {/* В списке намеренно нет персональных данных: только кейс. */}
-                      <p className="truncate font-medium">Кейс {c.id}</p>
+                      {/* Брокеру нужно имя своего клиента: идентификатор кейса
+                          ему ничего не говорит. ИИН/телефон здесь не выводим. */}
+                      <p className="truncate font-medium">{c.client_name ?? "Клиент не указан"}</p>
                       <p className="truncate text-xs text-muted-foreground">
                         обновлён {new Date(c.updated_at ?? c.created_at ?? Date.now()).toLocaleDateString("ru-RU")}
                       </p>
@@ -369,7 +370,8 @@ function MortgageWorkspace() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Ипотечное решение клиента</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Профиль (M05) → детерминированный расчёт (M06). Итоговое решение принимает банк.
+            Проверяем клиента по документам и считаем сумму кредита и ежемесячный платёж.
+            Итоговое решение принимает банк.
           </p>
         </div>
         {/* Инструменты — отдельными кнопками, а не одной общей «Инструменты». */}

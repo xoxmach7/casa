@@ -18,6 +18,8 @@ export interface MortgageCaseListItem {
   version: number;
   created_at: string;
   updated_at: string;
+  /** ФИО клиента — чтобы брокер понимал, чей это расчёт, а не видел id. */
+  client_name?: string | null;
 }
 
 export interface MortgageCaseParty {

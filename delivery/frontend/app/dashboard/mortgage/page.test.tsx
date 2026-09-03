@@ -84,7 +84,7 @@ describe("без выбранного кейса", () => {
     render(<MortgagePage />);
 
     expect(
-      await screen.findByText("Выберите или создайте ипотечный кейс"),
+      await screen.findByText("Расчёты по клиентам"),
     ).toBeInTheDocument();
 
     // Профиль не запрашивается и суммы не показываются.
@@ -95,7 +95,7 @@ describe("без выбранного кейса", () => {
 
   it("не содержит демо-кейса и синтетических данных клиента", async () => {
     render(<MortgagePage />);
-    await screen.findByText("Выберите или создайте ипотечный кейс");
+    await screen.findByText("Расчёты по клиентам");
     const text = document.body.textContent ?? "";
     for (const mock of ["case-demo", "Айдос", "демонстрац", "Демо", "DEMO"]) {
       expect(text).not.toContain(mock);

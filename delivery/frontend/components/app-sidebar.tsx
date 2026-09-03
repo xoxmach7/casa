@@ -76,6 +76,8 @@ interface MenuSection {
   icon: any
   url?: string
   roles: string[]
+  /** Раздел показывается раскрытым: подпункты видны сразу, без выпадашки. */
+  alwaysOpen?: boolean
   subItems?: {
     title: string
     url: string
@@ -105,6 +107,18 @@ const menuItems: MenuSection[] = [
     icon: Building2,
     url: "/dashboard/projects",
     roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
+  },
+  // Контур вторички — сразу под новостройками. Раздел раскрыт всегда:
+  // подпункты видны без клика (заказчик просил не выпадашку).
+  {
+    title: "Вторичка",
+    icon: Handshake,
+    roles: ["ADMIN", "BROKER", "AGENCY"],
+    alwaysOpen: true,
+    subItems: [
+      { title: "Сделки", url: "/dashboard/deal-room", icon: Handshake },
+      { title: "Оценка объектов", url: "/dashboard/valuations", icon: Ruler },
+    ],
   },
   // 2b. Кабинет застройщика (роль DEVELOPER): урезанное меню — только свои ЖК,
   // добавление ЖК и профиль компании. Остальные разделы (CRM/Ипотека/Клиенты)
@@ -167,19 +181,6 @@ const menuItems: MenuSection[] = [
     icon: Users,
     url: "/dashboard/agency/team",
     roles: ["AGENCY"],
-  },
-  // Контур вторички. Отдельный от брокерского Kanban процесс: комната сделки
-  // со своими Green-гейтами и внутренний пайплайн оценки, где цену подтверждает
-  // человек. Возвращён в меню отдельным разделом с подпунктами (внутреннее
-  // наполнение ещё уточняется, но страницы рабочие).
-  {
-    title: "Вторичка",
-    icon: Handshake,
-    roles: ["ADMIN", "BROKER", "AGENCY"],
-    subItems: [
-      { title: "Сделки", url: "/dashboard/deal-room", icon: Handshake },
-      { title: "Оценка объектов", url: "/dashboard/valuations", icon: Ruler },
-    ],
   },
   // Профиль и Архив убраны из меню: профиль открывается иконкой-карандашом
   // у карточки пользователя внизу сайдбара; архив пока скрыт.
@@ -307,8 +308,8 @@ export function AppSidebar() {
                   <Collapsible
                     key={item.title}
                     asChild
-                    open={openMenus[item.title] ?? false}
-                    onOpenChange={() => toggleMenu(item.title)}
+                    open={item.alwaysOpen ? true : (openMenus[item.title] ?? false)}
+                    onOpenChange={() => { if (!item.alwaysOpen) toggleMenu(item.title) }}
                     className="group/collapsible"
                   >
                     <SidebarMenuItem>
@@ -328,7 +329,9 @@ export function AppSidebar() {
                             isActive && "text-[#FFD700]"
                           )} />
                           <span className="text-[13px] font-medium">{item.title}</span>
-                          <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-sidebar-foreground/30 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                          {!item.alwaysOpen && (
+                            <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-sidebar-foreground/30 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                          )}
                         </SidebarMenuButton>
                       </CollapsibleTrigger>
                       <CollapsibleContent>

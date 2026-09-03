@@ -358,6 +358,7 @@ const listCasesQuerySchema = z.object({
  */
 function caseListItem(value: {
   id: string; status: string; version: number; updatedAt: Date; createdAt: Date;
+  client?: { firstName: string; lastName: string } | null;
 }) {
   return {
     id: value.id,
@@ -365,6 +366,10 @@ function caseListItem(value: {
     version: value.version,
     created_at: value.createdAt,
     updated_at: value.updatedAt,
+    // Имя СВОЕГО клиента брокеру нужно, чтобы вообще понять, чей это расчёт:
+    // без него в списке видны только нечитаемые идентификаторы. Это не утечка —
+    // список отдаётся владельцу кейса (или админу). ИИН/телефон сюда не входят.
+    client_name: value.client ? `${value.client.lastName} ${value.client.firstName}`.trim() : null,
   };
 }
 
@@ -386,7 +391,10 @@ mortgageCasesRouter.get('/', async (req: Request, res: Response): Promise<void> 
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: { id: true, status: true, version: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true, status: true, version: true, createdAt: true, updatedAt: true,
+        client: { select: { firstName: true, lastName: true } },
+      },
     });
 
     const hasMore = rows.length > limit;

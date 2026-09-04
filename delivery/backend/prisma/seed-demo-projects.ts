@@ -9,10 +9,10 @@ import { PrismaClient, BuildingStatus, ApartmentStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const DEVELOPER = { name: 'Кемел Құрылыс', phone: '+7 (7172) 55-00-11' };
+const DEVELOPER = { name: 'Кемел Құрылыс', phone: '+7 (727) 355-00-11' };
 
-/** Цена за м² по классу — от неё считается стоимость квартиры. */
-const PRICE_PER_M2: Record<string, number> = { Comfort: 420_000, Business: 560_000, Premium: 780_000 };
+/** Цена за м² по классу (Алматы) — от неё считается стоимость квартиры. */
+const PRICE_PER_M2: Record<string, number> = { Comfort: 620_000, Business: 900_000, Premium: 1_400_000 };
 
 /**
  * Типовая секция из четырёх квартир: двушка — однушка — трёшка — двушка.
@@ -28,36 +28,37 @@ const SECTION = [
 
 const PROJECTS = [
   {
-    name: 'Алтын Орда', district: 'Есильский', class: 'Comfort',
-    address: 'пр. Мәңгілік Ел, 52',
-    description: 'Квартал из четырёх монолитных домов переменной этажности в Есильском районе. Закрытый двор без машин, подземный паркинг, на первых этажах — коммерция и детский сад.',
+    name: 'Алатау Резиденс', district: 'Бостандыкский', class: 'Comfort',
+    address: 'ул. Розыбакиева, 247',
+    description: 'Квартал из четырёх монолитных домов в Бостандыкском районе. Закрытый двор без машин, подземный паркинг, на первых этажах — коммерция и детский сад. Из верхних этажей виден хребет Заилийского Алатау.',
     status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2026-12-20',
   },
   {
-    name: 'Есиль Парк', district: 'Есильский', class: 'Business',
-    address: 'ул. Сығанақ, 29',
-    description: 'Дом бизнес-класса на набережной Есиля: панорамное остекление, потолки 3 метра, две входные группы с колясочными. Двор спроектирован ландшафтным бюро.',
+    name: 'Достык Парк', district: 'Медеуский', class: 'Business',
+    address: 'пр. Достык, 210',
+    description: 'Дом бизнес-класса на Достыке: панорамное остекление, потолки 3 метра, две входные группы с колясочными. Двор спроектирован ландшафтным бюро, до парка Первого Президента десять минут.',
     status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2027-06-30',
   },
   {
-    name: 'Сарыарқа Резиденс', district: 'Сарыаркинский', class: 'Comfort',
-    address: 'ул. Бөгенбай батыра, 73',
-    description: 'Девятиэтажный дом в сложившемся районе: школа и поликлиника в пешей доступности, остановка у выхода из двора. Отделка white box во всех квартирах.',
-    status: BuildingStatus.COMPLETED, delivery: '2026-09-30',
+    name: 'Сайран Резиденс', district: 'Ауэзовский', class: 'Comfort',
+    address: 'ул. Толе би, 285',
+    description: 'Девятиэтажный дом в сложившемся районе у озера Сайран: школа и поликлиника в пешей доступности, остановка у выхода из двора. Отделка white box во всех квартирах.',
+    status: BuildingStatus.COMPLETED, delivery: '2026-08-31',
   },
   {
-    name: 'Нұра Хиллс', district: 'Нура', class: 'Business',
-    address: 'пр. Туран, 37',
-    description: 'Малоэтажный квартал на левом берегу с видом на пойму Нуры. Своя котельная, огороженная территория, гостевая парковка вынесена за периметр двора.',
+    name: 'Аль-Фараби Хиллс', district: 'Бостандыкский', class: 'Business',
+    address: 'пр. Аль-Фараби, 77/8',
+    description: 'Малоэтажный квартал в предгорьях с видом на горы. Своя котельная, огороженная территория, гостевая парковка вынесена за периметр двора.',
     status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2027-03-31',
   },
   {
-    name: 'Астана Тауэрс', district: 'Алматинский', class: 'Premium',
-    address: 'ул. Кабанбай батыра, 42',
-    description: 'Две башни премиум-класса рядом с деловым центром: лобби с консьержем, лифты Kone, видовые квартиры с 10 этажа. Паркинг из расчёта одно место на квартиру.',
+    name: 'Алматы Тауэрс', district: 'Алмалинский', class: 'Premium',
+    address: 'ул. Сатпаева, 90',
+    description: 'Две башни премиум-класса в центре: лобби с консьержем, лифты Kone, видовые квартиры с 10 этажа. Паркинг из расчёта одно место на квартиру.',
     status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2027-12-20',
   },
 ];
+
 
 const IMAGES = [
   'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=60',
@@ -109,7 +110,7 @@ async function main() {
       data: {
         name: p.name,
         description: p.description,
-        city: 'Астана',
+        city: 'Алматы',
         district: p.district,
         address: p.address,
         class: p.class,

@@ -24,8 +24,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Calculator, User2, ShieldCheck, Info, TriangleAlert, RefreshCw, FolderOpen,
-  Plus, ArrowRight, FileText, Landmark, X, Home, ChevronDown, Archive,
+  Percent, Archive, ArrowRight, Calculator, ChevronDown, FileText, FolderOpen, Home, Info, Landmark, Plus, RefreshCw, ShieldCheck, TriangleAlert, User2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -151,7 +150,7 @@ function HowItWorks() {
   const steps = [
     { n: 1, icon: <User2 className="h-4 w-4" />, title: "Выберите клиента", text: "Откройте расчёт по клиенту из списка или заведите новый — согласие фиксируется на этом шаге." },
     { n: 2, icon: <FileText className="h-4 w-4" />, title: "Загрузите документы", text: "Кредитная история (ПКБ) и выписка ЕНПФ в PDF. Система распознаёт поля — вы их проверяете." },
-    { n: 3, icon: <Calculator className="h-4 w-4" />, title: "Получите расчёт", text: "Сумма кредита и ежемесячный платёж по подтверждённым данным." },
+    { n: 3, icon: <Percent className="h-4 w-4" />, title: "Получите расчёт", text: "Сумма кредита и ежемесячный платёж по подтверждённым данным." },
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -561,7 +560,7 @@ function MortgageWorkspace() {
             </Button>
           )}
           <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/mortgage/tools"><Calculator className="mr-1.5 h-4 w-4" />Калькулятор</Link>
+            <Link href="/dashboard/mortgage/tools"><Percent className="mr-1.5 h-4 w-4" />Калькулятор</Link>
           </Button>
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/mortgage/tools#programs"><Landmark className="mr-1.5 h-4 w-4" />Условия банков</Link>
@@ -617,7 +616,7 @@ function MortgageWorkspace() {
                   variant="outline"
                   onClick={() => document.getElementById("calc-block")?.scrollIntoView({ behavior: "smooth", block: "start" })}
                 >
-                  <Calculator className="mr-1.5 h-4 w-4" />К расчёту
+                  <Percent className="mr-1.5 h-4 w-4" />К расчёту
                 </Button>
                 {/* Ошибочно заведённый расчёт иначе висит в списке навсегда. */}
                 <Button

@@ -24,9 +24,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Calculator, Building2, TriangleAlert, Info, ArrowLeft, Percent, Clock,
-} from "lucide-react";
+import { ArrowLeft, Building2, Clock, Info, Percent, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MortgageCaseApiError } from "@/lib/mortgage/case-api";
@@ -175,7 +173,7 @@ export default function MortgageToolsPage() {
               </div>
             </div>
             <Button onClick={() => void calculate()} disabled={busy} className="w-full">
-              <Calculator className="mr-1.5 h-4 w-4" />
+              <Percent className="mr-1.5 h-4 w-4" />
               {busy ? "Считаем…" : "Рассчитать"}
             </Button>
           </div>

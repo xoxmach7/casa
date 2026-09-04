@@ -1,6 +1,6 @@
 "use client"
 
-import { Image as ImageIcon, Home, ListPlus, Calculator } from "lucide-react"
+import { Home, Image as ImageIcon, ListPlus, Percent } from "lucide-react";
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -104,7 +104,7 @@ export function ApartmentCard({
           )}
           {onCalculateMortgage && (
             <Button size="sm" variant="outline" onClick={() => onCalculateMortgage(apartment)}>
-              <Calculator className="mr-1.5 h-3.5 w-3.5" />
+              <Percent className="mr-1.5 h-3.5 w-3.5" />
               Рассчитать ипотеку
             </Button>
           )}

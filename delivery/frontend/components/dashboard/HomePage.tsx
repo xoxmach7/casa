@@ -1,25 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import {
-    Users,
-    DollarSign,
-    TrendingUp,
-    Activity,
-    AlertTriangle,
-    Briefcase,
-    CheckCircle2,
-    Clock,
-    ArrowRight,
-    UserPlus,
-    CalendarPlus,
-    Home,
-    Calculator,
-    ArrowUpRight,
-    ArrowDownRight,
-    MoreHorizontal,
-    ChevronDown,
-} from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Briefcase, CalendarPlus, CheckCircle2, ChevronDown, Clock, DollarSign, Home, MoreHorizontal, Percent, TrendingUp, UserPlus, Users } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -181,7 +163,7 @@ export function HomePage() {
                 </Link>
                 <Link href="/dashboard/mortgage">
                     <Button size="sm" variant="outline" className="gap-2 border-border/60 hover:bg-accent">
-                        <Calculator className="h-3.5 w-3.5" />Ипотека
+                        <Percent className="h-3.5 w-3.5" />Ипотека
                     </Button>
                 </Link>
                 <Link href="/dashboard/bookings/new">

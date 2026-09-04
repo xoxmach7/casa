@@ -5,29 +5,7 @@ import { ApartmentCard } from "@/components/apartments/ApartmentCard"
 import { AddToSelectionDialog } from "@/components/apartments/AddToSelectionDialog"
 import { MortgageQuickCalcDialog } from "@/components/apartments/MortgageQuickCalcDialog"
 import { useParams, useRouter } from "next/navigation"
-import {
-  MapPin,
-  Phone,
-  Calendar,
-  Building2,
-  ArrowLeft,
-  Search,
-  Play,
-  Calculator,
-  Percent,
-  Loader2,
-  Image as ImageIcon,
-  Grid3x3,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  Maximize2,
-  Video,
-  Tag,
-  BadgePercent,
-  Landmark,
-  Edit
-} from "lucide-react"
+import { ArrowLeft, BadgePercent, Building2, Calendar, ChevronLeft, ChevronRight, Edit, Grid3x3, Image as ImageIcon, Landmark, Loader2, MapPin, Maximize2, Percent, Phone, Play, Search, Tag, Video, X } from "lucide-react";
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -639,7 +617,7 @@ export default function ProjectDetailsPage() {
                   </div>
 
                   <Button className="w-full" variant="outline" onClick={() => router.push('/dashboard/mortgage')}>
-                    <Calculator className="mr-2 h-4 w-4" />
+                    <Percent className="mr-2 h-4 w-4" />
                     Рассчитать ипотеку
                   </Button>
                 </CardContent>

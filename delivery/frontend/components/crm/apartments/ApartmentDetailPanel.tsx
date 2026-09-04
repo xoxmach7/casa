@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Home, Bookmark, Calculator, Image as ImageIcon, FileDown } from 'lucide-react';
+import { Bookmark, FileDown, Home, Image as ImageIcon, Percent } from 'lucide-react';
 import { AddToSelectionDialog } from '@/components/apartments/AddToSelectionDialog';
 import type { ApartmentCardData } from '@/components/apartments/ApartmentCard';
 import { getStoredUser } from '@/lib/auth-utils';
@@ -177,7 +177,7 @@ export function ApartmentDetailPanel({
             variant="outline"
             onClick={() => router.push(`/dashboard/mortgage?price=${encodeURIComponent(apartment.price)}`)}
           >
-            <Calculator className="mr-2 h-4 w-4" />
+            <Percent className="mr-2 h-4 w-4" />
             Рассчитать ипотеку
           </Button>
         </div>

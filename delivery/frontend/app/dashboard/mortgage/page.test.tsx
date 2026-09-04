@@ -29,6 +29,9 @@ const api = vi.hoisted(() => ({
   publishProfileSnapshot: vi.fn(),
   createCalculationRun: vi.fn(),
   createMortgageCase: vi.fn(),
+  runScoring: vi.fn(),
+  addIncomeSource: vi.fn(),
+  addCommitment: vi.fn(),
 }));
 
 vi.mock("@/lib/mortgage/case-api", async () => {
@@ -151,80 +154,85 @@ describe("с выбранным реальным кейсом", () => {
     expect(screen.getByText(/Служебные данные/)).toBeInTheDocument();
   });
 
-  it("до прогона не показывает ни требуемого финансирования, ни платежа", async () => {
+  it("до прогона не показывает ни суммы кредита, ни платежа", async () => {
     render(<MortgagePage />);
-    expect(
-      await screen.findByText(/Расчёт ещё не выполнялся/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Нажмите «Рассчитать»/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Нужен кредит/);
   });
 
-  it("показывает значения ровно так, как их вернул движок M06", async () => {
-    api.createCalculationRun.mockResolvedValue({
-      id: "snap_1", run_id: "run_1", case_id: "case_real_1",
-      schema_version: "casa.calculation_snapshot/1.0.0",
-      engine_version: "casa-calc-engine/1.0.0",
-      decimal_context_version: "casa.decimal_context/p50-half-even__money-half-up/1.0.0",
-      formula_registry_version: "m06-registry/1.0.0",
-      canonicalization_version: "CASA-CJ-1",
-      client_profile_snapshot: { snapshot_id: "cps_1", snapshot_hash: "f".repeat(64) },
-      input_hash: "a".repeat(64), output_hash: "b".repeat(64), replay_hash: "c".repeat(64),
-      status: "COMPLETED",
-      results: {
-        requiredFinancing: {
-          formulaId: "CALC-F-001", machineName: "casa.required_financing", formulaVersion: "1.0.0",
-          raw: "25000000", value: "25000000.00", displayKzt: 25000000,
-          status: "COMPLETED", codes: [], currency: "KZT",
-        },
-        annuity: {
-          formulaId: "CALC-F-002", machineName: "casa.annuity_payment_by_parameters", formulaVersion: "1.0.0",
-          raw: "284035.13742859237380498879610315991992807755394768",
-          value: "284035.14", displayKzt: 284035,
-          status: "COMPLETED", codes: [], currency: "KZT",
-        },
-        status: "COMPLETED", codes: [], blockers: [],
-      },
-      created_at: "2026-08-27T00:00:00Z",
+  it("показывает вердикт и суммы ровно так, как их вернул сервер", async () => {
+    api.runScoring.mockResolvedValue({
+      version: "casa-scoring/1.0.0",
+      verdict: "FITS",
+      unverifiedInputs: false,
+      requiredFinancing: { formulaId: "CALC-F-001", machineName: "casa.required_financing", formulaVersion: "1.0.0", raw: "21000000", value: "21000000.00", displayKzt: 21000000, status: "COMPLETED", codes: [], currency: "KZT" },
+      monthlyPayment: { formulaId: "CALC-F-002", machineName: "casa.annuity_payment_by_parameters", formulaVersion: "1.0.0", raw: "238589.51", value: "238589.51", displayKzt: 238590, status: "COMPLETED", codes: [], currency: "KZT" },
+      paymentCapacity: { raw: "388288.98", value: "388288.98", displayKzt: 388289 },
+      maxLoan: { raw: "34000000", value: "34000000.00", displayKzt: 34000000 },
+      paymentGap: { raw: "0", value: "0.00", displayKzt: 0 },
+      loanGap: { raw: "0", value: "0.00", displayKzt: 0 },
+      missing: [],
+      codes: ["WITHIN_CAPACITY"],
+      parameters: { annualNominalRatePercent: "12.5", termMonths: 240, paymentSharePercent: "50" },
+      disclaimer: "Предварительная оценка CASA по данным брокера.",
+      sources: { target_price: "purchase_goal", monthly_credit_payments: "credit_report", credit_report_id: "d1" },
     });
 
     render(<MortgagePage />);
-    await screen.findByText(/Расчёт ещё не выполнялся/);
+    await screen.findByText(/Нажмите «Рассчитать»/);
     await userEvent.click(screen.getByRole("button", { name: /^Рассчитать$/ }));
 
-    expect(await screen.findByText("284 035,14 ₸")).toBeInTheDocument();
-    expect(screen.getByText("25 000 000,00 ₸")).toBeInTheDocument();
-    // Расчёт всегда привязан к снапшоту профиля.
-    expect(api.publishProfileSnapshot).toHaveBeenCalledWith("case_real_1");
-    expect(api.createCalculationRun).toHaveBeenCalledWith("case_real_1", expect.objectContaining({
-      client_profile_snapshot_id: "cps_1",
-    }));
+    expect(await screen.findByText("Клиент проходит по платежу")).toBeInTheDocument();
+    expect(screen.getByText("21 000 000,00 ₸")).toBeInTheDocument();
+    expect(screen.getByText("238 589,51 ₸")).toBeInTheDocument();
   });
 
-  it("бэкенд расчёта недоступен → сообщение, а НЕ посчитанное на клиенте число", async () => {
-    api.createCalculationRun.mockRejectedValue(new MortgageCaseApiError("Сервер недоступен", 0, "network_error"));
+  it("не хватает данных → говорит ЧТО сделать, а не выдаёт число", async () => {
+    const blocked = { formulaId: "CALC-F-001", machineName: "m", formulaVersion: "1.0.0", raw: null, value: null, displayKzt: null, status: "BLOCKED", codes: [], currency: "KZT" };
+    const empty = { raw: null, value: null, displayKzt: null };
+    api.runScoring.mockResolvedValue({
+      version: "casa-scoring/1.0.0",
+      verdict: "NEEDS_DATA",
+      unverifiedInputs: false,
+      requiredFinancing: blocked,
+      monthlyPayment: blocked,
+      paymentCapacity: empty, maxLoan: empty, paymentGap: empty, loanGap: empty,
+      missing: [{ field: "monthly_income", action: "Добавьте доход клиента в месяц" }],
+      codes: ["INCOMPLETE_INPUTS"],
+      parameters: { annualNominalRatePercent: "12.5", termMonths: 240, paymentSharePercent: "50" },
+      disclaimer: "Предварительная оценка CASA по данным брокера.",
+      sources: { target_price: "purchase_goal", monthly_credit_payments: null, credit_report_id: null },
+    });
 
     render(<MortgagePage />);
-    await screen.findByText(/Расчёт ещё не выполнялся/);
+    await screen.findByText(/Нажмите «Рассчитать»/);
     await userEvent.click(screen.getByRole("button", { name: /^Рассчитать$/ }));
 
-    expect(await screen.findByText("Расчёт временно недоступен")).toBeInTheDocument();
-    // Ни требуемого финансирования, ни платежа — никакого fallback.
-    expect(screen.queryByText(/^25 000 000/)).toBeNull();
-    expect(screen.queryByText(/^284 035/)).toBeNull();
+    expect(await screen.findByText("Не хватает данных")).toBeInTheDocument();
+    expect(screen.getByText("Добавьте доход клиента в месяц")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Нужен кредит/);
   });
 
-  it("не показывает запрещённые для 1.0 выходы M06", async () => {
+  it("сервер недоступен → сообщение, а НЕ посчитанное на клиенте число", async () => {
+    api.runScoring.mockRejectedValue(new MortgageCaseApiError("Сервер недоступен", 0, "network_error"));
+
+    render(<MortgagePage />);
+    await screen.findByText(/Нажмите «Рассчитать»/);
+    await userEvent.click(screen.getByRole("button", { name: /^Рассчитать$/ }));
+
+    expect(await screen.findByText("Скоринг временно недоступен")).toBeInTheDocument();
+    expect(screen.queryByText(/^21 000 000/)).toBeNull();
+  });
+
+  it("не показывает запрещённые для релиза выходы", async () => {
     render(<MortgagePage />);
     await screen.findByText("Сериков Асхат");
-    // Дисклеймер перечисляет запрещённое, чтобы сказать «не показывается»;
-    // проверяем ОСТАВШИЙСЯ экран, иначе тест ловил бы собственное отрицание.
-    const note = screen.getByTestId("release-scope-note").textContent ?? "";
-    const text = (document.body.textContent ?? "").replace(note, "");
-
-    expect(note).toMatch(/не рассчитывается/);
+    // Блок-заглушка с перечислением запрещённого удалён, поэтому проверяем
+    // весь экран целиком — отрицать самому себе больше нечем.
+    const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/КДН/);
     expect(text).not.toMatch(/принимаемый доход/i);
     expect(text).not.toMatch(/вердикт/i);
-    expect(text).not.toMatch(/сценари/i);
     expect(text).not.toMatch(/вероятность одобрени/i);
     expect(text).not.toMatch(/программ[аыу]/i);
   });

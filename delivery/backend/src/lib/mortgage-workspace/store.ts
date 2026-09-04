@@ -7,7 +7,17 @@
  */
 
 import crypto from 'crypto';
-import type { ConclusionPayload } from './engine';
+
+/**
+ * Контейнер клиентского заключения. Раньше тип приходил из demo-движка
+ * engine.ts; движок удалён вместе с остальными заглушками (он считал
+ * запрещённый в релизе КДН), а хранилищу от заключения нужен только срок
+ * жизни ссылки. Создание заключений закрыто гейтом провайдера.
+ */
+export interface ConclusionPayload {
+  expiresAt: string;
+  [key: string]: unknown;
+}
 
 // --- Цели обработки (зеркало PURPOSES из frontend/app/consent/[token]/page.tsx)
 

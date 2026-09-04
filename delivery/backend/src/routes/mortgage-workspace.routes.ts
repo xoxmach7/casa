@@ -12,21 +12,8 @@ import { authenticate } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import { canAccessMortgageCase, isActiveMortgageConsent } from '../lib/mortgage-case.service';
 import { documentConsentEnforced } from '../lib/release-flags';
-import {
-  computeWhatIf,
-  demoAnalysis,
-  demoProperties,
-  DEMO_BASE_INCOME,
-  DEMO_EXISTING_PAYMENT,
-} from '../lib/mortgage-workspace/engine';
 import { extractTextFromPdf } from '../lib/scoring-document.service';
 import { extractDocument } from '../lib/mortgage-workspace/extraction';
-import {
-  checkSandboxIin,
-  getSandboxAnalysis,
-  getSandboxStatus,
-  previewSandboxScenario,
-} from '../lib/mortgage-sandbox-adapter';
 import type { MortgageScenarioChange } from '../lib/mortgage-scenario.service';
 import {
   saveDocument,
@@ -60,7 +47,6 @@ const providerRequired = (_req: Request, res: Response): void => {
   });
 };
 
-const iinSchema = z.object({ iin: z.string().trim().min(1).max(64) }).strict();
 const scenarioChangeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('increase_down_payment'), additionalDownPayment: z.string().min(1).max(64) }).strict(),
   z.object({ type: z.literal('close_obligation'), facilityFingerprint: z.string().min(1).max(200), payoffVerified: z.boolean() }).strict(),
@@ -70,67 +56,6 @@ const scenarioChangeSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('lower_property_budget'), newPropertyPrice: z.string().min(1).max(64) }).strict(),
   z.object({ type: z.literal('wait_for_history'), targetDate: z.string().datetime(), reason: z.string().min(1).max(500) }).strict(),
 ]);
-const scenarioSchema = z.object({ changes: z.array(scenarioChangeSchema).max(3) }).strict();
-
-mortgageWorkspaceRouter.get('/sandbox/status', (_req: Request, res: Response): void => {
-  res.json(getSandboxStatus());
-});
-
-mortgageWorkspaceRouter.post('/sandbox/iin-check', (req: Request, res: Response): void => {
-  const parsed = iinSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ code: 'VALIDATION_ERROR', error: 'Некорректный формат запроса' });
-    return;
-  }
-  res.json(checkSandboxIin(parsed.data.iin));
-});
-
-mortgageWorkspaceRouter.get('/sandbox/analysis', (_req: Request, res: Response): void => {
-  res.json(getSandboxAnalysis());
-});
-
-mortgageWorkspaceRouter.post('/sandbox/scenarios', (req: Request, res: Response): void => {
-  const parsed = scenarioSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ code: 'SCENARIO_INPUT_INVALID', error: 'Некорректные параметры сценария' });
-    return;
-  }
-  try {
-    res.json(previewSandboxScenario(parsed.data.changes as MortgageScenarioChange[]));
-  } catch (error) {
-    res.status(400).json({
-      code: 'SCENARIO_INPUT_INVALID',
-      error: error instanceof Error ? error.message : 'Некорректные параметры сценария',
-    });
-  }
-});
-
-// Backward-compatible synthetic calculations. They contain no external claims.
-mortgageWorkspaceRouter.get('/demo/analysis', (_req: Request, res: Response): void => {
-  res.json(demoAnalysis());
-});
-mortgageWorkspaceRouter.get('/demo/properties', (_req: Request, res: Response): void => {
-  res.json(demoProperties());
-});
-
-const whatIfSchema = z.object({
-  propertyPrice: z.number().nonnegative(),
-  downPayment: z.number().nonnegative(),
-  termMonths: z.number().int().positive(),
-  rate: z.number().nonnegative(),
-  existingDebtPayment: z.number().nonnegative().default(DEMO_EXISTING_PAYMENT),
-  additionalConfirmedIncome: z.number().default(0),
-  baseIncome: z.number().positive().default(DEMO_BASE_INCOME),
-});
-
-mortgageWorkspaceRouter.post('/whatif', (req: Request, res: Response): void => {
-  const parsed = whatIfSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ code: 'VALIDATION_ERROR', error: 'Ошибка валидации', details: parsed.error.errors });
-    return;
-  }
-  res.json(computeWhatIf(parsed.data));
-});
 
 // SMS consent and public conclusion links require real providers/contracts.
 mortgageWorkspaceRouter.post('/consents', providerRequired);

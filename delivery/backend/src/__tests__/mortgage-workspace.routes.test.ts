@@ -52,32 +52,19 @@ describe('mortgage workspace production sandbox routes', () => {
     delete process.env.ENABLE_DEMO_ENDPOINTS;
   });
 
-  it('requires authentication but does not require ENABLE_DEMO_ENDPOINTS', async () => {
-    currentUser = null;
-    expect((await request(buildApp()).get('/api/mortgage-workspace/sandbox/status')).status).toBe(401);
+  it('песочница удалена: её маршруты больше не отвечают', async () => {
+    // Синтетические sandbox/demo/whatif-поверхности убраны вместе с demo-движком
+    // (он считал запрещённый в релизе 1.0 КДН). Рабочий путь — /api/v2/cases.
     currentUser = { userId: 'owner_1', role: 'BROKER' };
-    const response = await request(buildApp()).get('/api/mortgage-workspace/sandbox/status');
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ mode: 'synthetic', officialIinCheck: false });
+    const app = buildApp();
+    for (const path of ['/sandbox/status', '/sandbox/analysis', '/demo/analysis', '/demo/properties']) {
+      expect((await request(app).get(`/api/mortgage-workspace${path}`)).status).toBe(404);
+    }
+    expect((await request(app).post('/api/mortgage-workspace/whatif').send({})).status).toBe(404);
   });
 
   it('keeps public mortgage demo routes fail-closed in production', async () => {
     expect((await request(buildApp()).get('/api/public/mortgage/consent/token')).status).toBe(404);
-  });
-
-  it('returns truthful IIN status and deterministic core analysis/scenarios', async () => {
-    const app = buildApp();
-    const iin = await request(app).post('/api/mortgage-workspace/sandbox/iin-check').send({ iin: '900101300017' });
-    expect(iin.status).toBe(200);
-    expect(iin.body).toMatchObject({ checksumValid: true, externalSourceStatus: 'EXTERNAL_SOURCE_NOT_CONNECTED', officialResult: null });
-    const analysis = await request(app).get('/api/mortgage-workspace/sandbox/analysis');
-    expect(analysis.status).toBe(200);
-    expect(analysis.body.analysis.assessments.length).toBeGreaterThan(0);
-    const scenario = await request(app).post('/api/mortgage-workspace/sandbox/scenarios').send({
-      changes: [{ type: 'increase_down_payment', additionalDownPayment: '2000000' }],
-    });
-    expect(scenario.status).toBe(200);
-    expect(scenario.body.scenario.snapshot.property.downPaymentCash).toBe('10000000');
   });
 
   it.each(['/consents', '/conclusions'])('gates provider-backed legacy endpoint %s', async (path) => {

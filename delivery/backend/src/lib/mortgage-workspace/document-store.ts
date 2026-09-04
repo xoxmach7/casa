@@ -106,3 +106,48 @@ export function updateMeta(id: string, patch: Partial<StoredDocumentMeta>): Stor
 export function isValidId(id: string): boolean {
   return /^[a-f0-9]{16,64}$/.test(id);
 }
+
+/**
+ * Документы одного кейса, свежие первыми.
+ *
+ * Хранилище файловое (см. заголовок), поэтому выборка идёт сканированием
+ * каталога. Это нужно скорингу: платежи по действующим кредитам берутся из
+ * последнего отчёта ПКБ, а не переспрашиваются у брокера руками.
+ */
+export function listByCase(caseRef: string): StoredDocumentMeta[] {
+  try {
+    return fs.readdirSync(PRIVATE_DIR)
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => {
+        try {
+          return JSON.parse(fs.readFileSync(path.join(PRIVATE_DIR, f), 'utf8')) as StoredDocumentMeta;
+        } catch {
+          return null;
+        }
+      })
+      .filter((m): m is StoredDocumentMeta => m !== null && m.caseRef === caseRef)
+      .sort((a, b) => String(b.storedAt).localeCompare(String(a.storedAt)));
+  } catch {
+    return [];
+  }
+}
+
+/** Последний документ нужного типа по кейсу. */
+export function latestForCase(caseRef: string, type: MortgageDocType): StoredDocumentMeta | null {
+  return listByCase(caseRef).find((m) => m.type === type) ?? null;
+}
+
+/**
+ * Значение распознанного поля из сайдкара. Возвращает null, если поля нет или
+ * оно не распознано: скоринг обязан увидеть отсутствие, а не ноль.
+ */
+export function extractedNumber(meta: StoredDocumentMeta | null, key: string): string | null {
+  const fields = (meta?.extraction as { fields?: unknown } | undefined)?.fields;
+  if (!Array.isArray(fields)) return null;
+  const f = fields.find((x) => (x as { key?: string })?.key === key) as
+    { normalizedValue?: unknown; presence?: string } | undefined;
+  if (!f || f.presence !== 'PRESENT') return null;
+  const v = f.normalizedValue;
+  if (v === null || v === undefined || v === '') return null;
+  return String(v);
+}

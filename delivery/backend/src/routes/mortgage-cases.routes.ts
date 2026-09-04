@@ -25,6 +25,8 @@ import {
   M06_FORMULA_REGISTRY_VERSION,
 } from '../lib/mortgage-workspace/m06-formula-registry';
 import { aggregateMoney, aggregateDownPayment, profileContentHash, type MoneySource } from '../lib/mortgage-workspace/mortgage-profile.service';
+import { scoreMortgage, DEFAULT_PAYMENT_SHARE_PERCENT } from '../lib/mortgage-workspace/scoring';
+import { latestForCase, extractedNumber } from '../lib/mortgage-workspace/document-store';
 
 export const mortgageCasesRouter = Router();
 mortgageCasesRouter.use(authenticate);
@@ -1333,5 +1335,90 @@ mortgageCasesRouter.post(
     }
   },
 );
+
+
+/**
+ * CASA-скоринг доступности: «потянет ли клиент вот эту квартиру».
+ *
+ * Собирает входы из того, что уже есть в системе, а не переспрашивает брокера:
+ *  - цена и взнос, доход, прочие обязательства — из профиля M05;
+ *  - платежи по действующим кредитам — из последнего отчёта ПКБ этого кейса;
+ *  - ставка, срок и доля дохода на платёж — параметры прогона.
+ *
+ * Ответ — вердикт + суммы + список того, чего не хватает. Это оценка CASA,
+ * а не решение банка и не регуляторный КДН (REG-F-001 остаётся DISABLED).
+ */
+const scoringSchema = z.object({
+  annual_nominal_rate_percent: z.string().trim().min(1).max(16),
+  term_months: z.number().int().positive().max(1200),
+  payment_share_percent: z.string().trim().min(1).max(6).optional(),
+  // Цена конкретной квартиры: скоринг считается «на ту или иную квартиру».
+  // Не задана — берётся цель покупки из профиля.
+  target_price: z.string().trim().min(1).max(32).optional(),
+}).strict();
+
+mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response): Promise<void> => {
+  const parsed = scoringSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());
+    return;
+  }
+
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    await ensureProfileId(current.id);
+
+    const profile = await prisma.mortgageClientProfile.findUnique({
+      where: { caseId: current.id },
+      include: {
+        purchaseGoal: true, incomeSources: true,
+        downPaymentSources: true, nonCreditCommitments: true,
+      },
+    });
+    if (!profile) { apiError(res, 500, 'internal_error', 'Профиль не создан'); return; }
+
+    const availableNow = aggregateDownPayment(profile.downPaymentSources.map(moneySourceRow));
+    const monthlyIncome = aggregateMoney(profile.incomeSources.map(moneySourceRow));
+    const monthlyOther = aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow));
+
+    // Цена: явно переданная квартира важнее сохранённой цели покупки.
+    const goalPrice = profile.purchaseGoal?.targetPriceMax?.toString() ?? null;
+    const goalStatus = profile.purchaseGoal?.status ?? 'UNKNOWN';
+    const targetPrice = parsed.data.target_price
+      ? { value: parsed.data.target_price, status: 'DECLARED' as InputStatus }
+      : { value: goalPrice, status: (goalStatus === 'VERIFIED' ? 'CONFIRMED' : goalStatus) as InputStatus };
+
+    // Платежи по действующим кредитам — из последнего отчёта ПКБ этого кейса.
+    const pkb = latestForCase(current.id, 'credit_history');
+    const creditPayments = extractedNumber(pkb, 'existing_monthly_payment');
+
+    const result = scoreMortgage({
+      targetPrice,
+      availableNowDownPayment: { value: availableNow.value, status: availableNow.status as InputStatus },
+      monthlyIncome: { value: monthlyIncome.value, status: monthlyIncome.status as InputStatus },
+      monthlyCreditPayments: creditPayments === null
+        ? { value: null, status: 'MISSING' as InputStatus }
+        : { value: creditPayments, status: 'CONFIRMED' as InputStatus },
+      monthlyOtherCommitments: monthlyOther.value === null
+        ? { value: '0', status: 'CONFIRMED' as InputStatus }
+        : { value: monthlyOther.value, status: monthlyOther.status as InputStatus },
+      annualNominalRatePercent: parsed.data.annual_nominal_rate_percent,
+      termMonths: parsed.data.term_months,
+      paymentSharePercent: parsed.data.payment_share_percent ?? DEFAULT_PAYMENT_SHARE_PERCENT,
+    });
+
+    res.json({ data: {
+      ...result,
+      sources: {
+        target_price: parsed.data.target_price ? 'apartment' : 'purchase_goal',
+        monthly_credit_payments: pkb ? 'credit_report' : null,
+        credit_report_id: pkb?.id ?? null,
+      },
+    } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось рассчитать скоринг');
+  }
+});
 
 export default mortgageCasesRouter;

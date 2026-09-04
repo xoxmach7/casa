@@ -7,8 +7,8 @@
  *
  *  1. Фронт НЕ является calculation engine. Здесь нет и не должно появиться ни
  *     одной ипотечной формулы, ни Math.pow, ни Math.round как источника числа.
- *     Все величины приходят из POST /api/v2/cases/{id}/calculation-runs и
- *     показываются ровно так, как их вернул движок (display-строка).
+ *     Все величины приходят из POST /api/v2/cases/{id}/scoring и
+ *     /calculation-runs и показываются ровно так, как их вернул сервер.
  *  2. Без выбранного РЕАЛЬНОГО кейса не показывается ни одной финансовой цифры.
  *     Никаких DEMO_CASE / DEMO_INCOME / DEMO_DOWN_PAYMENT.
  *  3. Если бэкенд расчёта недоступен — «Расчёт временно недоступен».
@@ -38,12 +38,16 @@ import {
   addDownPaymentSource,
   publishProfileSnapshot,
   createCalculationRun,
+  runScoring,
+  addIncomeSource,
+  addCommitment,
   MortgageCaseApiError,
   type MortgageCase,
   type MortgageCaseListItem,
   type ClientProfile,
   type CalculationSnapshot,
   type CalcStatus,
+  type ScoringResult,
 } from "@/lib/mortgage/case-api";
 import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
 import { DocumentIntakeSection } from "@/components/mortgage/DocumentIntakeSection";
@@ -265,6 +269,12 @@ function MortgageWorkspace() {
 
   const [newCaseOpen, setNewCaseOpen] = useState(false);
 
+  // Скоринг доступности: «потянет ли клиент эту квартиру».
+  const [sharePercent, setSharePercent] = useState("50");
+  const [scoring, setScoring] = useState<ScoringResult | null>(null);
+  const [scoringError, setScoringError] = useState<string | null>(null);
+  const [scoringBusy, setScoringBusy] = useState(false);
+
   // --- Загрузка списка кейсов ---
   useEffect(() => {
     let alive = true;
@@ -294,8 +304,10 @@ function MortgageWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (!caseId) { setProfile(null); setMortgageCase(null); setCalc(null); return; }
+    if (!caseId) { setProfile(null); setMortgageCase(null); setCalc(null); setScoring(null); return; }
     setCalc(null);
+    setScoring(null);
+    setScoringError(null);
     setCalcError(null);
     void loadProfile(caseId);
   }, [caseId, loadProfile]);
@@ -344,6 +356,65 @@ function MortgageWorkspace() {
         description: e instanceof MortgageCaseApiError ? e.message : undefined,
         variant: "destructive",
       });
+    }
+  };
+
+  const addIncome = async (kind: string, amount: string) => {
+    if (!caseId || !kind.trim()) return;
+    try {
+      await addIncomeSource(caseId, {
+        kind: kind.trim(),
+        amount: amount.trim() === "" ? null : amount.trim(),
+        status: amount.trim() === "" ? "UNKNOWN" : "DECLARED",
+      });
+      await loadProfile(caseId);
+      setScoring(null);
+    } catch (e) {
+      toast({
+        title: "Не удалось добавить доход",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const addOtherCommitment = async (kind: string, amount: string) => {
+    if (!caseId || !kind.trim()) return;
+    try {
+      await addCommitment(caseId, {
+        kind: kind.trim(),
+        amount: amount.trim() === "" ? null : amount.trim(),
+        status: amount.trim() === "" ? "UNKNOWN" : "DECLARED",
+      });
+      await loadProfile(caseId);
+      setScoring(null);
+    } catch (e) {
+      toast({
+        title: "Не удалось добавить обязательство",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  /** Скоринг считает сервер: цена и анкета из профиля, платежи — из ПКБ. */
+  const runScore = async () => {
+    if (!caseId) return;
+    setScoringBusy(true);
+    setScoringError(null);
+    try {
+      setScoring(await runScoring(caseId, {
+        annual_nominal_rate_percent: ratePercent.trim(),
+        term_months: termMonths,
+        payment_share_percent: sharePercent.trim(),
+      }));
+    } catch (e) {
+      setScoring(null);
+      setScoringError(
+        e instanceof MortgageCaseApiError && e.status !== 0 ? e.message : "Скоринг временно недоступен",
+      );
+    } finally {
+      setScoringBusy(false);
     }
   };
 
@@ -517,6 +588,51 @@ function MortgageWorkspace() {
                 </ul>
                 <AddSourceForm onAdd={addSource} />
               </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Доход клиента в месяц
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">
+                  {showMoney(profile.aggregates.monthly_income_total.value)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {profile.income_sources.length === 0
+                    ? "источники дохода не добавлены"
+                    : `статус: ${FIELD_LABEL[String(profile.aggregates.monthly_income_total.status)] ?? "—"}`}
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {profile.income_sources.map((s) => (
+                    <li key={s.id} className="flex justify-between border-b border-border/60 pb-1">
+                      <span className="text-muted-foreground">{s.kind}</span>
+                      <span className="tabular-nums">{showMoney(s.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <AddSourceForm onAdd={addIncome} placeholder="Источник дохода" />
+              </div>
+
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Другие платежи в месяц
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">
+                  {showMoney(profile.aggregates.monthly_commitments_total.value)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Алименты, аренда и прочее. Платежи по кредитам сюда вносить не нужно —
+                  они берутся из кредитной истории.
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {profile.non_credit_commitments.map((s) => (
+                    <li key={s.id} className="flex justify-between border-b border-border/60 pb-1">
+                      <span className="text-muted-foreground">{s.kind}</span>
+                      <span className="tabular-nums">{showMoney(s.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <AddSourceForm onAdd={addOtherCommitment} placeholder="Обязательство" />
+              </div>
             </div>
           </Card>
 
@@ -550,101 +666,73 @@ function MortgageWorkspace() {
                     className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
                   />
                 </label>
-                <Button onClick={() => void runCalculation()} disabled={calcBusy} className="w-full">
+                <label className="block">
+                  <span className="text-sm text-muted-foreground">Доля дохода на платёж, %</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={sharePercent}
+                    onChange={(e) => setSharePercent(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
+                  />
+                </label>
+                <Button onClick={() => void runScore()} disabled={scoringBusy} className="w-full">
                   <Calculator className="mr-1.5 h-4 w-4" />
-                  {calcBusy ? "Считаем…" : "Рассчитать"}
+                  {scoringBusy ? "Считаем…" : "Рассчитать"}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Ставка и срок — условия конкретного банка, а не данные клиента:
-                  меняйте их и пересчитывайте, данные клиента при этом не меняются.
+                  Ставка, срок и доля дохода — условия конкретного банка и решение брокера,
+                  а не данные клиента: меняйте их и пересчитывайте.
                 </p>
               </div>
 
               <div className="space-y-3 rounded-lg bg-muted/40 p-4">
-                {!calc && !calcError && (
+                {!scoring && !scoringError && (
                   <p className="text-sm text-muted-foreground">
-                    Расчёт ещё не выполнялся. Значения появятся только после прогона на сервере.
+                    Нажмите «Рассчитать» — покажем, потянет ли клиент эту квартиру.
                   </p>
                 )}
 
-                {calcError && (
+                {scoringError && (
                   <div className="flex items-start gap-2 text-sm">
                     <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />
                     <div>
-                      <p className="font-medium text-rose-600 dark:text-rose-400">{calcError}</p>
+                      <p className="font-medium text-rose-600 dark:text-rose-400">{scoringError}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Приблизительный расчёт на устройстве не выполняется: цифра допустима
-                        только из детерминированного движка.
+                        Приблизительный расчёт на устройстве не выполняется.
                       </p>
                     </div>
                   </div>
                 )}
 
-                {calc && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Статус расчёта</span>
-                      <StatusPill status={calc.status} />
-                    </div>
+                {scoring && <ScoringPanel scoring={scoring} />}
 
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Сумма кредита</p>
-                      <p className="text-2xl font-bold tabular-nums">
-                        {showMoney(calc.results.requiredFinancing.value)}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        требуемое финансирование · {calc.results.requiredFinancing.machineName}/{calc.results.requiredFinancing.formulaVersion}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Ежемесячный платёж</p>
-                      <p className="text-2xl font-bold tabular-nums">
-                        {showMoney(calc.results.annuity.value)}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        аннуитет · {calc.results.annuity.machineName}/{calc.results.annuity.formulaVersion}
-                      </p>
-                    </div>
-
-                    {calc.results.blockers.length > 0 && (
-                      <ul className="space-y-1 pt-1 text-xs text-muted-foreground">
-                        {calc.results.blockers.map((b, i) => (
-                          <li key={`${b.code}-${i}`}>
-                            <b className="font-medium">{b.code}</b> — {b.reason}
-                            {b.blocking_input_refs.length > 0 && ` (${b.blocking_input_refs.join(", ")})`}
-                          </li>
-                        ))}
-                      </ul>
+                {scoring && (scoring.verdict === "FITS" || scoring.verdict === "NOT_ENOUGH") && (
+                  <div className="border-t border-border/60 pt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void runCalculation()}
+                      disabled={calcBusy}
+                      className="w-full"
+                    >
+                      {calcBusy ? "Фиксируем…" : "Зафиксировать расчёт"}
+                    </Button>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Сохраняет неизменяемый снимок расчёта — на него можно сослаться позже.
+                    </p>
+                    {calcError && (
+                      <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{calcError}</p>
                     )}
-
-                    <details className="pt-1 text-xs text-muted-foreground">
-                      <summary className="cursor-pointer">Воспроизводимость расчёта</summary>
-                      <dl className="mt-2 space-y-0.5 break-all">
-                        <div>input_hash: {calc.input_hash}</div>
-                        <div>output_hash: {calc.output_hash}</div>
-                        <div>replay_hash: {calc.replay_hash}</div>
-                        <div>{calc.engine_version} · {calc.canonicalization_version}</div>
-                        <div>{calc.decimal_context_version}</div>
-                      </dl>
-                    </details>
-                  </>
+                    {calc && (
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                        <StatusPill status={calc.status} /> зафиксирован
+                      </p>
+                    )}
+                  </div>
                 )}
-              </div>
-            </div>
+              </div>            </div>
           </Card>
-
-          <div
-            data-testid="release-scope-note"
-            className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm"
-          >
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            <p className="text-muted-foreground">
-              Банковский КДН (REG-F-001) не рассчитывается: нормативные входы не определены
-              для релиза 1.0. Принимаемый банком доход, программы, сценарии и подбор квартир
-              на этом экране не показываются — они относятся к последующим релизам.
-            </p>
-          </div>
 
           {/* Идентификаторы нужны поддержке при разборе обращения, поэтому они
               сохранены — но убраны из рабочего поля зрения брокера. */}
@@ -655,6 +743,14 @@ function MortgageWorkspace() {
               <div>версия профиля: {profile.version}</div>
               {profile.latest_snapshot && (
                 <div>снапшот профиля: {profile.latest_snapshot.content_hash.slice(0, 16)}…</div>
+              )}
+              {calc && (
+                <>
+                  <div>input_hash: {calc.input_hash}</div>
+                  <div>output_hash: {calc.output_hash}</div>
+                  <div>replay_hash: {calc.replay_hash}</div>
+                  <div>{calc.engine_version} · {calc.canonicalization_version}</div>
+                </>
               )}
             </dl>
           </details>
@@ -685,7 +781,10 @@ export default function MortgagePage() {
 
 // --- Форма добавления источника взноса ---------------------------------------
 
-function AddSourceForm({ onAdd }: { onAdd: (kind: string, amount: string) => void }) {
+function AddSourceForm({ onAdd, placeholder = "Источник" }: {
+  onAdd: (kind: string, amount: string) => void;
+  placeholder?: string;
+}) {
   const [kind, setKind] = useState("");
   const [amount, setAmount] = useState("");
 
@@ -694,7 +793,7 @@ function AddSourceForm({ onAdd }: { onAdd: (kind: string, amount: string) => voi
       <input
         value={kind}
         onChange={(e) => setKind(e.target.value)}
-        placeholder="Источник"
+        placeholder={placeholder}
         className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
       />
       <input
@@ -712,5 +811,97 @@ function AddSourceForm({ onAdd }: { onAdd: (kind: string, amount: string) => voi
         Добавить
       </Button>
     </div>
+  );
+}
+
+// --- Вердикт скоринга --------------------------------------------------------
+
+const VERDICT: Record<string, { title: string; tone: string; sub: string }> = {
+  FITS: {
+    title: "Клиент проходит по платежу",
+    tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    sub: "Платёж по этой квартире укладывается в свободный платёж клиента.",
+  },
+  NOT_ENOUGH: {
+    title: "Не проходит по платежу",
+    tone: "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+    sub: "Платёж по этой квартире больше, чем клиент может платить.",
+  },
+  NEEDS_DATA: {
+    title: "Не хватает данных",
+    tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+    sub: "Заполните перечисленное — и расчёт станет возможным.",
+  },
+  INVALID_INPUT: {
+    title: "Некорректные параметры",
+    tone: "bg-rose-500/15 text-rose-700 dark:text-rose-400",
+    sub: "Проверьте ставку, срок и долю дохода.",
+  },
+};
+
+function ScoringPanel({ scoring }: { scoring: ScoringResult }) {
+  const v = VERDICT[scoring.verdict] ?? VERDICT.NEEDS_DATA;
+  const enough = scoring.verdict === "FITS";
+
+  return (
+    <>
+      <div className={cn("rounded-lg px-3 py-2", v.tone)}>
+        <p className="font-semibold leading-tight">{v.title}</p>
+        <p className="mt-0.5 text-xs opacity-90">{v.sub}</p>
+      </div>
+
+      {scoring.missing.length > 0 && (
+        <ul className="space-y-1 text-sm">
+          {scoring.missing.map((m) => (
+            <li key={m.field} className="flex items-start gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+              <span>{m.action}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {scoring.verdict !== "NEEDS_DATA" && scoring.verdict !== "INVALID_INPUT" && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Нужен кредит</p>
+              <p className="text-xl font-bold tabular-nums">{showMoney(scoring.requiredFinancing.value)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Платёж в месяц</p>
+              <p className="text-xl font-bold tabular-nums">{showMoney(scoring.monthlyPayment.value)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Клиент может платить</p>
+              <p className="text-xl font-bold tabular-nums">{showMoney(scoring.paymentCapacity.value)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Максимальный кредит</p>
+              <p className="text-xl font-bold tabular-nums">{showMoney(scoring.maxLoan.value)}</p>
+            </div>
+          </div>
+
+          {!enough && (
+            <p className="text-sm">
+              Не хватает <b className="tabular-nums">{showMoney(scoring.paymentGap.value)}</b> в месяц
+              {scoring.loanGap.value && scoring.loanGap.value !== "0.00" && (
+                <> — это <b className="tabular-nums">{showMoney(scoring.loanGap.value)}</b> суммы кредита.</>
+              )}
+            </p>
+          )}
+
+          {scoring.unverifiedInputs && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Часть данных заявлена со слов клиента и не подтверждена документами.
+            </p>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            Предварительная оценка CASA по данным брокера. Решение принимает банк.
+          </p>
+        </>
+      )}
+    </>
   );
 }

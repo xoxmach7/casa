@@ -299,3 +299,79 @@ export async function createCalculationRun(
     },
   );
 }
+
+// --- CASA-скоринг доступности ------------------------------------------------
+
+export type ScoringVerdict = "FITS" | "NOT_ENOUGH" | "NEEDS_DATA" | "INVALID_INPUT";
+
+export interface ScoringMoney {
+  raw: string | null;
+  value: string | null;
+  displayKzt: number | null;
+}
+
+export interface ScoringResult {
+  version: string;
+  verdict: ScoringVerdict;
+  unverifiedInputs: boolean;
+  requiredFinancing: CalcFormulaResult;
+  monthlyPayment: CalcFormulaResult;
+  paymentCapacity: ScoringMoney;
+  maxLoan: ScoringMoney;
+  paymentGap: ScoringMoney;
+  loanGap: ScoringMoney;
+  missing: { field: string; action: string }[];
+  codes: string[];
+  parameters: {
+    annualNominalRatePercent: string | null;
+    termMonths: number | null;
+    paymentSharePercent: string;
+  };
+  disclaimer: string;
+  sources: {
+    target_price: "apartment" | "purchase_goal";
+    monthly_credit_payments: "credit_report" | null;
+    credit_report_id: string | null;
+  };
+}
+
+/**
+ * Скоринг «потянет ли клиент эту квартиру». Считает сервер: цена, взнос, доход
+ * и обязательства берутся из профиля, платежи по кредитам — из отчёта ПКБ.
+ */
+export async function runScoring(
+  caseId: string,
+  input: {
+    annual_nominal_rate_percent: string;
+    term_months: number;
+    payment_share_percent?: string;
+    target_price?: string;
+  },
+): Promise<ScoringResult> {
+  return call<ScoringResult>(`/v2/cases/${encodeURIComponent(caseId)}/scoring`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Доход клиента в месяц (M05 income_sources). */
+export async function addIncomeSource(
+  caseId: string,
+  source: { kind: string; amount: string | null; status: ProfileFieldStatus },
+): Promise<MoneySourceRow> {
+  return call<MoneySourceRow>(
+    `/v2/cases/${encodeURIComponent(caseId)}/income-sources`,
+    { method: "POST", body: JSON.stringify(source) },
+  );
+}
+
+/** Прочие ежемесячные обязательства (алименты, аренда) — не кредиты. */
+export async function addCommitment(
+  caseId: string,
+  source: { kind: string; amount: string | null; status: ProfileFieldStatus },
+): Promise<MoneySourceRow> {
+  return call<MoneySourceRow>(
+    `/v2/cases/${encodeURIComponent(caseId)}/non-credit-commitments`,
+    { method: "POST", body: JSON.stringify(source) },
+  );
+}

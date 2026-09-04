@@ -28,7 +28,6 @@ import { aggregateMoney, aggregateDownPayment, profileContentHash, type MoneySou
 import { scoreMortgage, DEFAULT_PAYMENT_SHARE_PERCENT } from '../lib/mortgage-workspace/scoring';
 import { latestForCase, extractedNumber } from '../lib/mortgage-workspace/document-store';
 import { findPropertiesWithinBudget } from '../lib/mortgage-workspace/property-match.service';
-import { deleteMortgageCase } from '../lib/mortgage-workspace/case-delete.service';
 import { recordAuditLog } from '../lib/audit-log.service';
 
 export const mortgageCasesRouter = Router();
@@ -396,8 +395,11 @@ mortgageCasesRouter.get('/', async (req: Request, res: Response): Promise<void> 
     // Сортировка по updatedAt может давать одинаковые значения, поэтому id —
     // обязательный tie-breaker: без него курсорная страница способна потерять
     // или продублировать строку.
+    // Архив и отменённые — не рабочий список: убранный расчёт должен исчезать
+    // с экрана, даже если сама запись остаётся (историю удалять нельзя).
+    const visible = { status: { notIn: ['ARCHIVED', 'CANCELLED'] as MortgageCaseStatus[] } };
     const rows = await prisma.mortgageCase.findMany({
-      where: isAdmin ? {} : { ownerId: req.user!.userId },
+      where: isAdmin ? visible : { ownerId: req.user!.userId, ...visible },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -1141,44 +1143,56 @@ function makeMoneySubDeleteHandler(
   };
 }
 
-// DELETE /:caseId — удалить расчёт целиком.
+// POST /:caseId/archive — убрать расчёт из работы.
 //
-// Нужен и брокеру (ошибочно заведённый расчёт иначе висит в списке вечно), и
-// для уборки отладочных кейсов. Аудит пишется в общий журнал ДО удаления:
-// собственный аудит кейса уходит вместе с ним каскадом, и следа бы не осталось.
-mortgageCasesRouter.delete('/:caseId', async (req: Request, res: Response): Promise<void> => {
+// Удалить кейс физически НЕЛЬЗЯ, и это не недоработка: пять таблиц модуля
+// (аудит, ревизии документов, проверки полей, верифицированные снимки и их
+// источники) закрыты триггерами append-only. Первая же попытка удаления
+// упирается в «mortgage_audit_events is append-only» — история расчёта
+// намеренно неудаляема. Поэтому «убрать» означает перевести кейс в ARCHIVED
+// по разрешённым переходам; из рабочего списка архив не показывается.
+mortgageCasesRouter.post('/:caseId/archive', async (req: Request, res: Response): Promise<void> => {
   try {
     const current = await loadCaseForProfile(req.params.caseId, req.user!);
     if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    if (current.status === 'ARCHIVED') { res.status(200).json({ data: caseResponse(current) }); return; }
+
+    // Машина состояний не пускает в архив напрямую из рабочих статусов:
+    // сначала отмена, потом архив. Идём её же маршрутом, а не в обход.
+    const path: MortgageCaseStatus[] = current.status === 'CANCELLED' || current.status === 'CONSENT_REVOKED'
+      ? ['ARCHIVED']
+      : ['CANCELLED', 'ARCHIVED'];
+
+    let state = current;
+    for (const next of path) {
+      if (!canTransitionMortgageCase(state.status, next)) {
+        apiError(res, 409, 'invalid_transition', `Из статуса «${state.status}» нельзя убрать расчёт в архив`);
+        return;
+      }
+      state = await prisma.mortgageCase.update({
+        where: { id: state.id },
+        data: { status: next, version: { increment: 1 } },
+      });
+      await prisma.mortgageAuditEvent.create({ data: {
+        caseId: state.id, actorId: req.user!.userId, action: 'mortgage_case.status_changed',
+        objectType: 'MortgageCase', objectId: state.id, purpose: 'mortgage_prescore',
+        result: 'SUCCESS',
+      } });
+    }
 
     await recordAuditLog({
       actorUserId: req.user!.userId,
       actorRole: req.user!.role,
-      action: 'mortgage_case.deleted',
+      action: 'mortgage_case.archived',
       entityType: 'MortgageCase',
-      entityId: current.id,
-      // ПД клиента сюда не попадают — только идентификаторы и статус.
-      oldValues: { status: current.status, version: current.version, clientId: current.clientId },
+      entityId: state.id,
+      oldValues: { status: current.status },
+      newValues: { status: state.status },
     });
 
-    const removed = await deleteMortgageCase(current.id);
-    res.status(200).json({ data: { id: current.id, removed } });
-  } catch (err) {
-    // Что именно не дало удалить — видно только здесь: журналы контейнера
-    // недоступны с рабочей машины, а без кода ошибки причина не отличима от
-    // «что-то пошло не так». Отдаём код и имя ограничения — не содержимое.
-    const e = err as { code?: string; meta?: Record<string, unknown>; message?: string };
-    console.error('mortgage_case.delete failed', e?.code, e?.meta, e?.message);
-    apiError(res, 500, 'internal_error', 'Не удалось удалить расчёт', {
-      prisma_code: e?.code ?? null,
-      constraint: (e?.meta?.constraint ?? e?.meta?.field_name ?? null) as string | null,
-      model: (e?.meta?.modelName ?? null) as string | null,
-      // Код ошибки оказался пустым — значит это не нарушение ограничения, а
-      // обычное исключение. Имя и первая строка сообщения описывают запрос,
-      // а не данные строк; диагностика временная.
-      name: (err as Error)?.name ?? null,
-      hint: String(e?.message ?? '').split('\n').filter(Boolean).slice(0, 3).join(' | ').slice(0, 400),
-    });
+    res.status(200).json({ data: caseResponse(state) });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось убрать расчёт в архив');
   }
 });
 

@@ -58,14 +58,17 @@ describe('GET /api/v2/cases (DEC-API-002)', () => {
   it('брокер видит только свои кейсы — фильтр по владельцу в запросе к БД', async () => {
     await request(app()).get('/api/v2/cases');
     const args = p.mortgageCase.findMany.mock.calls[0][0];
-    expect(args.where).toEqual({ ownerId: 'broker_1' });
+    // Плюс скрытие архива: убранный расчёт не должен возвращаться в список.
+    expect(args.where.ownerId).toBe('broker_1');
   });
 
   it('администратор не ограничен владельцем', async () => {
     currentUser = { userId: 'admin_1', role: 'ADMIN' };
     await request(app()).get('/api/v2/cases');
     const args = p.mortgageCase.findMany.mock.calls[0][0];
-    expect(args.where).toEqual({});
+    expect(args.where.ownerId).toBeUndefined();
+    // Но и админу архив в рабочем списке не нужен.
+    expect(args.where.status).toEqual({ notIn: ['ARCHIVED', 'CANCELLED'] });
   });
 
   it('порядок детерминирован: updatedAt + id как tie-breaker', async () => {

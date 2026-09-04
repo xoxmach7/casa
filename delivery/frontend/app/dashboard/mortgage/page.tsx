@@ -25,7 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calculator, User2, ShieldCheck, Info, TriangleAlert, RefreshCw, FolderOpen,
-  Plus, ArrowRight, FileText, Landmark, X, Home, ChevronDown, Trash2,
+  Plus, ArrowRight, FileText, Landmark, X, Home, ChevronDown, Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -47,7 +47,7 @@ import {
   removeIncomeSource,
   removeCommitment,
   getMatchingProperties,
-  deleteMortgageCase,
+  archiveMortgageCase,
   MortgageCaseApiError,
   type MortgageCase,
   type MortgageCaseListItem,
@@ -417,23 +417,24 @@ function MortgageWorkspace() {
   };
 
   /**
-   * Удаление расчёта целиком. Спрашиваем подтверждение: вместе с расчётом
-   * уходят загруженные документы клиента, и вернуть их будет нечем.
+   * Убрать расчёт из работы. Не «удалить»: аудит и документы в базе закрыты
+   * триггерами append-only — история расчёта неудаляема по требованию
+   * регулятора. Кейс уходит в архив и исчезает из списка.
    */
   const removeCase = async () => {
     if (!caseId) return;
     const ok = window.confirm(
-      "Удалить расчёт вместе с загруженными документами и анкетой? Клиент останется в CRM.",
+      "Убрать расчёт из работы? Он исчезнет из списка. Историю расчёта закон удалять не позволяет, поэтому она сохранится в архиве.",
     );
     if (!ok) return;
     setDeleting(true);
     try {
-      await deleteMortgageCase(caseId);
-      toast({ title: "Расчёт удалён" });
+      await archiveMortgageCase(caseId);
+      toast({ title: "Расчёт убран в архив" });
       router.push("/dashboard/mortgage");
     } catch (e) {
       toast({
-        title: "Не удалось удалить расчёт",
+        title: "Не удалось убрать расчёт",
         description: e instanceof MortgageCaseApiError ? e.message : undefined,
         variant: "destructive",
       });
@@ -622,12 +623,12 @@ function MortgageWorkspace() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-rose-600 hover:text-rose-700"
                   disabled={deleting}
                   onClick={() => void removeCase()}
-                  title="Удалить расчёт"
+                  title="Убрать расчёт из работы"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Archive className="mr-1.5 h-4 w-4" />
+                  {deleting ? "Убираем…" : "Убрать"}
                 </Button>
               </div>
             </div>

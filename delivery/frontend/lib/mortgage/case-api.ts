@@ -424,9 +424,15 @@ export function removeCommitment(caseId: string, rowId: string): Promise<void> {
   return remove(`/v2/cases/${encodeURIComponent(caseId)}/non-credit-commitments/${encodeURIComponent(rowId)}`);
 }
 
-/** Удаление расчёта целиком — вместе с документами и анкетой. Клиент остаётся. */
-export function deleteMortgageCase(caseId: string): Promise<void> {
-  return remove(`/v2/cases/${encodeURIComponent(caseId)}`);
+/**
+ * Убрать расчёт из работы.
+ *
+ * Именно убрать, а не удалить: в базе аудит, ревизии документов и снимки
+ * закрыты триггерами append-only, история расчёта неудаляема по регуляторному
+ * требованию. Кейс уходит в архив и пропадает из рабочего списка.
+ */
+export function archiveMortgageCase(caseId: string): Promise<MortgageCase> {
+  return call<MortgageCase>(`/v2/cases/${encodeURIComponent(caseId)}/archive`, { method: "POST" });
 }
 
 // --- Подбор квартир под бюджет ----------------------------------------------

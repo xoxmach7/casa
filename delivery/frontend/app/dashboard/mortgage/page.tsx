@@ -25,7 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calculator, User2, ShieldCheck, Info, TriangleAlert, RefreshCw, FolderOpen,
-  Plus, ArrowRight, FileText, Landmark,
+  Plus, ArrowRight, FileText, Landmark, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +43,9 @@ import {
   addCommitment,
   DOWN_PAYMENT_KINDS,
   DOWN_PAYMENT_KIND_LABEL,
+  removeDownPaymentSource,
+  removeIncomeSource,
+  removeCommitment,
   MortgageCaseApiError,
   type MortgageCase,
   type MortgageCaseListItem,
@@ -399,6 +402,23 @@ function MortgageWorkspace() {
     }
   };
 
+  const removeRow = async (
+    remove: (caseId: string, rowId: string) => Promise<void>, rowId: string,
+  ) => {
+    if (!caseId) return;
+    try {
+      await remove(caseId, rowId);
+      await loadProfile(caseId);
+      setScoring(null);
+    } catch (e) {
+      toast({
+        title: "Не удалось удалить строку",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
   /** Скоринг считает сервер: цена и анкета из профиля, платежи — из ПКБ. */
   const runScore = async () => {
     if (!caseId) return;
@@ -587,9 +607,10 @@ function MortgageWorkspace() {
                   {profile.down_payment_sources.map((s) => (
                     <li key={s.id} className="flex justify-between border-b border-border/60 pb-1">
                       <span className="text-muted-foreground">{DOWN_PAYMENT_KIND_LABEL[s.kind] ?? s.kind}</span>
-                      <span className="tabular-nums">
-                        {showMoney(s.amount)}{" "}
+                      <span className="flex items-center gap-2 tabular-nums">
+                        {showMoney(s.amount)}
                         <span className="text-xs text-muted-foreground">· {FIELD_LABEL[s.status] ?? s.status}</span>
+                        <RemoveRowButton label={`Удалить источник ${s.kind}`} onRemove={() => void removeRow(removeDownPaymentSource, s.id)} />
                       </span>
                     </li>
                   ))}
@@ -613,7 +634,10 @@ function MortgageWorkspace() {
                   {profile.income_sources.map((s) => (
                     <li key={s.id} className="flex justify-between border-b border-border/60 pb-1">
                       <span className="text-muted-foreground">{s.kind}</span>
-                      <span className="tabular-nums">{showMoney(s.amount)}</span>
+                      <span className="flex items-center gap-2 tabular-nums">
+                        {showMoney(s.amount)}
+                        <RemoveRowButton label={`Удалить доход ${s.kind}`} onRemove={() => void removeRow(removeIncomeSource, s.id)} />
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -635,7 +659,10 @@ function MortgageWorkspace() {
                   {profile.non_credit_commitments.map((s) => (
                     <li key={s.id} className="flex justify-between border-b border-border/60 pb-1">
                       <span className="text-muted-foreground">{s.kind}</span>
-                      <span className="tabular-nums">{showMoney(s.amount)}</span>
+                      <span className="flex items-center gap-2 tabular-nums">
+                        {showMoney(s.amount)}
+                        <RemoveRowButton label={`Удалить обязательство ${s.kind}`} onRemove={() => void removeRow(removeCommitment, s.id)} />
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -954,5 +981,20 @@ function AddDownPaymentForm({ onAdd }: { onAdd: (kind: string, amount: string) =
         </p>
       )}
     </div>
+  );
+}
+
+/** Крестик удаления строки анкеты. */
+function RemoveRowButton({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onRemove}
+      className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-rose-600"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
   );
 }

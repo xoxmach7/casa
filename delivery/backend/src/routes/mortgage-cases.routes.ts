@@ -1099,6 +1099,50 @@ mortgageCasesRouter.post('/:caseId/income-sources', makeMoneySubHandler('mortgag
 mortgageCasesRouter.post('/:caseId/assets', makeMoneySubHandler('mortgageAsset', 'value', 'mortgage_profile.asset_added'));
 mortgageCasesRouter.post('/:caseId/non-credit-commitments', makeMoneySubHandler('mortgageNonCreditCommitment', 'monthlyAmount', 'mortgage_profile.commitment_added'));
 
+/**
+ * Удаление строки анкеты.
+ *
+ * Без него ошибочная запись оставалась в профиле навсегда: один источник с
+ * нераспознанным типом делает агрегат взноса неполным, и расчёт по кейсу
+ * становится невозможен, а исправить это брокеру было нечем. Удаление
+ * ограничено своим кейсом и пишется в аудит, как и создание.
+ */
+function makeMoneySubDeleteHandler(
+  model: 'mortgageDownPaymentSource' | 'mortgageIncomeSource' | 'mortgageAsset' | 'mortgageNonCreditCommitment',
+  action: string,
+) {
+  return async (req: Request, res: Response): Promise<void> => {
+    try {
+      const current = await loadCaseForProfile(req.params.caseId, req.user!);
+      if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+      const profileId = await ensureProfileId(current.id);
+
+      // Строка удаляется ТОЛЬКО если принадлежит профилю этого кейса:
+      // иначе по идентификатору можно было бы стереть чужую запись.
+      const row = await (prisma as any)[model].findFirst({
+        where: { id: req.params.rowId, profileId },
+        select: { id: true },
+      });
+      if (!row) { apiError(res, 404, 'not_found', 'Запись профиля не найдена'); return; }
+
+      await (prisma as any)[model].delete({ where: { id: row.id } });
+      await prisma.mortgageAuditEvent.create({ data: {
+        caseId: current.id, actorId: req.user!.userId, action,
+        objectType: model, objectId: row.id, purpose: 'mortgage_prescore',
+        result: 'SUCCESS',
+      } });
+      res.status(204).end();
+    } catch {
+      apiError(res, 500, 'internal_error', 'Не удалось удалить запись профиля');
+    }
+  };
+}
+
+mortgageCasesRouter.delete('/:caseId/down-payment-sources/:rowId', makeMoneySubDeleteHandler('mortgageDownPaymentSource', 'mortgage_profile.down_payment_removed'));
+mortgageCasesRouter.delete('/:caseId/income-sources/:rowId', makeMoneySubDeleteHandler('mortgageIncomeSource', 'mortgage_profile.income_removed'));
+mortgageCasesRouter.delete('/:caseId/assets/:rowId', makeMoneySubDeleteHandler('mortgageAsset', 'mortgage_profile.asset_removed'));
+mortgageCasesRouter.delete('/:caseId/non-credit-commitments/:rowId', makeMoneySubDeleteHandler('mortgageNonCreditCommitment', 'mortgage_profile.commitment_removed'));
+
 // POST /:caseId/employments (API-M05-004)
 mortgageCasesRouter.post('/:caseId/employments', async (req: Request, res: Response): Promise<void> => {
   const parsed = employmentSchema.safeParse(req.body);

@@ -402,3 +402,24 @@ export async function addCommitment(
     { method: "POST", body: JSON.stringify(source) },
   );
 }
+
+/** Удаление строки анкеты: без него ошибочная запись блокирует расчёт навсегда. */
+async function remove(path: string): Promise<void> {
+  const response = await fetch(`${API_URL}${path}`, { method: "DELETE", credentials: "include" })
+    .catch(() => { throw new MortgageCaseApiError("Сервер недоступен", 0, "network_error"); });
+  if (!response.ok && response.status !== 204) {
+    const body = await response.json().catch(() => ({}));
+    const error = (body as { error?: { message?: string } })?.error;
+    throw new MortgageCaseApiError(error?.message ?? `Ошибка сервера (${response.status})`, response.status);
+  }
+}
+
+export function removeDownPaymentSource(caseId: string, rowId: string): Promise<void> {
+  return remove(`/v2/cases/${encodeURIComponent(caseId)}/down-payment-sources/${encodeURIComponent(rowId)}`);
+}
+export function removeIncomeSource(caseId: string, rowId: string): Promise<void> {
+  return remove(`/v2/cases/${encodeURIComponent(caseId)}/income-sources/${encodeURIComponent(rowId)}`);
+}
+export function removeCommitment(caseId: string, rowId: string): Promise<void> {
+  return remove(`/v2/cases/${encodeURIComponent(caseId)}/non-credit-commitments/${encodeURIComponent(rowId)}`);
+}

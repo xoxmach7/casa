@@ -356,7 +356,9 @@ export default function ApartmentsGridPage() {
         </Card>
       )}
 
-      <Card>
+      {/* Card по умолчанию даёт py-6 сверху и снизу плюс gap-6 между шапкой и
+          телом — для строки фильтров это полэкрана воздуха ни за что. */}
+      <Card className="gap-3 py-4">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -422,62 +424,102 @@ export default function ApartmentsGridPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <Card>
-          <CardContent className="pt-6">
-            {viewMode === 'list' && (
-              <ApartmentListView
-                apartments={filteredApartments}
-                selectedId={selectedApartment?.id ?? null}
-                onSelect={setSelectedApartment}
-              />
-            )}
-            {viewMode === 'cards' && (
-              <ApartmentCardsView
-                apartments={filteredApartments}
-                selectedId={selectedApartment?.id ?? null}
-                onSelect={setSelectedApartment}
-              />
-            )}
-            {viewMode === 'table' && (
-              <ApartmentTableView
-                apartments={filteredApartments}
-                buildings={buildings}
-                selectedId={selectedApartment?.id ?? null}
-                onSelect={setSelectedApartment}
-              />
-            )}
-          </CardContent>
-        </Card>
-
+      {/* В режиме «Карточки» карточка сама и есть то, что показывал правый
+          блок, поэтому блок не дублируется, а сетка занимает всю ширину. */}
+      {viewMode === 'cards' ? (
         <div className="space-y-4">
-          <ApartmentDetailPanel apartment={selectedApartment} onFixate={handleFixate}>
-            {canAddApartment && selectedApartment && (
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => router.push(`/dashboard/projects/${params.id}/apartments/${selectedApartment.id}/edit`)}
-                >
-                  Редактировать
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setApartmentToDelete(selectedApartment);
-                    setShowDeleteDialog(true);
-                  }}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </ApartmentDetailPanel>
+          <ApartmentCardsView
+            apartments={filteredApartments}
+            selectedId={selectedApartment?.id ?? null}
+            onSelect={setSelectedApartment}
+            onFixate={handleFixate}
+            projectName={project?.name}
+            projectCity={project?.city}
+            projectAddress={project?.address}
+            renderActions={(apt) =>
+              canAddApartment ? (
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => router.push(`/dashboard/projects/${params.id}/apartments/${apt.id}/edit`)}
+                  >
+                    Редактировать
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setApartmentToDelete(apt as Apartment);
+                      setShowDeleteDialog(true);
+                    }}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null
+            }
+          />
 
           {activeFixationId && <FixationStatusCard fixationId={activeFixationId} />}
         </div>
-      </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+          <Card>
+            <CardContent className="pt-6">
+              {viewMode === 'list' && (
+                <ApartmentListView
+                  apartments={filteredApartments}
+                  selectedId={selectedApartment?.id ?? null}
+                  onSelect={setSelectedApartment}
+                />
+              )}
+              {viewMode === 'table' && (
+                <ApartmentTableView
+                  apartments={filteredApartments}
+                  buildings={buildings}
+                  selectedId={selectedApartment?.id ?? null}
+                  onSelect={setSelectedApartment}
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="space-y-4">
+            <ApartmentDetailPanel
+              apartment={selectedApartment}
+              onFixate={handleFixate}
+              projectName={project?.name}
+              projectCity={project?.city}
+              projectAddress={project?.address}
+            >
+              {canAddApartment && selectedApartment && (
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => router.push(`/dashboard/projects/${params.id}/apartments/${selectedApartment.id}/edit`)}
+                  >
+                    Редактировать
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setApartmentToDelete(selectedApartment);
+                      setShowDeleteDialog(true);
+                    }}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </ApartmentDetailPanel>
+
+            {activeFixationId && <FixationStatusCard fixationId={activeFixationId} />}
+          </div>
+        </div>
+      )}
 
       {project && selectedApartment && (
         <CreateFixationForm

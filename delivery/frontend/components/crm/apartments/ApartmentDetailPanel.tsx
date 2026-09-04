@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Home, Bookmark, Calculator, Image as ImageIcon } from 'lucide-react';
+import { Home, Bookmark, Calculator, Image as ImageIcon, FileDown } from 'lucide-react';
 import { AddToSelectionDialog } from '@/components/apartments/AddToSelectionDialog';
 import type { ApartmentCardData } from '@/components/apartments/ApartmentCard';
+import { getStoredUser } from '@/lib/auth-utils';
+import { useToast } from '@/hooks/use-toast';
 
 export interface ApartmentDetail {
   id: string;
@@ -23,6 +25,10 @@ export interface ApartmentDetail {
 interface ApartmentDetailPanelProps {
   apartment: ApartmentDetail | null;
   onFixate: (apartment: ApartmentDetail) => void;
+  /** Данные ЖК — попадают в квартирный лист, который брокер отдаёт клиенту. */
+  projectName?: string;
+  projectCity?: string;
+  projectAddress?: string;
   children?: React.ReactNode;
 }
 
@@ -47,10 +53,49 @@ const STATUS_BADGE: Record<ApartmentDetail['status'], string> = {
   SOLD: 'bg-gray-500',
 };
 
-export function ApartmentDetailPanel({ apartment, onFixate, children }: ApartmentDetailPanelProps) {
+export function ApartmentDetailPanel({
+  apartment,
+  onFixate,
+  projectName,
+  projectCity,
+  projectAddress,
+  children,
+}: ApartmentDetailPanelProps) {
   const router = useRouter();
+  const { toast } = useToast();
   // Квартира, для которой открыт диалог «В подборку» (null = закрыт).
   const [selectionApartment, setSelectionApartment] = useState<ApartmentCardData | null>(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+
+  const downloadSheet = async (apt: ApartmentDetail) => {
+    setSheetBusy(true);
+    try {
+      const user = getStoredUser();
+      const { generateApartmentSheetPdf } = await import('@/lib/apartment-sheet-pdf');
+      await generateApartmentSheetPdf({
+        projectName: projectName ?? '',
+        projectCity,
+        projectAddress,
+        number: apt.number,
+        floor: apt.floor,
+        rooms: apt.rooms,
+        area: apt.area,
+        price: apt.price,
+        statusLabel: STATUS_LABEL[apt.status],
+        layoutImage: apt.layoutImage,
+        agentName: [user?.firstName, user?.lastName].filter(Boolean).join(' ') || undefined,
+        agentPhone: typeof user?.phone === 'string' ? user.phone : undefined,
+      });
+    } catch {
+      toast({
+        title: 'Не удалось собрать квартирный лист',
+        description: 'Попробуйте ещё раз.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSheetBusy(false);
+    }
+  };
 
   if (!apartment) {
     return (
@@ -136,6 +181,17 @@ export function ApartmentDetailPanel({ apartment, onFixate, children }: Apartmen
             Рассчитать ипотеку
           </Button>
         </div>
+
+        {/* Квартирный лист — то, что брокер отдаёт клиенту после показа. */}
+        <Button
+          variant="outline"
+          className="w-full"
+          disabled={sheetBusy}
+          onClick={() => void downloadSheet(apartment)}
+        >
+          <FileDown className="mr-2 h-4 w-4" />
+          {sheetBusy ? 'Готовим…' : 'Скачать квартирный лист'}
+        </Button>
 
         {children}
       </CardContent>

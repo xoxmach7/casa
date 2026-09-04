@@ -44,6 +44,15 @@ services:
       API_URL: "https://pro.casa.kz"
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      # Ключи необратимых отпечатков персональных данных.
+      #
+      # МЕНЯТЬ НЕЛЬЗЯ. Отпечатки детерминированы: смена ключа обнуляет все
+      # ранее посчитанные значения — дубль-чек фиксаций перестанет узнавать
+      # покупателя, а защитный период по старым фиксациям не сработает.
+      # Пустое значение не «мягкий режим»: код бросает, а не переходит на
+      # голый хэш (телефонов в РК < 10^10, перебор — минуты).
+      MARKETPLACE_IDENTITY_HMAC_KEY: ${MARKETPLACE_IDENTITY_HMAC_KEY:-}
+      IIN_LOOKUP_HMAC_KEY: ${IIN_LOOKUP_HMAC_KEY:-}
     volumes:
       - uploads_data:/app/uploads
     depends_on:

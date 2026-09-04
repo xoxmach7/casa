@@ -129,6 +129,24 @@ describe('гейты фиксации', () => {
     });
   });
 
+  it('без ключа отпечатков отвечает «не настроено», а не падает на 500', async () => {
+    const saved = process.env.MARKETPLACE_IDENTITY_HMAC_KEY;
+    const savedIin = process.env.IIN_LOOKUP_HMAC_KEY;
+    delete process.env.MARKETPLACE_IDENTITY_HMAC_KEY;
+    delete process.env.IIN_LOOKUP_HMAC_KEY;
+    try {
+      await expect(createFixation(INPUT)).rejects.toMatchObject({
+        code: 'MARKETPLACE_NOT_CONFIGURED',
+        status: 503,
+      });
+      // И ни одного обращения к базе: смысла нет, сравнивать всё равно нечем.
+      expect(p.crmProperty.findUnique).not.toHaveBeenCalled();
+    } finally {
+      if (saved) process.env.MARKETPLACE_IDENTITY_HMAC_KEY = saved;
+      if (savedIin) process.env.IIN_LOOKUP_HMAC_KEY = savedIin;
+    }
+  });
+
   it('несуществующий объект не создаёт фиксацию', async () => {
     p.crmProperty.findUnique.mockResolvedValue(null);
 

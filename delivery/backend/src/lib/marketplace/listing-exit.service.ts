@@ -15,7 +15,7 @@
 import { Prisma } from '@prisma/client';
 import type { ListingExitOutcome } from '@prisma/client';
 import { prisma } from '../prisma';
-import { buyerIdentityHash } from './identity';
+import { buyerIdentityHash, isIdentityConfigured } from './identity';
 import { findCoveringFixation } from './fixation.service';
 
 export class ListingExitError extends Error {
@@ -47,6 +47,13 @@ export async function declareListingExit(input: DeclareExitInput) {
   }
 
   const isSold = SOLD_OUTCOMES.includes(input.outcome);
+  if (isSold && !isIdentityConfigured()) {
+    throw new ListingExitError(
+      'Портал вторички не настроен: не задан ключ отпечатков покупателей',
+      'MARKETPLACE_NOT_CONFIGURED',
+      503,
+    );
+  }
   if (isSold && !input.buyerPhone) {
     // Без покупателя заявление о продаже бесполезно: сверять не с чем.
     throw new ListingExitError(

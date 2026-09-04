@@ -19,7 +19,7 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../prisma';
-import { buyerIdentityHash } from './identity';
+import { buyerIdentityHash, isIdentityConfigured } from './identity';
 import { termsForTier } from './tiers';
 import { activeAgreementFor } from './listing-agreement.service';
 import { countLiveFixations, getActiveSubscription, LIVE_FIXATION_STATUSES } from './subscription.service';
@@ -57,6 +57,17 @@ export async function liveFixationFor(propertyId: string, agentId: string) {
 }
 
 export async function createFixation(input: CreateFixationInput) {
+  // Без ключа отпечатков фиксация невозможна в принципе: сравнивать
+  // покупателей будет нечем. Говорим это прямо, а не падаем на 500 внутри
+  // расчёта хэша — администратор должен понять, что чинить.
+  if (!isIdentityConfigured()) {
+    throw new FixationError(
+      'Портал вторички не настроен: не задан ключ отпечатков покупателей',
+      'MARKETPLACE_NOT_CONFIGURED',
+      503,
+    );
+  }
+
   const property = await prisma.crmProperty.findUnique({
     where: { id: input.propertyId },
     select: { id: true, status: true, funnelStage: true },

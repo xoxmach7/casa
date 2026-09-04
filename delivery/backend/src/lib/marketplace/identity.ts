@@ -55,6 +55,19 @@ export function buyerIdentityHash(
   return crypto.createHmac('sha256', secret).update(normalized, 'utf8').digest('hex');
 }
 
+/**
+ * Настроен ли ключ отпечатков.
+ *
+ * Нужна отдельно от `buyerIdentityHash`, чтобы отличить «портал не настроен в
+ * окружении» от «сломался расчёт». Первое — ответ 503 с внятным текстом,
+ * второе — 500 и разбирательство.
+ */
+export function isIdentityConfigured(
+  secret = process.env.MARKETPLACE_IDENTITY_HMAC_KEY || process.env.IIN_LOOKUP_HMAC_KEY,
+): boolean {
+  return typeof secret === 'string' && secret.length >= 32;
+}
+
 /** Маска телефона для показа человеку: последние 4 цифры. */
 export function maskPhone(raw: string): string {
   const digits = normalizePhone(raw);

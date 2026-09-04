@@ -67,6 +67,33 @@ export interface MoneySourceRow {
   status: ProfileFieldStatus;
 }
 
+/**
+ * Агрегат взноса. Движок различает ТИП источника: залог деньгами не считается,
+ * нераспознанный тип делает агрегат неполным. Причина неполноты приходит
+ * отдельными счётчиками, чтобы экран не выдумывал объяснение.
+ */
+export interface AggregatedDownPayment extends AggregatedMoney {
+  excludedNonMonetary: number;
+  unknownEligibility: number;
+}
+
+/** Типы источников взноса, которые понимает движок (M05 §13). */
+export const DOWN_PAYMENT_KINDS: { value: string; label: string; cash: boolean }[] = [
+  { value: "CASH_SAVINGS", label: "Накопления наличными", cash: true },
+  { value: "BANK_DEPOSIT", label: "Вклад в банке", cash: true },
+  { value: "OTBASY_SAVINGS", label: "Накопления в Отбасы банке", cash: true },
+  { value: "EPV_PENSION", label: "Пенсионные накопления", cash: true },
+  { value: "HOUSING_CERTIFICATE", label: "Жилищный сертификат", cash: true },
+  { value: "ASSET_SALE", label: "Продажа имущества", cash: true },
+  { value: "GIFT", label: "Помощь родственников (дарение)", cash: true },
+  { value: "ADDITIONAL_COLLATERAL", label: "Дополнительный залог — не деньги", cash: false },
+  { value: "OTHER", label: "Другое — потребует уточнения", cash: false },
+];
+
+export const DOWN_PAYMENT_KIND_LABEL: Record<string, string> = Object.fromEntries(
+  DOWN_PAYMENT_KINDS.map((k) => [k.value, k.label]),
+);
+
 export interface ClientProfile {
   id: string;
   case_id: string;
@@ -79,7 +106,7 @@ export interface ClientProfile {
   employments: unknown[];
   non_credit_commitments: MoneySourceRow[];
   aggregates: {
-    available_now_total: AggregatedMoney;
+    available_now_total: AggregatedDownPayment;
     monthly_income_total: AggregatedMoney;
     monthly_commitments_total: AggregatedMoney;
   };

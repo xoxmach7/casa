@@ -41,6 +41,8 @@ import {
   runScoring,
   addIncomeSource,
   addCommitment,
+  DOWN_PAYMENT_KINDS,
+  DOWN_PAYMENT_KIND_LABEL,
   MortgageCaseApiError,
   type MortgageCase,
   type MortgageCaseListItem,
@@ -572,13 +574,19 @@ function MortgageWorkspace() {
                     ? "источники взноса не добавлены"
                     : <>
                         статус: {FIELD_LABEL[String(availableNow?.status)] ?? "—"}
-                        {availableNow && !availableNow.complete && " · не у всех источников указана сумма"}
+                        {availableNow && !availableNow.complete && (
+                          availableNow.unknownEligibility > 0
+                            ? " · есть источник, тип которого не даёт зачесть его деньгами"
+                            : " · не у всех источников указана сумма"
+                        )}
+                        {availableNow && availableNow.excludedNonMonetary > 0
+                          && ` · залог не считается деньгами (${availableNow.excludedNonMonetary})`}
                       </>}
                 </p>
                 <ul className="mt-2 space-y-1 text-sm">
                   {profile.down_payment_sources.map((s) => (
                     <li key={s.id} className="flex justify-between border-b border-border/60 pb-1">
-                      <span className="text-muted-foreground">{s.kind}</span>
+                      <span className="text-muted-foreground">{DOWN_PAYMENT_KIND_LABEL[s.kind] ?? s.kind}</span>
                       <span className="tabular-nums">
                         {showMoney(s.amount)}{" "}
                         <span className="text-xs text-muted-foreground">· {FIELD_LABEL[s.status] ?? s.status}</span>
@@ -586,7 +594,7 @@ function MortgageWorkspace() {
                     </li>
                   ))}
                 </ul>
-                <AddSourceForm onAdd={addSource} />
+                <AddDownPaymentForm onAdd={addSource} />
               </div>
 
               <div>
@@ -903,5 +911,48 @@ function ScoringPanel({ scoring }: { scoring: ScoringResult }) {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Источник взноса выбирается из списка, который понимает движок: свободный
+ * текст он зачесть не может и агрегат оставался «неизвестно» при введённой
+ * сумме — брокер видел деньги на экране и ноль в расчёте.
+ */
+function AddDownPaymentForm({ onAdd }: { onAdd: (kind: string, amount: string) => void }) {
+  const [kind, setKind] = useState(DOWN_PAYMENT_KINDS[0].value);
+  const [amount, setAmount] = useState("");
+  const selected = DOWN_PAYMENT_KINDS.find((k) => k.value === kind);
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+          aria-label="Источник взноса"
+          className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        >
+          {DOWN_PAYMENT_KINDS.map((k) => (
+            <option key={k.value} value={k.value}>{k.label}</option>
+          ))}
+        </select>
+        <input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          inputMode="decimal"
+          placeholder="Сумма"
+          className="w-28 rounded-md border border-border bg-background px-2 py-1.5 text-sm tabular-nums"
+        />
+        <Button size="sm" variant="outline" onClick={() => { onAdd(kind, amount); setAmount(""); }}>
+          Добавить
+        </Button>
+      </div>
+      {selected && !selected.cash && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          Этот источник не засчитывается как деньги на взнос — расчёт останется неполным.
+        </p>
+      )}
+    </div>
   );
 }

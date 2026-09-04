@@ -187,6 +187,34 @@ describe("с выбранным реальным кейсом", () => {
     expect(screen.getByText("238 589,51 ₸")).toBeInTheDocument();
   });
 
+  it("взноса хватает на всю квартиру → «кредит не нужен», а не «проходит по платежу»", async () => {
+    // Кейс реального прода: взнос 50 млн при цене 35 млн. Сервер честно
+    // возвращает нули и код NO_FINANCING_NEEDED — экран обязан назвать это
+    // словами, иначе два нуля читаются как поломка расчёта.
+    api.runScoring.mockResolvedValue({
+      version: "casa-scoring/1.0.0",
+      verdict: "FITS",
+      unverifiedInputs: false,
+      requiredFinancing: { formulaId: "CALC-F-001", machineName: "casa.required_financing", formulaVersion: "1.0.0", raw: "0", value: "0.00", displayKzt: 0, status: "COMPLETED", codes: [], currency: "KZT" },
+      monthlyPayment: { formulaId: "CALC-F-002", machineName: "casa.annuity_payment_by_parameters", formulaVersion: "1.0.0", raw: "0", value: "0.00", displayKzt: 0, status: "COMPLETED", codes: [], currency: "KZT" },
+      paymentCapacity: { raw: "113288.98", value: "113288.98", displayKzt: 113289 },
+      maxLoan: { raw: "9971387.79", value: "9971387.79", displayKzt: 9971388 },
+      paymentGap: { raw: "0", value: "0.00", displayKzt: 0 },
+      loanGap: { raw: "0", value: "0.00", displayKzt: 0 },
+      missing: [],
+      codes: ["WITHIN_CAPACITY", "NO_FINANCING_NEEDED"],
+      parameters: { annualNominalRatePercent: "12.5", termMonths: 240, paymentSharePercent: "50" },
+      disclaimer: "Предварительная оценка CASA по данным брокера.",
+    });
+
+    render(<MortgagePage />);
+    await screen.findByText(/Нажмите «Рассчитать»/);
+    await userEvent.click(screen.getByRole("button", { name: /^Рассчитать$/ }));
+
+    expect(await screen.findByText("Кредит не нужен")).toBeInTheDocument();
+    expect(screen.queryByText("Клиент проходит по платежу")).toBeNull();
+  });
+
   it("не хватает данных → говорит ЧТО сделать, а не выдаёт число", async () => {
     const blocked = { formulaId: "CALC-F-001", machineName: "m", formulaVersion: "1.0.0", raw: null, value: null, displayKzt: null, status: "BLOCKED", codes: [], currency: "KZT" };
     const empty = { raw: null, value: null, displayKzt: null };

@@ -1018,8 +1018,20 @@ const VERDICT: Record<string, { title: string; tone: string; sub: string }> = {
   },
 };
 
+/**
+ * Взноса хватает на всю квартиру — кредит не нужен. Сервер помечает это кодом
+ * NO_FINANCING_NEEDED; без него экран писал «проходит по платежу» и два нуля,
+ * что брокер читает как поломку, а не как ответ.
+ */
+const NO_LOAN_NEEDED = {
+  title: "Кредит не нужен",
+  tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  sub: "Первоначального взноса хватает на всю стоимость квартиры.",
+};
+
 function ScoringPanel({ scoring }: { scoring: ScoringResult }) {
-  const v = VERDICT[scoring.verdict] ?? VERDICT.NEEDS_DATA;
+  const noLoan = scoring.verdict === "FITS" && (scoring.codes ?? []).includes("NO_FINANCING_NEEDED");
+  const v = noLoan ? NO_LOAN_NEEDED : VERDICT[scoring.verdict] ?? VERDICT.NEEDS_DATA;
   const enough = scoring.verdict === "FITS";
 
   return (

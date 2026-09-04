@@ -1173,6 +1173,11 @@ mortgageCasesRouter.delete('/:caseId', async (req: Request, res: Response): Prom
       prisma_code: e?.code ?? null,
       constraint: (e?.meta?.constraint ?? e?.meta?.field_name ?? null) as string | null,
       model: (e?.meta?.modelName ?? null) as string | null,
+      // Код ошибки оказался пустым — значит это не нарушение ограничения, а
+      // обычное исключение. Имя и первая строка сообщения описывают запрос,
+      // а не данные строк; диагностика временная.
+      name: (err as Error)?.name ?? null,
+      hint: String(e?.message ?? '').split('\n').filter(Boolean).slice(0, 3).join(' | ').slice(0, 400),
     });
   }
 });

@@ -424,6 +424,11 @@ export function removeCommitment(caseId: string, rowId: string): Promise<void> {
   return remove(`/v2/cases/${encodeURIComponent(caseId)}/non-credit-commitments/${encodeURIComponent(rowId)}`);
 }
 
+/** Удаление расчёта целиком — вместе с документами и анкетой. Клиент остаётся. */
+export function deleteMortgageCase(caseId: string): Promise<void> {
+  return remove(`/v2/cases/${encodeURIComponent(caseId)}`);
+}
+
 // --- Подбор квартир под бюджет ----------------------------------------------
 
 export interface MatchedProperty {

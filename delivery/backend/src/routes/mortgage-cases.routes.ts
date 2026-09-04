@@ -28,6 +28,8 @@ import { aggregateMoney, aggregateDownPayment, profileContentHash, type MoneySou
 import { scoreMortgage, DEFAULT_PAYMENT_SHARE_PERCENT } from '../lib/mortgage-workspace/scoring';
 import { latestForCase, extractedNumber } from '../lib/mortgage-workspace/document-store';
 import { findPropertiesWithinBudget } from '../lib/mortgage-workspace/property-match.service';
+import { deleteMortgageCase } from '../lib/mortgage-workspace/case-delete.service';
+import { recordAuditLog } from '../lib/audit-log.service';
 
 export const mortgageCasesRouter = Router();
 mortgageCasesRouter.use(authenticate);
@@ -1138,6 +1140,33 @@ function makeMoneySubDeleteHandler(
     }
   };
 }
+
+// DELETE /:caseId — удалить расчёт целиком.
+//
+// Нужен и брокеру (ошибочно заведённый расчёт иначе висит в списке вечно), и
+// для уборки отладочных кейсов. Аудит пишется в общий журнал ДО удаления:
+// собственный аудит кейса уходит вместе с ним каскадом, и следа бы не осталось.
+mortgageCasesRouter.delete('/:caseId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+
+    await recordAuditLog({
+      actorUserId: req.user!.userId,
+      actorRole: req.user!.role,
+      action: 'mortgage_case.deleted',
+      entityType: 'MortgageCase',
+      entityId: current.id,
+      // ПД клиента сюда не попадают — только идентификаторы и статус.
+      oldValues: { status: current.status, version: current.version, clientId: current.clientId },
+    });
+
+    const removed = await deleteMortgageCase(current.id);
+    res.status(200).json({ data: { id: current.id, removed } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось удалить расчёт');
+  }
+});
 
 mortgageCasesRouter.delete('/:caseId/down-payment-sources/:rowId', makeMoneySubDeleteHandler('mortgageDownPaymentSource', 'mortgage_profile.down_payment_removed'));
 mortgageCasesRouter.delete('/:caseId/income-sources/:rowId', makeMoneySubDeleteHandler('mortgageIncomeSource', 'mortgage_profile.income_removed'));

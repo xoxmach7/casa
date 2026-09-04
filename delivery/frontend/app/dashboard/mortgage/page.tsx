@@ -25,7 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calculator, User2, ShieldCheck, Info, TriangleAlert, RefreshCw, FolderOpen,
-  Plus, ArrowRight, FileText, Landmark, X, Home, ChevronDown,
+  Plus, ArrowRight, FileText, Landmark, X, Home, ChevronDown, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +47,7 @@ import {
   removeIncomeSource,
   removeCommitment,
   getMatchingProperties,
+  deleteMortgageCase,
   MortgageCaseApiError,
   type MortgageCase,
   type MortgageCaseListItem,
@@ -290,6 +291,8 @@ function MortgageWorkspace() {
   // Проверки по госреестрам открываются по требованию — см. блок внизу экрана.
   const [checksOpen, setChecksOpen] = useState(false);
 
+  const [deleting, setDeleting] = useState(false);
+
   // --- Загрузка списка кейсов ---
   useEffect(() => {
     let alive = true;
@@ -410,6 +413,32 @@ function MortgageWorkspace() {
         description: e instanceof MortgageCaseApiError ? e.message : undefined,
         variant: "destructive",
       });
+    }
+  };
+
+  /**
+   * Удаление расчёта целиком. Спрашиваем подтверждение: вместе с расчётом
+   * уходят загруженные документы клиента, и вернуть их будет нечем.
+   */
+  const removeCase = async () => {
+    if (!caseId) return;
+    const ok = window.confirm(
+      "Удалить расчёт вместе с загруженными документами и анкетой? Клиент останется в CRM.",
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await deleteMortgageCase(caseId);
+      toast({ title: "Расчёт удалён" });
+      router.push("/dashboard/mortgage");
+    } catch (e) {
+      toast({
+        title: "Не удалось удалить расчёт",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -588,6 +617,17 @@ function MortgageWorkspace() {
                   onClick={() => document.getElementById("calc-block")?.scrollIntoView({ behavior: "smooth", block: "start" })}
                 >
                   <Calculator className="mr-1.5 h-4 w-4" />К расчёту
+                </Button>
+                {/* Ошибочно заведённый расчёт иначе висит в списке навсегда. */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-rose-600 hover:text-rose-700"
+                  disabled={deleting}
+                  onClick={() => void removeCase()}
+                  title="Удалить расчёт"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>

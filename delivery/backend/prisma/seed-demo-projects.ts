@@ -1,18 +1,88 @@
-// Non-destructive demo seed: adds sample Project + Apartment ("шахматка")
-// data so the CRM catalog isn't empty. Unlike src/prisma/seed.ts, this
-// script never deletes anything — safe to run against production.
+// Демо-каталог новостроек. Ничего не удаляет — безопасен для прода.
+//
+// Прошлая версия сыпала faker: описания на латинице, английские адреса и —
+// главное — комнаты, площадь и цену НЕЗАВИСИМО друг от друга. На витрине это
+// выглядело как однокомнатная в 121 м² и трёшка 56 м² дороже двушки 109 м².
+// Здесь всё связано: планировка задаётся позицией в секции, площадь —
+// комнатностью, цена — площадью, классом ЖК и этажом.
 import { PrismaClient, BuildingStatus, ApartmentStatus } from '@prisma/client';
-import { faker } from '@faker-js/faker';
 
 const prisma = new PrismaClient();
 
-const PROJECTS = [
-  { name: 'Green Quarter', district: 'Есильский', class: 'Comfort' as const },
-  { name: 'Nova City', district: 'Алматинский', class: 'Business' as const },
-  { name: 'Sensata Park', district: 'Сарыаркинский', class: 'Premium' as const },
-  { name: 'Grand Turan', district: 'Нура', class: 'Business' as const },
-  { name: 'Highvill', district: 'Есильский', class: 'Premium' as const },
+const DEVELOPER = { name: 'Кемел Құрылыс', phone: '+7 (7172) 55-00-11' };
+
+/** Цена за м² по классу — от неё считается стоимость квартиры. */
+const PRICE_PER_M2: Record<string, number> = { Comfort: 420_000, Business: 560_000, Premium: 780_000 };
+
+/**
+ * Типовая секция из четырёх квартир: двушка — однушка — трёшка — двушка.
+ * Позиция в секции определяет и комнатность, и площадь, поэтому по стояку
+ * планировки совпадают, как в настоящем доме.
+ */
+const SECTION = [
+  { rooms: 2, area: 63.8 },
+  { rooms: 1, area: 42.1 },
+  { rooms: 3, area: 92.4 },
+  { rooms: 2, area: 66.5 },
 ];
+
+const PROJECTS = [
+  {
+    name: 'Алтын Орда', district: 'Есильский', class: 'Comfort',
+    address: 'пр. Мәңгілік Ел, 52',
+    description: 'Квартал из четырёх монолитных домов переменной этажности в Есильском районе. Закрытый двор без машин, подземный паркинг, на первых этажах — коммерция и детский сад.',
+    status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2026-12-20',
+  },
+  {
+    name: 'Есиль Парк', district: 'Есильский', class: 'Business',
+    address: 'ул. Сығанақ, 29',
+    description: 'Дом бизнес-класса на набережной Есиля: панорамное остекление, потолки 3 метра, две входные группы с колясочными. Двор спроектирован ландшафтным бюро.',
+    status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2027-06-30',
+  },
+  {
+    name: 'Сарыарқа Резиденс', district: 'Сарыаркинский', class: 'Comfort',
+    address: 'ул. Бөгенбай батыра, 73',
+    description: 'Девятиэтажный дом в сложившемся районе: школа и поликлиника в пешей доступности, остановка у выхода из двора. Отделка white box во всех квартирах.',
+    status: BuildingStatus.COMPLETED, delivery: '2026-09-30',
+  },
+  {
+    name: 'Нұра Хиллс', district: 'Нура', class: 'Business',
+    address: 'пр. Туран, 37',
+    description: 'Малоэтажный квартал на левом берегу с видом на пойму Нуры. Своя котельная, огороженная территория, гостевая парковка вынесена за периметр двора.',
+    status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2027-03-31',
+  },
+  {
+    name: 'Астана Тауэрс', district: 'Алматинский', class: 'Premium',
+    address: 'ул. Кабанбай батыра, 42',
+    description: 'Две башни премиум-класса рядом с деловым центром: лобби с консьержем, лифты Kone, видовые квартиры с 10 этажа. Паркинг из расчёта одно место на квартиру.',
+    status: BuildingStatus.UNDER_CONSTRUCTION, delivery: '2027-12-20',
+  },
+];
+
+const IMAGES = [
+  'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&auto=format&fit=crop&q=60',
+  'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=60',
+];
+
+const FLOORS = 9;
+
+/** Нижние этажи дешевле верхних — как на рынке, без случайности. */
+function priceOf(area: number, cls: string, floor: number): number {
+  const raw = area * (PRICE_PER_M2[cls] ?? PRICE_PER_M2.Comfort) * (0.955 + 0.005 * floor);
+  return Math.round(raw / 10_000) * 10_000;
+}
+
+/**
+ * Продано снизу вверх: на первых этажах спрос закрыт, выше — свободно.
+ * Детерминированно, чтобы шахматка выглядела одинаково при любом прогоне.
+ */
+function statusOf(floor: number, unit: number): ApartmentStatus {
+  if (floor <= 2) return unit % 2 === 0 ? ApartmentStatus.SOLD : ApartmentStatus.AVAILABLE;
+  if (floor === 3 && unit === 1) return ApartmentStatus.RESERVED;
+  if (floor === 5 && unit === 3) return ApartmentStatus.RESERVED;
+  return ApartmentStatus.AVAILABLE;
+}
 
 async function main() {
   console.log('Database URL:', process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':***@'));
@@ -38,44 +108,34 @@ async function main() {
     const project = await prisma.project.create({
       data: {
         name: p.name,
-        description: faker.lorem.paragraphs(2),
-        city: 'Astana',
+        description: p.description,
+        city: 'Астана',
         district: p.district,
-        address: faker.location.streetAddress(),
+        address: p.address,
         class: p.class,
-        buildingStatus: faker.helpers.arrayElement([BuildingStatus.UNDER_CONSTRUCTION, BuildingStatus.COMPLETED]),
-        deliveryDate: faker.date.future(),
+        buildingStatus: p.status,
+        deliveryDate: new Date(p.delivery),
         developerId: developer.id,
-        developerName: 'BI Group',
-        developerPhone: '+77019999999',
-        images: [
-          'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=60',
-          'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&auto=format&fit=crop&q=60',
-          'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=60',
-        ],
-        bonus: '2% bonus for brokers',
+        developerName: DEVELOPER.name,
+        developerPhone: DEVELOPER.phone,
+        images: IMAGES,
+        bonus: 'Комиссия агенту — 2% от суммы сделки',
       },
     });
     projectsCreated++;
 
-    // A few floors x a few units per floor so the "шахматка" grid has real shape.
-    for (let floor = 1; floor <= 9; floor++) {
-      for (let unit = 1; unit <= 4; unit++) {
+    for (let floor = 1; floor <= FLOORS; floor++) {
+      for (let unit = 1; unit <= SECTION.length; unit++) {
+        const plan = SECTION[unit - 1];
         await prisma.apartment.create({
           data: {
             projectId: project.id,
             number: `${floor}${String(unit).padStart(2, '0')}`,
             floor,
-            rooms: faker.number.int({ min: 1, max: 4 }),
-            area: faker.number.float({ min: 35, max: 150, fractionDigits: 1 }),
-            price: parseFloat(faker.finance.amount({ min: 15000000, max: 80000000, dec: 0 })),
-            status: faker.helpers.arrayElement([
-              ApartmentStatus.AVAILABLE,
-              ApartmentStatus.AVAILABLE,
-              ApartmentStatus.AVAILABLE,
-              ApartmentStatus.RESERVED,
-              ApartmentStatus.SOLD,
-            ]),
+            rooms: plan.rooms,
+            area: plan.area,
+            price: priceOf(plan.area, p.class, floor),
+            status: statusOf(floor, unit),
           },
         });
         apartmentsCreated++;
@@ -83,7 +143,7 @@ async function main() {
     }
   }
 
-  console.log(`Created ${projectsCreated} projects and ${apartmentsCreated} apartments.`);
+  console.log(`Created ${projectsCreated} project(s) and ${apartmentsCreated} apartment(s).`);
 }
 
 main()
@@ -91,4 +151,6 @@ main()
     console.error(e);
     process.exit(1);
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

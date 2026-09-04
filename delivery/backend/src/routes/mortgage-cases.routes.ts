@@ -1458,6 +1458,35 @@ async function collectScoringInputs(
   return { result, availableNow, pkb, usedApartmentPrice: Boolean(params.targetPrice) };
 }
 
+mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response): Promise<void> => {
+  const parsed = scoringSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());
+    return;
+  }
+
+  try {
+    const inputs = await collectScoringInputs(req.params.caseId, req.user!, {
+      rate: parsed.data.annual_nominal_rate_percent,
+      termMonths: parsed.data.term_months,
+      sharePercent: parsed.data.payment_share_percent,
+      targetPrice: parsed.data.target_price,
+    });
+    if (!inputs) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+
+    res.json({ data: {
+      ...inputs.result,
+      sources: {
+        target_price: inputs.usedApartmentPrice ? 'apartment' : 'purchase_goal',
+        monthly_credit_payments: inputs.pkb ? 'credit_report' : null,
+        credit_report_id: inputs.pkb?.id ?? null,
+      },
+    } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось рассчитать скоринг');
+  }
+});
+
 /**
  * Квартиры в пределах бюджета клиента.
  *

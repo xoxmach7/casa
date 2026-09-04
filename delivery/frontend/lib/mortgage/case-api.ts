@@ -105,6 +105,8 @@ export interface ClientProfile {
   assets: MoneySourceRow[];
   employments: unknown[];
   non_credit_commitments: MoneySourceRow[];
+  /** Платежи по кредитам со слов клиента; null = не спрашивали. */
+  declared_credit_payments?: string | null;
   aggregates: {
     available_now_total: AggregatedDownPayment;
     monthly_income_total: AggregatedMoney;
@@ -528,4 +530,15 @@ export function getMortgagePrograms(
   if (params.sharePercent) q.set("payment_share_percent", params.sharePercent);
   if (params.propertyType) q.set("property_type", params.propertyType);
   return call<ProgramMatch>(`/v2/cases/${encodeURIComponent(caseId)}/programs?${q}`);
+}
+
+/**
+ * Платежи по действующим кредитам со слов клиента — резерв на случай, когда
+ * отчёта ПКБ ещё нет. Ноль означает «кредитов нет», null — «не спрашивали».
+ */
+export function setDeclaredCreditPayments(caseId: string, amount: string | null): Promise<{ declared_credit_payments: string | null }> {
+  return call(`/v2/cases/${encodeURIComponent(caseId)}/declared-credit-payments`, {
+    method: "PUT",
+    body: JSON.stringify({ amount }),
+  });
 }

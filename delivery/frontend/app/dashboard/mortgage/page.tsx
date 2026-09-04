@@ -47,6 +47,7 @@ import {
   removeCommitment,
   getMatchingProperties,
   getMortgagePrograms,
+  setDeclaredCreditPayments,
   archiveMortgageCase,
   MortgageCaseApiError,
   type MortgageCase,
@@ -345,6 +346,15 @@ function MortgageWorkspace() {
     ?? cases.find((c) => c.id === caseId)?.client_name
     ?? null;
 
+  /**
+   * Откуда взялись платежи по кредитам в последнем прогоне. Пока прогона не
+   * было — считаем, что отчёта нет: лучше показать поле лишний раз, чем
+   * оставить брокера с неработающим расчётом.
+   */
+  const creditFromReport =
+    (scoring as { sources?: { monthly_credit_payments?: string | null } } | null)
+      ?.sources?.monthly_credit_payments === "credit_report";
+
   // --- Действия профиля (M05) ---
   const saveGoal = async (raw: string) => {
     if (!caseId) return;
@@ -446,6 +456,26 @@ function MortgageWorkspace() {
       });
     } finally {
       setDeleting(false);
+    }
+  };
+
+  /**
+   * Платежи по кредитам со слов клиента. Ноль — законный ответ («кредитов
+   * нет»), пустая строка означает «не спрашивали» и стирает запись.
+   */
+  const saveDeclaredCredit = async (raw: string) => {
+    if (!caseId) return;
+    const trimmed = raw.trim().replace(/\s/g, "");
+    try {
+      await setDeclaredCreditPayments(caseId, trimmed === "" ? null : trimmed);
+      await loadProfile(caseId);
+      setScoring(null);
+    } catch (e) {
+      toast({
+        title: "Не удалось сохранить платежи по кредитам",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
     }
   };
 
@@ -779,6 +809,47 @@ function MortgageWorkspace() {
                   ))}
                 </ul>
                 <AddSourceForm onAdd={addOtherCommitment} placeholder="Обязательство" />
+
+                {/* Платежи по кредитам. Считаются из отчёта ПКБ; пока отчёта
+                    нет, брокер может записать их со слов клиента — иначе расчёт
+                    невозможен даже для клиента без кредитов. */}
+                <div className="mt-4 rounded-lg border border-dashed border-border p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Платежи по кредитам
+                  </p>
+                  {creditFromReport ? (
+                    <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">
+                      Берутся из отчёта ПКБ — подтверждено документом.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Отчёта ПКБ ещё нет. Запишите со слов клиента, чтобы посчитать сейчас,
+                        — цифра будет помечена как заявленная и заменится отчётом.
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          defaultValue={profile.declared_credit_payments ?? ""}
+                          key={profile.declared_credit_payments ?? "empty"}
+                          placeholder="Сумма в месяц"
+                          onBlur={(e) => void saveDeclaredCredit(e.target.value)}
+                          className="w-40 rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums"
+                        />
+                        <Button size="sm" variant="outline" onClick={() => void saveDeclaredCredit("0")}>
+                          Кредитов нет
+                        </Button>
+                        {profile.declared_credit_payments !== null
+                          && profile.declared_credit_payments !== undefined && (
+                          <span className="text-xs text-muted-foreground">
+                            записано: {showMoney(profile.declared_credit_payments)} · со слов клиента
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </Card>

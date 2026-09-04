@@ -1018,6 +1018,8 @@ mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Res
       assets: profile.assets,
       employments: profile.employments,
       non_credit_commitments: profile.nonCreditCommitments,
+      // Со слов клиента: используется, только пока нет отчёта ПКБ.
+      declared_credit_payments: profile.declaredCreditPayments?.toString() ?? null,
       aggregates: {
         available_now_total: availableNow, // вход M06 CALC-F-001
         monthly_income_total: monthlyIncome,
@@ -1194,6 +1196,45 @@ mortgageCasesRouter.post('/:caseId/archive', async (req: Request, res: Response)
     res.status(200).json({ data: caseResponse(state) });
   } catch {
     apiError(res, 500, 'internal_error', 'Не удалось убрать расчёт в архив');
+  }
+});
+
+/**
+ * PUT /:caseId/declared-credit-payments — платежи по кредитам со слов клиента.
+ *
+ * Нужен для случая «у клиента кредитов нет»: требовать отчёт ПКБ, которого не
+ * существует, значит закрыть расчёт совсем. Значение помечается DECLARED и
+ * перебивается отчётом ПКБ, как только он появится. null = «не спрашивали».
+ */
+const declaredCreditSchema = z.object({
+  amount: z.union([z.string().trim().regex(/^\d+(\.\d{1,2})?$/), z.null()]),
+}).strict();
+
+mortgageCasesRouter.put('/:caseId/declared-credit-payments', async (req: Request, res: Response): Promise<void> => {
+  const parsed = declaredCreditSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());
+    return;
+  }
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    const profileId = await ensureProfileId(current.id);
+
+    const updated = await prisma.mortgageClientProfile.update({
+      where: { id: profileId },
+      data: { declaredCreditPayments: parsed.data.amount },
+    });
+    await prisma.mortgageAuditEvent.create({ data: {
+      caseId: current.id, actorId: req.user!.userId,
+      action: 'mortgage_profile.declared_credit_payments_set',
+      objectType: 'MortgageClientProfile', objectId: profileId,
+      purpose: 'mortgage_prescore', result: 'SUCCESS',
+    } });
+
+    res.json({ data: { declared_credit_payments: updated.declaredCreditPayments?.toString() ?? null } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось сохранить платежи по кредитам');
   }
 });
 
@@ -1494,9 +1535,15 @@ async function collectScoringInputs(
     ? { value: params.targetPrice, status: 'DECLARED' as InputStatus }
     : { value: goalPrice, status: (goalStatus === 'VERIFIED' ? 'CONFIRMED' : goalStatus) as InputStatus };
 
-  // Платежи по действующим кредитам — из последнего отчёта ПКБ этого кейса.
+  // Платежи по действующим кредитам. Источник первого выбора — отчёт ПКБ:
+  // подтверждённое число всегда лучше заявленного. Если отчёта ещё нет, берём
+  // то, что брокер записал со слов клиента (в том числе ноль — «кредитов нет»),
+  // и помечаем как DECLARED. NULL остаётся NULL: «не спрашивали» ≠ «ноль».
   const pkb = latestForCase(current.id, 'credit_history');
-  const creditPayments = extractedNumber(pkb, 'existing_monthly_payment');
+  const fromReport = extractedNumber(pkb, 'existing_monthly_payment');
+  const declaredCredit = profile.declaredCreditPayments?.toString() ?? null;
+  const creditPayments = fromReport ?? declaredCredit;
+  const creditConfirmed = fromReport !== null;
 
   const result = scoreMortgage({
     targetPrice,
@@ -1504,7 +1551,7 @@ async function collectScoringInputs(
     monthlyIncome: { value: monthlyIncome.value, status: monthlyIncome.status as InputStatus },
     monthlyCreditPayments: creditPayments === null
       ? { value: null, status: 'MISSING' as InputStatus }
-      : { value: creditPayments, status: 'CONFIRMED' as InputStatus },
+      : { value: creditPayments, status: (creditConfirmed ? 'CONFIRMED' : 'DECLARED') as InputStatus },
     monthlyOtherCommitments: monthlyOther.value === null
       ? { value: '0', status: 'CONFIRMED' as InputStatus }
       : { value: monthlyOther.value, status: monthlyOther.status as InputStatus },
@@ -1513,7 +1560,7 @@ async function collectScoringInputs(
     paymentSharePercent: params.sharePercent ?? DEFAULT_PAYMENT_SHARE_PERCENT,
   });
 
-  return { result, availableNow, targetPrice, pkb, usedApartmentPrice: Boolean(params.targetPrice) };
+  return { result, availableNow, targetPrice, pkb, creditConfirmed, usedApartmentPrice: Boolean(params.targetPrice) };
 }
 
 mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response): Promise<void> => {
@@ -1536,7 +1583,7 @@ mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response)
       ...inputs.result,
       sources: {
         target_price: inputs.usedApartmentPrice ? 'apartment' : 'purchase_goal',
-        monthly_credit_payments: inputs.pkb ? 'credit_report' : null,
+        monthly_credit_payments: inputs.creditConfirmed ? 'credit_report' : 'declared',
         credit_report_id: inputs.pkb?.id ?? null,
       },
     } });

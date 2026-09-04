@@ -2667,6 +2667,11 @@ model MortgageClientProfile {
   caseId           String   @unique @map("case_id")
   version          Int      @default(1)
   latestSnapshotId String?  @map("latest_snapshot_id")
+  // Платежи по действующим кредитам СО СЛОВ клиента. Основной источник —
+  // отчёт ПКБ; это резерв для случая, когда отчёта ещё нет, а у клиента
+  // кредитов нет вовсе. NULL = не спрашивали, 0 = брокер заявил «кредитов нет».
+  // Заявленное значение помечается как DECLARED и не выдаётся за подтверждённое.
+  declaredCreditPayments Decimal? @map("declared_credit_payments") @db.Decimal(15, 2)
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

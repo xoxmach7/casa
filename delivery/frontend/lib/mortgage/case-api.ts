@@ -503,7 +503,9 @@ export interface ProgramMatchItem {
   termCappedByProgram: boolean;
   loanAmount: string | null;
   monthlyPayment: string | null;
+  monthlyPaymentMax: string | null;
   overpayment: string | null;
+  overpaymentMax: string | null;
   fits: boolean;
   blockers: string[];
 }

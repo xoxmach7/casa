@@ -55,13 +55,20 @@ export interface ProgramMatch {
   sourceUrl: string | null;
   ratesAsOf: string | null;
 
-  /** Расчёт по нижней границе ставки программы — лучший случай для клиента. */
   termMonthsUsed: number;
   termCappedByProgram: boolean;
   loanAmount: string | null;
+  /**
+   * Платёж по НИЖНЕЙ границе ставки — лучший случай. Показывать только его
+   * нельзя: у программ вроде «0,1-18,5%» это отличается в разы, и брокер
+   * назвал бы клиенту цифру, которой тот не увидит.
+   */
   monthlyPayment: string | null;
+  /** Платёж по ВЕРХНЕЙ границе ставки. Совпадает с нижним, если ставка одна. */
+  monthlyPaymentMax: string | null;
   /** Переплата = платёж × срок − сумма займа. Считает сервер, не браузер. */
   overpayment: string | null;
+  overpaymentMax: string | null;
 
   fits: boolean;
   /** Почему не подходит — человеческим языком, для брокера. */
@@ -126,16 +133,26 @@ export async function matchPrograms(input: ProgramMatchInput): Promise<ProgramMa
     });
     const loan = financing.raw === null ? null : new MoneyDecimal(financing.raw);
 
-    const payment = annuityPaymentByParameters({
-      principal: { value: financing.raw, status: financing.raw === null ? 'MISSING' : 'DECLARED' },
-      annualNominalRatePercent: { value: p.interestRate.toString(), status: 'DECLARED' },
-      termMonths: termUsed,
-    });
-    const monthly = payment.raw === null ? null : new MoneyDecimal(payment.raw);
+    const principal: StatusedMoney = {
+      value: financing.raw,
+      status: financing.raw === null ? 'MISSING' : 'DECLARED',
+    };
+    const paymentAt = (ratePercent: string) => {
+      const r = annuityPaymentByParameters({
+        principal,
+        annualNominalRatePercent: { value: ratePercent, status: 'DECLARED' },
+        termMonths: termUsed,
+      });
+      return r.raw === null ? null : new MoneyDecimal(r.raw);
+    };
 
-    const overpayment = monthly && loan
-      ? monthly.mul(termUsed).sub(loan)
-      : null;
+    const rateTo = p.interestRateTo ? p.interestRateTo.toString() : p.interestRate.toString();
+    const monthly = paymentAt(p.interestRate.toString());
+    const monthlyMax = paymentAt(rateTo);
+
+    const over = (m: MDecimal | null) => (m && loan ? m.mul(termUsed).sub(loan) : null);
+    const overpayment = over(monthly);
+    const overpaymentMax = over(monthlyMax);
 
     // 1. Минимальный взнос программы.
     if (downPercent !== null && downPercent.lt(p.minDownPayment.toString())) {
@@ -149,7 +166,9 @@ export async function matchPrograms(input: ProgramMatchInput): Promise<ProgramMa
         `сумма займа выше предела программы (${new MoneyDecimal(p.maxAmountKzt.toString()).toDecimalPlaces(0, ROUND_HALF_UP).toString()} ₸)`,
       );
     }
-    // 3. Свободный платёж клиента.
+    // 3. Свободный платёж клиента. Сверяем по НИЖНЕЙ границе: если даже
+    //    лучший случай не проходит, программа отпадает наверняка. Когда
+    //    проходит лучший, но не худший — это предупреждение, а не отказ.
     if (monthly && capacity !== null && monthly.gt(capacity)) {
       blockers.push('платёж больше свободного платежа клиента');
     }
@@ -179,7 +198,9 @@ export async function matchPrograms(input: ProgramMatchInput): Promise<ProgramMa
       termCappedByProgram: termUsed !== requestedTerm,
       loanAmount: loan ? money(loan) : null,
       monthlyPayment: monthly ? money(monthly) : null,
+      monthlyPaymentMax: monthlyMax ? money(monthlyMax) : null,
       overpayment: overpayment ? money(overpayment) : null,
+      overpaymentMax: overpaymentMax ? money(overpaymentMax) : null,
       fits: blockers.length === 0,
       blockers,
     };

@@ -964,7 +964,7 @@ function MortgageWorkspace() {
                     <h2 className="text-base font-semibold leading-tight">На какую программу можно рассчитывать</h2>
                     <p className="mt-0.5 text-sm text-muted-foreground">
                       {programs?.downPaymentPercent
-                        ? <>Взнос клиента — <b>{programs.downPaymentPercent}%</b> от цены. Платёж считается по ставке каждой программы.</>
+                        ? <>Взнос клиента — <b>{programs.downPaymentPercent}%</b> от цены. Платёж — по ставке каждой программы; где ставка задана диапазоном, показаны обе границы.</>
                         : "Платёж считается по ставке каждой программы."}
                     </p>
                   </div>
@@ -1007,7 +1007,20 @@ function MortgageWorkspace() {
                     <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
                       <div>
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Платёж в месяц</p>
-                        <p className="text-lg font-bold tabular-nums">{showMoney(it.monthlyPayment)}</p>
+                        {/* Диапазон, а не нижняя граница: у «0,1-18,5%» разница
+                            в разы, и одна цифра обманула бы клиента. */}
+                        {it.monthlyPaymentMax && it.monthlyPaymentMax !== it.monthlyPayment ? (
+                          <>
+                            <p className="text-lg font-bold leading-tight tabular-nums">
+                              {showMoney(it.monthlyPayment)}
+                            </p>
+                            <p className="text-sm font-semibold tabular-nums text-muted-foreground">
+                              до {showMoney(it.monthlyPaymentMax)}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-lg font-bold tabular-nums">{showMoney(it.monthlyPayment)}</p>
+                        )}
                       </div>
                       <div>
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Ставка</p>
@@ -1028,6 +1041,11 @@ function MortgageWorkspace() {
                       <div>
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Переплата</p>
                         <p className="font-semibold tabular-nums">{showMoney(it.overpayment)}</p>
+                        {it.overpaymentMax && it.overpaymentMax !== it.overpayment && (
+                          <p className="text-xs text-muted-foreground tabular-nums">
+                            до {showMoney(it.overpaymentMax)}
+                          </p>
+                        )}
                       </div>
                     </div>
 

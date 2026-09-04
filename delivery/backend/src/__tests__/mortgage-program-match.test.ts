@@ -114,6 +114,21 @@ describe('подбор ипотечных программ', () => {
     }
   });
 
+  it('платёж отдаётся диапазоном: по нижней и по верхней границе ставки', async () => {
+    // «0,1-18,5%» и «5-15%» отличаются в разы. Показать только нижнюю границу
+    // значит назвать клиенту платёж, которого он не увидит.
+    const r = await matchPrograms(INPUT);
+    const big = r.items.find((i) => i.id === 'p_big')!;
+    expect(Number(big.monthlyPaymentMax)).toBeGreaterThan(Number(big.monthlyPayment));
+    expect(Number(big.overpaymentMax)).toBeGreaterThan(Number(big.overpayment));
+  });
+
+  it('у программы с одной ставкой обе границы совпадают', async () => {
+    const r = await matchPrograms(INPUT);
+    const cheap = r.items.find((i) => i.id === 'p_cheap')!;
+    expect(cheap.monthlyPaymentMax).toBe(cheap.monthlyPayment);
+  });
+
   it('доля взноса считается и отдаётся брокеру', async () => {
     const r = await matchPrograms(INPUT);
     expect(r.downPaymentPercent).toBe('30');

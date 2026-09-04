@@ -27,6 +27,7 @@ import {
 import { aggregateMoney, aggregateDownPayment, profileContentHash, type MoneySource } from '../lib/mortgage-workspace/mortgage-profile.service';
 import { scoreMortgage, DEFAULT_PAYMENT_SHARE_PERCENT } from '../lib/mortgage-workspace/scoring';
 import { latestForCase, extractedNumber } from '../lib/mortgage-workspace/document-store';
+import { findPropertiesWithinBudget } from '../lib/mortgage-workspace/property-match.service';
 
 export const mortgageCasesRouter = Router();
 mortgageCasesRouter.use(authenticate);
@@ -1401,67 +1402,125 @@ const scoringSchema = z.object({
   target_price: z.string().trim().min(1).max(32).optional(),
 }).strict();
 
-mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response): Promise<void> => {
-  const parsed = scoringSchema.safeParse(req.body);
+/**
+ * Сборка входов скоринга. Вынесена отдельно, потому что теми же входами
+ * пользуется подбор квартир: бюджет обязан быть тем же числом, что и вердикт,
+ * иначе экран показывал бы два разных ответа на один вопрос.
+ */
+async function collectScoringInputs(
+  caseId: string,
+  user: Express.Request['user'] & object,
+  params: { rate: string; termMonths: number; sharePercent?: string; targetPrice?: string },
+) {
+  const current = await loadCaseForProfile(caseId, user);
+  if (!current) return null;
+  await ensureProfileId(current.id);
+
+  const profile = await prisma.mortgageClientProfile.findUnique({
+    where: { caseId: current.id },
+    include: {
+      purchaseGoal: true, incomeSources: true,
+      downPaymentSources: true, nonCreditCommitments: true,
+    },
+  });
+  if (!profile) return null;
+
+  const availableNow = aggregateDownPayment(profile.downPaymentSources.map(moneySourceRow));
+  const monthlyIncome = aggregateMoney(profile.incomeSources.map(moneySourceRow));
+  const monthlyOther = aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow));
+
+  // Цена: явно переданная квартира важнее сохранённой цели покупки.
+  const goalPrice = profile.purchaseGoal?.targetPriceMax?.toString() ?? null;
+  const goalStatus = profile.purchaseGoal?.status ?? 'UNKNOWN';
+  const targetPrice = params.targetPrice
+    ? { value: params.targetPrice, status: 'DECLARED' as InputStatus }
+    : { value: goalPrice, status: (goalStatus === 'VERIFIED' ? 'CONFIRMED' : goalStatus) as InputStatus };
+
+  // Платежи по действующим кредитам — из последнего отчёта ПКБ этого кейса.
+  const pkb = latestForCase(current.id, 'credit_history');
+  const creditPayments = extractedNumber(pkb, 'existing_monthly_payment');
+
+  const result = scoreMortgage({
+    targetPrice,
+    availableNowDownPayment: { value: availableNow.value, status: availableNow.status as InputStatus },
+    monthlyIncome: { value: monthlyIncome.value, status: monthlyIncome.status as InputStatus },
+    monthlyCreditPayments: creditPayments === null
+      ? { value: null, status: 'MISSING' as InputStatus }
+      : { value: creditPayments, status: 'CONFIRMED' as InputStatus },
+    monthlyOtherCommitments: monthlyOther.value === null
+      ? { value: '0', status: 'CONFIRMED' as InputStatus }
+      : { value: monthlyOther.value, status: monthlyOther.status as InputStatus },
+    annualNominalRatePercent: params.rate,
+    termMonths: params.termMonths,
+    paymentSharePercent: params.sharePercent ?? DEFAULT_PAYMENT_SHARE_PERCENT,
+  });
+
+  return { result, availableNow, pkb, usedApartmentPrice: Boolean(params.targetPrice) };
+}
+
+/**
+ * Квартиры в пределах бюджета клиента.
+ *
+ * Бюджет = максимальный кредит из скоринга + первоначальный взнос. Это фильтр
+ * по цене, а не обещание одобрения: список отвечает на вопрос «что клиент в
+ * принципе может купить», решение по кредиту остаётся за банком.
+ *
+ * Скоринг не смог посчитать бюджет — список пустой с причиной, а не «все
+ * квартиры подряд».
+ */
+const matchQuerySchema = z.object({
+  annual_nominal_rate_percent: z.string().trim().min(1).max(16),
+  term_months: z.coerce.number().int().positive().max(1200),
+  payment_share_percent: z.string().trim().min(1).max(6).optional(),
+  rooms: z.coerce.number().int().positive().max(20).optional(),
+  limit: z.coerce.number().int().positive().max(20).optional(),
+}).strict();
+
+mortgageCasesRouter.get('/:caseId/matching-properties', async (req: Request, res: Response): Promise<void> => {
+  const parsed = matchQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());
     return;
   }
 
   try {
-    const current = await loadCaseForProfile(req.params.caseId, req.user!);
-    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
-    await ensureProfileId(current.id);
-
-    const profile = await prisma.mortgageClientProfile.findUnique({
-      where: { caseId: current.id },
-      include: {
-        purchaseGoal: true, incomeSources: true,
-        downPaymentSources: true, nonCreditCommitments: true,
-      },
-    });
-    if (!profile) { apiError(res, 500, 'internal_error', 'Профиль не создан'); return; }
-
-    const availableNow = aggregateDownPayment(profile.downPaymentSources.map(moneySourceRow));
-    const monthlyIncome = aggregateMoney(profile.incomeSources.map(moneySourceRow));
-    const monthlyOther = aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow));
-
-    // Цена: явно переданная квартира важнее сохранённой цели покупки.
-    const goalPrice = profile.purchaseGoal?.targetPriceMax?.toString() ?? null;
-    const goalStatus = profile.purchaseGoal?.status ?? 'UNKNOWN';
-    const targetPrice = parsed.data.target_price
-      ? { value: parsed.data.target_price, status: 'DECLARED' as InputStatus }
-      : { value: goalPrice, status: (goalStatus === 'VERIFIED' ? 'CONFIRMED' : goalStatus) as InputStatus };
-
-    // Платежи по действующим кредитам — из последнего отчёта ПКБ этого кейса.
-    const pkb = latestForCase(current.id, 'credit_history');
-    const creditPayments = extractedNumber(pkb, 'existing_monthly_payment');
-
-    const result = scoreMortgage({
-      targetPrice,
-      availableNowDownPayment: { value: availableNow.value, status: availableNow.status as InputStatus },
-      monthlyIncome: { value: monthlyIncome.value, status: monthlyIncome.status as InputStatus },
-      monthlyCreditPayments: creditPayments === null
-        ? { value: null, status: 'MISSING' as InputStatus }
-        : { value: creditPayments, status: 'CONFIRMED' as InputStatus },
-      monthlyOtherCommitments: monthlyOther.value === null
-        ? { value: '0', status: 'CONFIRMED' as InputStatus }
-        : { value: monthlyOther.value, status: monthlyOther.status as InputStatus },
-      annualNominalRatePercent: parsed.data.annual_nominal_rate_percent,
+    const inputs = await collectScoringInputs(req.params.caseId, req.user!, {
+      rate: parsed.data.annual_nominal_rate_percent,
       termMonths: parsed.data.term_months,
-      paymentSharePercent: parsed.data.payment_share_percent ?? DEFAULT_PAYMENT_SHARE_PERCENT,
+      sharePercent: parsed.data.payment_share_percent,
+    });
+    if (!inputs) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+
+    const { result, availableNow } = inputs;
+    // Бюджет складывается ТОЛЬКО когда обе части посчитаны: максимальный
+    // кредит и подтверждённый взнос. Иначе подбор был бы фантазией.
+    if (result.maxLoan.value === null || availableNow.value === null) {
+      res.json({ data: {
+        budget: null,
+        verdict: result.verdict,
+        missing: result.missing,
+        items: [],
+      } });
+      return;
+    }
+
+    const budget = new Prisma.Decimal(result.maxLoan.value).add(availableNow.value);
+    const items = await findPropertiesWithinBudget({
+      budget,
+      rooms: parsed.data.rooms ?? null,
+      limitPerSource: parsed.data.limit ?? 6,
     });
 
     res.json({ data: {
-      ...result,
-      sources: {
-        target_price: parsed.data.target_price ? 'apartment' : 'purchase_goal',
-        monthly_credit_payments: pkb ? 'credit_report' : null,
-        credit_report_id: pkb?.id ?? null,
-      },
+      budget: budget.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
+      max_loan: result.maxLoan.value,
+      down_payment: availableNow.value,
+      verdict: result.verdict,
+      missing: result.missing,
+      items,
     } });
   } catch {
-    apiError(res, 500, 'internal_error', 'Не удалось рассчитать скоринг');
+    apiError(res, 500, 'internal_error', 'Не удалось подобрать квартиры');
   }
 });
 

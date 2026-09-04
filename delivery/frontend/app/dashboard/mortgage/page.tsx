@@ -25,7 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calculator, User2, ShieldCheck, Info, TriangleAlert, RefreshCw, FolderOpen,
-  Plus, ArrowRight, FileText, Landmark, X,
+  Plus, ArrowRight, FileText, Landmark, X, Home,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +46,7 @@ import {
   removeDownPaymentSource,
   removeIncomeSource,
   removeCommitment,
+  getMatchingProperties,
   MortgageCaseApiError,
   type MortgageCase,
   type MortgageCaseListItem,
@@ -53,6 +54,7 @@ import {
   type CalculationSnapshot,
   type CalcStatus,
   type ScoringResult,
+  type PropertyMatch,
 } from "@/lib/mortgage/case-api";
 import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
 import { DocumentIntakeSection } from "@/components/mortgage/DocumentIntakeSection";
@@ -280,6 +282,11 @@ function MortgageWorkspace() {
   const [scoringError, setScoringError] = useState<string | null>(null);
   const [scoringBusy, setScoringBusy] = useState(false);
 
+  // Что клиент может купить на свой бюджет — считается тем же скорингом.
+  const [match, setMatch] = useState<PropertyMatch | null>(null);
+  const [matchBusy, setMatchBusy] = useState(false);
+  const [matchRooms, setMatchRooms] = useState("");
+
   // --- Загрузка списка кейсов ---
   useEffect(() => {
     let alive = true;
@@ -313,6 +320,7 @@ function MortgageWorkspace() {
     setCalc(null);
     setScoring(null);
     setScoringError(null);
+    setMatch(null);
     setCalcError(null);
     void loadProfile(caseId);
   }, [caseId, loadProfile]);
@@ -425,11 +433,15 @@ function MortgageWorkspace() {
     setScoringBusy(true);
     setScoringError(null);
     try {
-      setScoring(await runScoring(caseId, {
+      const result = await runScoring(caseId, {
         annual_nominal_rate_percent: ratePercent.trim(),
         term_months: termMonths,
         payment_share_percent: sharePercent.trim(),
-      }));
+      });
+      setScoring(result);
+      setMatch(null);
+      // Подбор имеет смысл только когда бюджет посчитан.
+      if (result.verdict === "FITS" || result.verdict === "NOT_ENOUGH") void loadMatch();
     } catch (e) {
       setScoring(null);
       setScoringError(
@@ -439,6 +451,26 @@ function MortgageWorkspace() {
       setScoringBusy(false);
     }
   };
+
+  /** Подбор идёт от того же бюджета, что и вердикт: два разных ответа на один
+   * вопрос экран показывать не должен. */
+  const loadMatch = useCallback(async (rooms?: string) => {
+    if (!caseId) return;
+    setMatchBusy(true);
+    try {
+      const roomsValue = Number((rooms ?? matchRooms).trim());
+      setMatch(await getMatchingProperties(caseId, {
+        annual_nominal_rate_percent: ratePercent.trim(),
+        term_months: termMonths,
+        payment_share_percent: sharePercent.trim(),
+        ...(Number.isInteger(roomsValue) && roomsValue > 0 ? { rooms: roomsValue } : {}),
+      }));
+    } catch {
+      setMatch(null);
+    } finally {
+      setMatchBusy(false);
+    }
+  }, [caseId, matchRooms, ratePercent, termMonths, sharePercent]);
 
   // --- Расчёт (M06) ---
   const runCalculation = async () => {
@@ -768,6 +800,75 @@ function MortgageWorkspace() {
                 )}
               </div>            </div>
           </Card>
+
+          {match && (
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 text-primary"><Home className="h-5 w-5" /></div>
+                  <div>
+                    <h2 className="text-base font-semibold leading-tight">Что клиент может купить</h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {match.budget
+                        ? <>Бюджет <b className="tabular-nums">{showMoney(match.budget)}</b> — максимальный кредит плюс взнос. Показаны квартиры не дороже него.</>
+                        : "Бюджет не посчитан: заполните данные выше."}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={matchRooms}
+                    onChange={(e) => setMatchRooms(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="Комнат"
+                    aria-label="Число комнат"
+                    className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                  />
+                  <Button size="sm" variant="outline" disabled={matchBusy} onClick={() => void loadMatch()}>
+                    {matchBusy ? "Ищем…" : "Обновить"}
+                  </Button>
+                </div>
+              </div>
+
+              {match.items.length === 0 ? (
+                <p className="px-5 py-6 text-center text-sm text-muted-foreground">
+                  {match.budget
+                    ? "В каталоге нет квартир в этом бюджете. Попробуйте изменить срок, ставку или число комнат."
+                    : "Подбор появится, когда будет посчитан бюджет."}
+                </p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {match.items.map((item) => (
+                    <li key={`${item.source}-${item.id}`}>
+                      <Link
+                        href={item.url}
+                        className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-muted/50"
+                      >
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-2 font-medium">
+                            {item.title}
+                            <span className={cn(
+                              "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              item.source === "NEW_BUILD"
+                                ? "bg-primary/10 text-primary"
+                                : "bg-muted text-muted-foreground",
+                            )}>
+                              {item.source === "NEW_BUILD" ? "Новостройка" : "Вторичка"}
+                            </span>
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {item.location}
+                            {item.floor !== null && ` · ${item.floor} этаж`}
+                          </p>
+                        </div>
+                        <span className="shrink-0 font-semibold tabular-nums">{showMoney(item.price)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
 
           {/* Идентификаторы нужны поддержке при разборе обращения, поэтому они
               сохранены — но убраны из рабочего поля зрения брокера. */}

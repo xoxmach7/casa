@@ -423,3 +423,49 @@ export function removeIncomeSource(caseId: string, rowId: string): Promise<void>
 export function removeCommitment(caseId: string, rowId: string): Promise<void> {
   return remove(`/v2/cases/${encodeURIComponent(caseId)}/non-credit-commitments/${encodeURIComponent(rowId)}`);
 }
+
+// --- Подбор квартир под бюджет ----------------------------------------------
+
+export interface MatchedProperty {
+  source: "NEW_BUILD" | "SECONDARY";
+  id: string;
+  title: string;
+  location: string;
+  price: string;
+  rooms: number;
+  area: string;
+  floor: number | null;
+  url: string;
+}
+
+export interface PropertyMatch {
+  /** Максимальный кредит + взнос. null — бюджет не посчитан. */
+  budget: string | null;
+  max_loan?: string | null;
+  down_payment?: string | null;
+  verdict: ScoringVerdict;
+  missing: { field: string; action: string }[];
+  items: MatchedProperty[];
+}
+
+/**
+ * Квартиры в пределах бюджета клиента. Это фильтр по цене, а не обещание
+ * одобрения: бюджет считает тот же скоринг, что и вердикт.
+ */
+export async function getMatchingProperties(
+  caseId: string,
+  input: {
+    annual_nominal_rate_percent: string;
+    term_months: number;
+    payment_share_percent?: string;
+    rooms?: number;
+  },
+): Promise<PropertyMatch> {
+  const q = new URLSearchParams({
+    annual_nominal_rate_percent: input.annual_nominal_rate_percent,
+    term_months: String(input.term_months),
+  });
+  if (input.payment_share_percent) q.set("payment_share_percent", input.payment_share_percent);
+  if (input.rooms) q.set("rooms", String(input.rooms));
+  return call<PropertyMatch>(`/v2/cases/${encodeURIComponent(caseId)}/matching-properties?${q}`);
+}

@@ -3,8 +3,8 @@
  *
  * Проверяется не «запрос ушёл», а обещания подбора:
  *  1) фильтр по цене реально применяется к обоим каталогам;
- *  2) в выдачу не попадает то, чего нет в каталоге (проданное, снятое
- *     с публикации, неопубликованный ЖК);
+ *  2) каждый каталог берётся по правилам СВОЕГО раздела: новостройки — как
+ *     их видит брокер, вторичка — по гейту площадки (договор собственника);
  *  3) новостройки и вторичка перемешаны и отсортированы по цене вниз —
  *     брокеру нужно лучшее, что клиент тянет, а не самое дешёвое.
  */
@@ -52,20 +52,23 @@ describe('подбор квартир под бюджет', () => {
     );
   });
 
-  it('берёт только реально доступное: свободные квартиры в опубликованном ЖК', async () => {
+  it('новостройки: только свободные, БЕЗ фильтра публикации на сайте', async () => {
     await findPropertiesWithinBudget({ budget: new Prisma.Decimal('50000000') });
     const where = db.apartment.findMany.mock.calls[0][0].where;
     expect(where.status).toBe('AVAILABLE');
-    expect(where.project).toEqual({ isPublished: true });
+    // isPublished управляет публичным сайтом casa40, а не доступностью объекта
+    // брокеру: раздел «Новостройки» им не фильтрует, значит и подбор не должен.
+    expect(where.project).toBeUndefined();
   });
 
-  it('вторичка берётся по тем же условиям, что и публичная витрина', async () => {
+  it('вторичка берётся по гейту площадки: только с действующим договором', async () => {
     await findPropertiesWithinBudget({ budget: new Prisma.Decimal('50000000') });
     const where = db.crmProperty.findMany.mock.calls[0][0].where;
-    // Иначе брокер увидел бы объект, которого в каталоге нет.
-    expect(where.funnelStage).toBe('LEADS');
     expect(where.status).toBe('ACTIVE');
-    expect(where.publishedAt).toEqual({ not: null });
+    // Объект без договора собственника для агента не существует — подбор
+    // не имеет права показать то, чего нет на площадке вторички.
+    expect(where.listingAgreements).toEqual({ some: { status: 'ACTIVE' } });
+    expect(where.funnelStage).toBeUndefined();
   });
 
   it('фильтр по комнатам применяется, когда задан', async () => {

@@ -782,6 +782,18 @@ model MortgageProgram {
   propertyType   String   @map("property_type") // NEW_BUILDING, SECONDARY
   requirements   String   @db.Text
   isActive       Boolean  @default(true) @map("is_active")
+  // Верх диапазона ставки: у большинства программ банк публикует «от … до …»,
+  // и показывать только нижнюю границу — вводить брокера в заблуждение.
+  interestRateTo Decimal? @map("interest_rate_to") @db.Decimal(5, 2)
+  // ГЭСВ — то, что банк обязан публиковать рядом со ставкой; клиент сравнивает
+  // программы именно по нему, а не по номинальной ставке.
+  aprFrom        Decimal? @map("apr_from") @db.Decimal(5, 2)
+  // Предельная сумма займа по программе, тенге. NULL = ограничение не объявлено.
+  maxAmountKzt   Decimal? @map("max_amount_kzt") @db.Decimal(15, 2)
+  // Откуда взяты условия и на какую дату — иначе через месяц никто не скажет,
+  // устарела строка или нет.
+  sourceUrl      String?  @map("source_url")
+  ratesAsOf      DateTime? @map("rates_as_of")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

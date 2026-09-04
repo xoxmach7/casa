@@ -46,6 +46,7 @@ import {
   removeIncomeSource,
   removeCommitment,
   getMatchingProperties,
+  getMortgagePrograms,
   archiveMortgageCase,
   MortgageCaseApiError,
   type MortgageCase,
@@ -55,6 +56,7 @@ import {
   type CalcStatus,
   type ScoringResult,
   type PropertyMatch,
+  type ProgramMatch,
 } from "@/lib/mortgage/case-api";
 import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
 import { DocumentIntakeSection } from "@/components/mortgage/DocumentIntakeSection";
@@ -287,6 +289,10 @@ function MortgageWorkspace() {
   const [matchBusy, setMatchBusy] = useState(false);
   const [matchRooms, setMatchRooms] = useState("");
 
+  // Программы, на которые клиент может рассчитывать по этой квартире.
+  const [programs, setPrograms] = useState<ProgramMatch | null>(null);
+  const [programsBusy, setProgramsBusy] = useState(false);
+
   // Проверки по госреестрам открываются по требованию — см. блок внизу экрана.
   const [checksOpen, setChecksOpen] = useState(false);
 
@@ -326,6 +332,7 @@ function MortgageWorkspace() {
     setScoring(null);
     setScoringError(null);
     setMatch(null);
+    setPrograms(null);
     setCalcError(null);
     void loadProfile(caseId);
   }, [caseId, loadProfile]);
@@ -472,8 +479,12 @@ function MortgageWorkspace() {
       });
       setScoring(result);
       setMatch(null);
-      // Подбор имеет смысл только когда бюджет посчитан.
-      if (result.verdict === "FITS" || result.verdict === "NOT_ENOUGH") void loadMatch();
+      setPrograms(null);
+      // Подбор и программы имеют смысл только когда бюджет посчитан.
+      if (result.verdict === "FITS" || result.verdict === "NOT_ENOUGH") {
+        void loadMatch();
+        void loadPrograms();
+      }
     } catch (e) {
       setScoring(null);
       setScoringError(
@@ -503,6 +514,26 @@ function MortgageWorkspace() {
       setMatchBusy(false);
     }
   }, [caseId, matchRooms, ratePercent, termMonths, sharePercent]);
+
+  /**
+   * Программы банков под эту квартиру. Платёж по каждой считает сервер по её
+   * ставке — на клиенте не появляется ни одной ипотечной формулы.
+   */
+  const loadPrograms = useCallback(async () => {
+    if (!caseId) return;
+    setProgramsBusy(true);
+    try {
+      setPrograms(await getMortgagePrograms(caseId, {
+        rate: ratePercent.trim(),
+        termMonths,
+        sharePercent: sharePercent.trim(),
+      }));
+    } catch {
+      setPrograms(null);
+    } finally {
+      setProgramsBusy(false);
+    }
+  }, [caseId, ratePercent, termMonths, sharePercent]);
 
   // --- Расчёт (M06) ---
   const runCalculation = async () => {
@@ -850,6 +881,103 @@ function MortgageWorkspace() {
                 )}
               </div>            </div>
           </Card>
+
+          {/* Программы банков: ответ на вопрос «на что клиент может
+              рассчитывать». Всё, кроме сортировки, приходит с сервера. */}
+          {(programs || programsBusy) && (
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 text-primary"><Landmark className="h-5 w-5" /></div>
+                  <div>
+                    <h2 className="text-base font-semibold leading-tight">На какую программу можно рассчитывать</h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {programs?.downPaymentPercent
+                        ? <>Взнос клиента — <b>{programs.downPaymentPercent}%</b> от цены. Платёж считается по ставке каждой программы.</>
+                        : "Платёж считается по ставке каждой программы."}
+                    </p>
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" disabled={programsBusy} onClick={() => void loadPrograms()}>
+                  {programsBusy ? "Считаем…" : "Обновить"}
+                </Button>
+              </div>
+
+              {programs && programs.items.length === 0 && (
+                <p className="px-5 py-6 text-center text-sm text-muted-foreground">
+                  Справочник программ пуст — обратитесь к администратору.
+                </p>
+              )}
+
+              <ul className="divide-y divide-border">
+                {programs?.items.map((it) => (
+                  <li key={it.id} className={cn("px-5 py-4", !it.fits && "opacity-70")}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium leading-tight">
+                          {it.bankName} · {it.programName}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {it.propertyType === "NEW_BUILDING" ? "Новостройка" : "Вторичка"}
+                          {" · взнос от "}{it.minDownPaymentPercent}%
+                          {it.maxAmountKzt && <> · до {showMoney(it.maxAmountKzt)}</>}
+                        </p>
+                      </div>
+                      <span className={cn(
+                        "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                        it.fits
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                          : "bg-muted text-muted-foreground",
+                      )}>
+                        {it.fits ? "Подходит" : "Не подходит"}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Платёж в месяц</p>
+                        <p className="text-lg font-bold tabular-nums">{showMoney(it.monthlyPayment)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Ставка</p>
+                        <p className="font-semibold tabular-nums">
+                          {it.ratePercentTo && it.ratePercentTo !== it.ratePercentFrom
+                            ? `${it.ratePercentFrom}–${it.ratePercentTo}%`
+                            : `${it.ratePercentFrom}%`}
+                        </p>
+                        {it.aprFrom && <p className="text-xs text-muted-foreground">ГЭСВ от {it.aprFrom}%</p>}
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Срок</p>
+                        <p className="font-semibold tabular-nums">{Math.round(it.termMonthsUsed / 12)} лет</p>
+                        {it.termCappedByProgram && (
+                          <p className="text-xs text-muted-foreground">предел программы</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Переплата</p>
+                        <p className="font-semibold tabular-nums">{showMoney(it.overpayment)}</p>
+                      </div>
+                    </div>
+
+                    {it.blockers.length > 0 && (
+                      <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
+                        {it.blockers.join("; ")}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-muted-foreground">{it.requirements}</p>
+                  </li>
+                ))}
+              </ul>
+
+              {programs && (
+                <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
+                  {programs.disclaimer}
+                  {programs.items[0]?.ratesAsOf && <> Условия на {programs.items[0].ratesAsOf}.</>}
+                </div>
+              )}
+            </Card>
+          )}
 
           {match && (
             <Card>

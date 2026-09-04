@@ -480,3 +480,52 @@ export async function getMatchingProperties(
   if (input.rooms) q.set("rooms", String(input.rooms));
   return call<PropertyMatch>(`/v2/cases/${encodeURIComponent(caseId)}/matching-properties?${q}`);
 }
+
+// --- Ипотечные программы под клиента ---------------------------------------
+
+export interface ProgramMatchItem {
+  id: string;
+  bankName: string;
+  programName: string;
+  propertyType: string;
+  ratePercentFrom: string;
+  ratePercentTo: string | null;
+  aprFrom: string | null;
+  minDownPaymentPercent: string;
+  maxTermMonths: number;
+  maxAmountKzt: string | null;
+  requirements: string;
+  sourceUrl: string | null;
+  ratesAsOf: string | null;
+  termMonthsUsed: number;
+  termCappedByProgram: boolean;
+  loanAmount: string | null;
+  monthlyPayment: string | null;
+  overpayment: string | null;
+  fits: boolean;
+  blockers: string[];
+}
+
+export interface ProgramMatch {
+  disclaimer: string;
+  downPaymentPercent: string | null;
+  items: ProgramMatchItem[];
+  verdict: string;
+}
+
+/**
+ * Программы, на которые клиент может рассчитывать по этой квартире.
+ * Платёж по каждой считает сервер по ставке самой программы.
+ */
+export function getMortgagePrograms(
+  caseId: string,
+  params: { rate: string; termMonths: number; sharePercent?: string; propertyType?: string },
+): Promise<ProgramMatch> {
+  const q = new URLSearchParams({
+    annual_nominal_rate_percent: params.rate,
+    term_months: String(params.termMonths),
+  });
+  if (params.sharePercent) q.set("payment_share_percent", params.sharePercent);
+  if (params.propertyType) q.set("property_type", params.propertyType);
+  return call<ProgramMatch>(`/v2/cases/${encodeURIComponent(caseId)}/programs?${q}`);
+}

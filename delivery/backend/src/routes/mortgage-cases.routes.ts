@@ -28,6 +28,7 @@ import { aggregateMoney, aggregateDownPayment, profileContentHash, type MoneySou
 import { scoreMortgage, DEFAULT_PAYMENT_SHARE_PERCENT } from '../lib/mortgage-workspace/scoring';
 import { latestForCase, extractedNumber } from '../lib/mortgage-workspace/document-store';
 import { findPropertiesWithinBudget } from '../lib/mortgage-workspace/property-match.service';
+import { matchPrograms } from '../lib/mortgage-workspace/program-match.service';
 import { recordAuditLog } from '../lib/audit-log.service';
 
 export const mortgageCasesRouter = Router();
@@ -1512,7 +1513,7 @@ async function collectScoringInputs(
     paymentSharePercent: params.sharePercent ?? DEFAULT_PAYMENT_SHARE_PERCENT,
   });
 
-  return { result, availableNow, pkb, usedApartmentPrice: Boolean(params.targetPrice) };
+  return { result, availableNow, targetPrice, pkb, usedApartmentPrice: Boolean(params.targetPrice) };
 }
 
 mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response): Promise<void> => {
@@ -1607,6 +1608,54 @@ mortgageCasesRouter.get('/:caseId/matching-properties', async (req: Request, res
     } });
   } catch {
     apiError(res, 500, 'internal_error', 'Не удалось подобрать квартиры');
+  }
+});
+
+/**
+ * GET /:caseId/programs — ипотечные программы, на которые клиент может
+ * рассчитывать по этой квартире.
+ *
+ * По каждой программе считается платёж по ЕЁ ставке и сроку, переплата и
+ * проверяются формальные условия: минимальный взнос, предельная сумма и срок.
+ * «Подходит» здесь означает «проходит по условиям программы и по свободному
+ * платежу», а не «банк одобрил» — решение по заявке принимает банк (M06 §17).
+ */
+const programsQuerySchema = z.object({
+  annual_nominal_rate_percent: z.string().trim().min(1).max(16),
+  term_months: z.coerce.number().int().positive().max(1200),
+  payment_share_percent: z.string().trim().min(1).max(6).optional(),
+  target_price: z.string().trim().min(1).max(24).optional(),
+  property_type: z.enum(['NEW_BUILDING', 'SECONDARY']).optional(),
+}).strict();
+
+mortgageCasesRouter.get('/:caseId/programs', async (req: Request, res: Response): Promise<void> => {
+  const parsed = programsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten());
+    return;
+  }
+
+  try {
+    const inputs = await collectScoringInputs(req.params.caseId, req.user!, {
+      rate: parsed.data.annual_nominal_rate_percent,
+      termMonths: parsed.data.term_months,
+      sharePercent: parsed.data.payment_share_percent,
+      targetPrice: parsed.data.target_price,
+    });
+    if (!inputs) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+
+    const { result, availableNow, targetPrice } = inputs;
+    const match = await matchPrograms({
+      targetPrice,
+      availableNowDownPayment: { value: availableNow.value, status: availableNow.status as InputStatus },
+      paymentCapacity: result.paymentCapacity.value,
+      termMonths: parsed.data.term_months,
+      propertyType: parsed.data.property_type ?? null,
+    });
+
+    res.json({ data: { ...match, verdict: result.verdict, missing: result.missing } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось подобрать программы');
   }
 });
 

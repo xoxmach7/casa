@@ -1163,8 +1163,17 @@ mortgageCasesRouter.delete('/:caseId', async (req: Request, res: Response): Prom
 
     const removed = await deleteMortgageCase(current.id);
     res.status(200).json({ data: { id: current.id, removed } });
-  } catch {
-    apiError(res, 500, 'internal_error', 'Не удалось удалить расчёт');
+  } catch (err) {
+    // Что именно не дало удалить — видно только здесь: журналы контейнера
+    // недоступны с рабочей машины, а без кода ошибки причина не отличима от
+    // «что-то пошло не так». Отдаём код и имя ограничения — не содержимое.
+    const e = err as { code?: string; meta?: Record<string, unknown>; message?: string };
+    console.error('mortgage_case.delete failed', e?.code, e?.meta, e?.message);
+    apiError(res, 500, 'internal_error', 'Не удалось удалить расчёт', {
+      prisma_code: e?.code ?? null,
+      constraint: (e?.meta?.constraint ?? e?.meta?.field_name ?? null) as string | null,
+      model: (e?.meta?.modelName ?? null) as string | null,
+    });
   }
 });
 

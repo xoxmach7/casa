@@ -175,7 +175,9 @@ export function ApartmentDetailPanel({
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/dashboard/mortgage?price=${encodeURIComponent(apartment.price)}`)}
+            /* Передаём саму квартиру, а не её цену: расчёт привязывается к
+               объекту, цена читается из каталога и не набирается руками. */
+            onClick={() => router.push(`/dashboard/mortgage?apartment=${encodeURIComponent(apartment.id)}`)}
           >
             <Percent className="mr-2 h-4 w-4" />
             Рассчитать ипотеку

@@ -29,6 +29,9 @@ import { scoreMortgage, DEFAULT_PAYMENT_SHARE_PERCENT } from '../lib/mortgage-wo
 import { latestForCase, extractedNumber } from '../lib/mortgage-workspace/document-store';
 import { findPropertiesWithinBudget } from '../lib/mortgage-workspace/property-match.service';
 import { matchPrograms } from '../lib/mortgage-workspace/program-match.service';
+import {
+  targetPropertyInclude, targetPropertyNode, loadTargetProperty,
+} from '../lib/mortgage-workspace/target-property.service';
 import { recordAuditLog } from '../lib/audit-log.service';
 
 export const mortgageCasesRouter = Router();
@@ -960,15 +963,28 @@ function moneySourceRow(r: { amount?: any; monthlyAmount?: any; value?: any; sta
   return { amount, status: r.status as any, kind: r.kind ?? null };
 }
 
-/** purchase_goal в ответе/снапшоте: сумма строкой Decimal(20,2) либо null. */
-function purchaseGoalNode(goal: { targetPriceMax: any; currency: string; status: string } | null) {
+/**
+ * purchase_goal в ответе/снапшоте: сумма строкой Decimal(20,2) либо null, плюс
+ * привязанная квартира каталога. Привязка — не украшение карточки: пока она
+ * есть, цена в расчёте читается у объекта, а не из этого поля.
+ */
+function purchaseGoalNode(
+  goal:
+    | ({ targetPriceMax: any; currency: string; status: string }
+      & Parameters<typeof targetPropertyNode>[0])
+    | null,
+) {
+  const target_property = targetPropertyNode(goal);
   if (!goal || goal.targetPriceMax === null || goal.targetPriceMax === undefined) {
-    return { target_price_max: null, currency: 'KZT', status: goal?.status ?? 'UNKNOWN' };
+    return {
+      target_price_max: null, currency: 'KZT', status: goal?.status ?? 'UNKNOWN', target_property,
+    };
   }
   return {
     target_price_max: new Prisma.Decimal(goal.targetPriceMax).toFixed(2),
     currency: goal.currency,
     status: goal.status,
+    target_property,
   };
 }
 
@@ -992,7 +1008,7 @@ mortgageCasesRouter.get('/:caseId/client-profile', async (req: Request, res: Res
     const profile = await prisma.mortgageClientProfile.findUnique({
       where: { caseId: current.id },
       include: {
-        purchaseGoal: true, employments: true, incomeSources: true, assets: true,
+        purchaseGoal: { include: targetPropertyInclude }, employments: true, incomeSources: true, assets: true,
         downPaymentSources: true, nonCreditCommitments: true,
       },
     });
@@ -1049,11 +1065,17 @@ mortgageCasesRouter.patch('/:caseId/client-profile', async (req: Request, res: R
       status,
       propertyKind: g.property_kind ?? null,
       regionCode: g.region_code ?? null,
+      // Цена, введённая руками, отвязывает квартиру: иначе в цели остались бы
+      // два разных ответа на вопрос «сколько стоит» — набранное число и цена
+      // объекта, — и выбор между ними стал бы неявным.
+      targetApartmentId: null,
+      targetCrmPropertyId: null,
     };
     const goal = await prisma.mortgagePurchaseGoal.upsert({
       where: { profileId },
       update: data,
       create: { profileId, ...data },
+      include: targetPropertyInclude,
     });
     await prisma.mortgageClientProfile.update({
       where: { id: profileId },
@@ -1067,6 +1089,84 @@ mortgageCasesRouter.patch('/:caseId/client-profile', async (req: Request, res: R
     res.json({ data: { purchase_goal: purchaseGoalNode(goal) } });
   } catch {
     apiError(res, 500, 'internal_error', 'Не удалось обновить профиль');
+  }
+});
+
+/**
+ * PUT /:caseId/purchase-goal/target-property — привязать расчёт к квартире
+ * каталога либо снять привязку (`target_property: null`).
+ *
+ * Смысл: цена перестаёт быть числом, набранным руками. Пока объект привязан,
+ * скоринг читает цену У ОБЪЕКТА, поэтому изменение цены застройщиком или
+ * собственником сразу отражается в вердикте, а опечатка в девяти цифрах
+ * становится невозможной.
+ *
+ * Проданная или забронированная квартира привязку НЕ запрещает — считать по
+ * ней брокеру никто не мешает, — но карточка честно помечается недоступной.
+ */
+const targetPropertySchema = z.object({
+  target_property: z.object({
+    source: z.enum(['NEW_BUILD', 'SECONDARY']),
+    id: z.string().trim().min(1).max(64),
+  }).strict().nullable(),
+}).strict();
+
+mortgageCasesRouter.put('/:caseId/purchase-goal/target-property', async (req: Request, res: Response): Promise<void> => {
+  const parsed = targetPropertySchema.safeParse(req.body);
+  if (!parsed.success) { apiError(res, 400, 'validation_error', 'Ошибка валидации запроса', parsed.error.flatten()); return; }
+  try {
+    const current = await loadCaseForProfile(req.params.caseId, req.user!);
+    if (!current) { apiError(res, 404, 'not_found', 'Ипотечный кейс не найден'); return; }
+    const profileId = await ensureProfileId(current.id);
+    const ref = parsed.data.target_property;
+
+    // Снятие привязки. Сохранённую цену НЕ трогаем: цифра, по которой уже
+    // считали, не должна исчезать у брокера из-под рук — дальше он правит её
+    // вручную, как и до привязки.
+    if (ref === null) {
+      const goal = await prisma.mortgagePurchaseGoal.upsert({
+        where: { profileId },
+        update: { targetApartmentId: null, targetCrmPropertyId: null },
+        create: { profileId, status: 'UNKNOWN' },
+        include: targetPropertyInclude,
+      });
+      await prisma.mortgageClientProfile.update({ where: { id: profileId }, data: { version: { increment: 1 } } });
+      await prisma.mortgageAuditEvent.create({ data: {
+        caseId: current.id, actorId: req.user!.userId, action: 'mortgage_profile.target_property_cleared',
+        objectType: 'MortgagePurchaseGoal', objectId: goal.id, purpose: 'mortgage_prescore',
+        result: 'SUCCESS', reasonCode: 'UNLINKED',
+      } });
+      res.json({ data: { purchase_goal: purchaseGoalNode(goal) } });
+      return;
+    }
+
+    const property = await loadTargetProperty(ref.source, ref.id);
+    if (!property) { apiError(res, 404, 'not_found', 'Объект не найден в каталоге'); return; }
+
+    const data = {
+      targetPriceMax: new Prisma.Decimal(property.price),
+      currency: 'KZT',
+      status: 'DECLARED' as const,
+      // Тип жилья нужен подбору программ: у банков это разные условия.
+      propertyKind: property.property_type,
+      targetApartmentId: ref.source === 'NEW_BUILD' ? property.id : null,
+      targetCrmPropertyId: ref.source === 'SECONDARY' ? property.id : null,
+    };
+    const goal = await prisma.mortgagePurchaseGoal.upsert({
+      where: { profileId },
+      update: data,
+      create: { profileId, ...data },
+      include: targetPropertyInclude,
+    });
+    await prisma.mortgageClientProfile.update({ where: { id: profileId }, data: { version: { increment: 1 } } });
+    await prisma.mortgageAuditEvent.create({ data: {
+      caseId: current.id, actorId: req.user!.userId, action: 'mortgage_profile.target_property_set',
+      objectType: 'MortgagePurchaseGoal', objectId: goal.id, purpose: 'mortgage_prescore',
+      result: 'SUCCESS', reasonCode: ref.source,
+    } });
+    res.json({ data: { purchase_goal: purchaseGoalNode(goal) } });
+  } catch {
+    apiError(res, 500, 'internal_error', 'Не удалось привязать объект к расчёту');
   }
 });
 
@@ -1269,7 +1369,7 @@ mortgageCasesRouter.post('/:caseId/client-profile/publish-snapshot', async (req:
     const profile = await prisma.mortgageClientProfile.findUnique({
       where: { caseId: current.id },
       include: {
-        purchaseGoal: true, employments: true, incomeSources: true,
+        purchaseGoal: { include: targetPropertyInclude }, employments: true, incomeSources: true,
         assets: true, downPaymentSources: true, nonCreditCommitments: true,
       },
     });
@@ -1518,7 +1618,7 @@ async function collectScoringInputs(
   const profile = await prisma.mortgageClientProfile.findUnique({
     where: { caseId: current.id },
     include: {
-      purchaseGoal: true, incomeSources: true,
+      purchaseGoal: { include: targetPropertyInclude }, incomeSources: true,
       downPaymentSources: true, nonCreditCommitments: true,
     },
   });
@@ -1528,12 +1628,18 @@ async function collectScoringInputs(
   const monthlyIncome = aggregateMoney(profile.incomeSources.map(moneySourceRow));
   const monthlyOther = aggregateMoney(profile.nonCreditCommitments.map(moneySourceRow));
 
-  // Цена: явно переданная квартира важнее сохранённой цели покупки.
+  // Цена. Приоритет: явно переданная в запросе → привязанная квартира каталога
+  // → сохранённая цель покупки. Привязка стоит выше сохранённой суммы намеренно:
+  // цена объекта живая, а target_price_max — её копия на момент привязки, и
+  // расходиться они начинают в первый же день, когда застройщик поднимет цену.
   const goalPrice = profile.purchaseGoal?.targetPriceMax?.toString() ?? null;
   const goalStatus = profile.purchaseGoal?.status ?? 'UNKNOWN';
+  const boundProperty = targetPropertyNode(profile.purchaseGoal);
   const targetPrice = params.targetPrice
     ? { value: params.targetPrice, status: 'DECLARED' as InputStatus }
-    : { value: goalPrice, status: (goalStatus === 'VERIFIED' ? 'CONFIRMED' : goalStatus) as InputStatus };
+    : boundProperty
+      ? { value: boundProperty.price, status: 'DECLARED' as InputStatus }
+      : { value: goalPrice, status: (goalStatus === 'VERIFIED' ? 'CONFIRMED' : goalStatus) as InputStatus };
 
   // Платежи по действующим кредитам. Источник первого выбора — отчёт ПКБ:
   // подтверждённое число всегда лучше заявленного. Если отчёта ещё нет, берём
@@ -1560,7 +1666,10 @@ async function collectScoringInputs(
     paymentSharePercent: params.sharePercent ?? DEFAULT_PAYMENT_SHARE_PERCENT,
   });
 
-  return { result, availableNow, targetPrice, pkb, creditConfirmed, usedApartmentPrice: Boolean(params.targetPrice) };
+  return {
+    result, availableNow, targetPrice, pkb, creditConfirmed, boundProperty,
+    usedApartmentPrice: Boolean(params.targetPrice),
+  };
 }
 
 mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response): Promise<void> => {
@@ -1582,7 +1691,10 @@ mortgageCasesRouter.post('/:caseId/scoring', async (req: Request, res: Response)
     res.json({ data: {
       ...inputs.result,
       sources: {
-        target_price: inputs.usedApartmentPrice ? 'apartment' : 'purchase_goal',
+        target_price: inputs.usedApartmentPrice
+          ? 'apartment'
+          : inputs.boundProperty ? 'linked_property' : 'purchase_goal',
+        linked_property: inputs.boundProperty,
         monthly_credit_payments: inputs.creditConfirmed ? 'credit_report' : 'declared',
         credit_report_id: inputs.pkb?.id ?? null,
       },
@@ -1697,7 +1809,9 @@ mortgageCasesRouter.get('/:caseId/programs', async (req: Request, res: Response)
       availableNowDownPayment: { value: availableNow.value, status: availableNow.status as InputStatus },
       paymentCapacity: result.paymentCapacity.value,
       termMonths: parsed.data.term_months,
-      propertyType: parsed.data.property_type ?? null,
+      // Тип жилья берётся у привязанной квартиры: спрашивать брокера о том,
+      // что уже известно из каталога, — лишний шаг и лишний способ ошибиться.
+      propertyType: parsed.data.property_type ?? inputs.boundProperty?.property_type ?? null,
     });
 
     res.json({ data: { ...match, verdict: result.verdict, missing: result.missing } });

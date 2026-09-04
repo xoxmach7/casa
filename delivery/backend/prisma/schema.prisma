@@ -338,6 +338,7 @@ model Apartment {
   selectionApartments  SelectionApartment[]
   fixations            Fixation[]
   favorites            Favorite[]
+  mortgageGoals        MortgagePurchaseGoal[]
 
   @@unique([projectId, number])
   @@index([projectId])
@@ -1630,6 +1631,7 @@ model CrmProperty {
   listingAgreements     ListingAgreement[]
   secondaryFixations    SecondaryFixation[]
   listingExits          ListingExit[]
+  mortgageGoals         MortgagePurchaseGoal[]
 
   // Кто завёл объект. OWNER_SELF — собственник через свой кабинет,
   // COORDINATOR — сотрудник CASA от его имени, LEGACY — записи, созданные
@@ -2697,11 +2699,24 @@ model MortgagePurchaseGoal {
   status         MortgageProfileFieldStatus @default(UNKNOWN)
   propertyKind   String?                    @map("property_kind")
   regionCode     String?                    @map("region_code")
+  /// Квартира каталога, под которую считается ипотека. Смысл привязки — цена
+  /// перестаёт быть числом, набранным руками: она читается у объекта в момент
+  /// расчёта, поэтому изменение цены застройщиком/собственником сразу видно в
+  /// вердикте. Источника два и они взаимоисключающие (CHECK в миграции):
+  /// новостройка (Apartment) либо вторичка (CrmProperty). Оба NULL — цена
+  /// задана вручную, как и раньше; удаление объекта обнуляет ссылку, но
+  /// сохранённую цену не трогает.
+  targetApartmentId   String? @map("target_apartment_id")
+  targetCrmPropertyId String? @map("target_crm_property_id")
   createdAt      DateTime                   @default(now()) @map("created_at")
   updatedAt      DateTime                   @updatedAt @map("updated_at")
 
-  profile MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile           MortgageClientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  targetApartment   Apartment?            @relation(fields: [targetApartmentId], references: [id], onDelete: SetNull)
+  targetCrmProperty CrmProperty?          @relation(fields: [targetCrmPropertyId], references: [id], onDelete: SetNull)
 
+  @@index([targetApartmentId])
+  @@index([targetCrmPropertyId])
   @@map("mortgage_purchase_goals")
 }
 

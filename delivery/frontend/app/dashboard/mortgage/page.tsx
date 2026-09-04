@@ -49,6 +49,7 @@ import {
   getMortgagePrograms,
   setDeclaredCreditPayments,
   archiveMortgageCase,
+  setTargetProperty,
   MortgageCaseApiError,
   type MortgageCase,
   type MortgageCaseListItem,
@@ -58,6 +59,7 @@ import {
   type ScoringResult,
   type PropertyMatch,
   type ProgramMatch,
+  type TargetProperty,
 } from "@/lib/mortgage/case-api";
 import { SourceCheckSection } from "@/components/mortgage/SourceCheckSection";
 import { DocumentIntakeSection } from "@/components/mortgage/DocumentIntakeSection";
@@ -262,6 +264,19 @@ function MortgageWorkspace() {
   const searchParams = useSearchParams();
   const caseId = searchParams.get("case");
 
+  /**
+   * Квартира, выбранная в каталоге. Кнопка «Рассчитать ипотеку» на карточке
+   * приводит сюда с идентификатором объекта — расчёт привязывается к нему, и
+   * цену больше не нужно набирать руками. Источника два, как и в каталоге:
+   * новостройка (?apartment=) и вторичка (?property=).
+   */
+  const pendingLink: { source: "NEW_BUILD" | "SECONDARY"; id: string } | null =
+    searchParams.get("apartment")
+      ? { source: "NEW_BUILD", id: searchParams.get("apartment")! }
+      : searchParams.get("property")
+        ? { source: "SECONDARY", id: searchParams.get("property")! }
+        : null;
+
   const [cases, setCases] = useState<MortgageCaseListItem[]>([]);
   const [casesLoading, setCasesLoading] = useState(true);
 
@@ -298,6 +313,7 @@ function MortgageWorkspace() {
   const [checksOpen, setChecksOpen] = useState(false);
 
   const [deleting, setDeleting] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
 
   // --- Загрузка списка кейсов ---
   useEffect(() => {
@@ -338,7 +354,13 @@ function MortgageWorkspace() {
     void loadProfile(caseId);
   }, [caseId, loadProfile]);
 
-  const pickCase = (id: string) => router.push(`/dashboard/mortgage?case=${encodeURIComponent(id)}`);
+  // Выбор кейса не должен терять квартиру: брокер пришёл из каталога именно
+  // ради неё, и заново искать объект после выбора клиента — лишний круг.
+  const pickCase = (id: string) => {
+    const q = new URLSearchParams({ case: id });
+    if (pendingLink) q.set(pendingLink.source === "NEW_BUILD" ? "apartment" : "property", pendingLink.id);
+    router.push(`/dashboard/mortgage?${q}`);
+  };
 
   // Имя клиента приходит из списка кейсов: идентификатор расчёта брокеру ничего
   // не говорит, а в шапке нужно видеть, чей это расчёт.
@@ -354,6 +376,45 @@ function MortgageWorkspace() {
   const creditFromReport =
     (scoring as { sources?: { monthly_credit_payments?: string | null } } | null)
       ?.sources?.monthly_credit_payments === "credit_report";
+
+  /**
+   * Привязка/отвязка квартиры. Вынесена одной функцией, потому что вызывается
+   * из трёх мест: перехода из каталога, подбора квартир и кнопки «Отвязать».
+   * После привязки прежние расчёт и вердикт сбрасываются — они относились к
+   * другой цене.
+   */
+  const linkProperty = useCallback(async (
+    id: string,
+    ref: { source: "NEW_BUILD" | "SECONDARY"; id: string } | null,
+  ) => {
+    setLinkBusy(true);
+    try {
+      await setTargetProperty(id, ref);
+      await loadProfile(id);
+      setCalc(null);
+      setScoring(null);
+      setPrograms(null);
+    } catch (e) {
+      toast({
+        title: ref ? "Не удалось привязать квартиру" : "Не удалось отвязать квартиру",
+        description: e instanceof MortgageCaseApiError ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setLinkBusy(false);
+    }
+  }, [loadProfile, toast]);
+
+  // Квартира, с которой брокер пришёл из каталога, привязывается один раз:
+  // сразу после привязки параметр убирается из адреса, иначе каждый повторный
+  // рендер привязывал бы объект заново.
+  useEffect(() => {
+    if (!caseId || !pendingLink) return;
+    void linkProperty(caseId, pendingLink).then(() => {
+      router.replace(`/dashboard/mortgage?case=${encodeURIComponent(caseId)}`);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId, pendingLink?.source, pendingLink?.id]);
 
   // --- Действия профиля (M05) ---
   const saveGoal = async (raw: string) => {
@@ -631,6 +692,23 @@ function MortgageWorkspace() {
 
       <NewCaseDialog open={newCaseOpen} onOpenChange={setNewCaseOpen} onCreated={pickCase} />
 
+      {/* Брокер пришёл из каталога с квартирой, но расчёт ещё не выбран.
+          Молча потерять объект нельзя — иначе он вернётся в каталог за ним. */}
+      {!caseId && pendingLink && (
+        <Card>
+          <div className="flex items-start gap-3 px-5 py-4">
+            <Home className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div>
+              <p className="font-medium">Квартира выбрана</p>
+              <p className="text-sm text-muted-foreground">
+                Откройте расчёт клиента или заведите новый — квартира привяжется к нему,
+                и её цена подставится в расчёт.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {!caseId && (
         <NoCaseSelected
           cases={cases}
@@ -706,22 +784,69 @@ function MortgageWorkspace() {
             />
             <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
               <div>
-                <label className="block">
-                  <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Стоимость квартиры, ₸
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue={goal?.target_price_max ?? ""}
-                    placeholder="не задана"
-                    onBlur={(e) => void saveGoal(e.target.value)}
-                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
-                  />
-                </label>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  статус: {FIELD_LABEL[String(goal?.status)] ?? String(goal?.status ?? "—")}
-                </p>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Стоимость квартиры, ₸
+                </span>
+                {/* Квартира привязана — цену не набирают руками: она читается у
+                    объекта каталога при каждом расчёте, поэтому изменение цены
+                    застройщиком или собственником видно сразу. Поле ввода
+                    возвращается, как только привязку снимают. */}
+                {goal?.target_property ? (
+                  <div className="mt-1 rounded-md border border-primary/40 bg-primary/5 px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{goal.target_property.title}</p>
+                        <p className="truncate text-xs text-muted-foreground">{goal.target_property.location}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {goal.target_property.source === "NEW_BUILD" ? "Новостройка" : "Вторичка"}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xl font-bold tabular-nums">{showMoney(goal.target_property.price)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      цена берётся из каталога — при её изменении расчёт пересчитается по новой
+                    </p>
+                    {!goal.target_property.available && (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-500">
+                        Квартира сейчас не свободна. Считать по ней можно, но перед показом клиенту проверьте статус.
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={goal.target_property.url}>
+                          <Home className="mr-1.5 h-3.5 w-3.5" />В каталоге
+                        </Link>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={linkBusy}
+                        onClick={() => void linkProperty(profile.case_id, null)}
+                      >
+                        <X className="mr-1.5 h-3.5 w-3.5" />
+                        {linkBusy ? "Отвязываем…" : "Отвязать"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <label className="block">
+                      <span className="sr-only">Стоимость квартиры, ₸</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        defaultValue={goal?.target_price_max ?? ""}
+                        placeholder="не задана"
+                        onBlur={(e) => void saveGoal(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums"
+                      />
+                    </label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      статус: {FIELD_LABEL[String(goal?.status)] ?? String(goal?.status ?? "—")}
+                      {" · "}или выберите квартиру в каталоге — цена подставится сама
+                    </p>
+                  </>
+                )}
               </div>
 
               <div>
@@ -1105,13 +1230,14 @@ function MortgageWorkspace() {
                 </p>
               ) : (
                 <ul className="divide-y divide-border">
-                  {match.items.map((item) => (
-                    <li key={`${item.source}-${item.id}`}>
-                      <Link
-                        href={item.url}
+                  {match.items.map((item) => {
+                    const linked = goal?.target_property?.id === item.id;
+                    return (
+                      <li
+                        key={`${item.source}-${item.id}`}
                         className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-muted/50"
                       >
-                        <div className="min-w-0">
+                        <Link href={item.url} className="min-w-0 flex-1">
                           <p className="flex items-center gap-2 font-medium">
                             {item.title}
                             <span className={cn(
@@ -1127,11 +1253,21 @@ function MortgageWorkspace() {
                             {item.location}
                             {item.floor !== null && ` · ${item.floor} этаж`}
                           </p>
-                        </div>
+                        </Link>
                         <span className="shrink-0 font-semibold tabular-nums">{showMoney(item.price)}</span>
-                      </Link>
-                    </li>
-                  ))}
+                        {/* Подбор нашёл квартиру — брокер должен уметь взять её
+                            в расчёт здесь же, не возвращаясь в каталог. */}
+                        <Button
+                          size="sm"
+                          variant={linked ? "secondary" : "outline"}
+                          disabled={linkBusy || linked}
+                          onClick={() => void linkProperty(profile.case_id, { source: item.source, id: item.id })}
+                        >
+                          {linked ? "В расчёте" : "Взять в расчёт"}
+                        </Button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </Card>

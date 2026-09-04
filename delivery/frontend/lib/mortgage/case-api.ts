@@ -44,10 +44,31 @@ export interface MortgageCase {
 
 export type ProfileFieldStatus = "DECLARED" | "VERIFIED" | "UNKNOWN" | "CONFLICT";
 
+/**
+ * Квартира каталога, к которой привязан расчёт. Пока она привязана, цена в
+ * расчёте читается у объекта, а не из target_price_max: цена живая, копия — нет.
+ */
+export interface TargetProperty {
+  source: "NEW_BUILD" | "SECONDARY";
+  id: string;
+  title: string;
+  location: string;
+  price: string;
+  rooms: number;
+  area: string;
+  floor: number | null;
+  status: string;
+  /** Свободна ли квартира сейчас. Привязку не запрещает — только предупреждает. */
+  available: boolean;
+  property_type: "NEW_BUILDING" | "SECONDARY";
+  url: string;
+}
+
 export interface PurchaseGoal {
   target_price_max: string | null;
   currency: string;
   status: ProfileFieldStatus | string;
+  target_property: TargetProperty | null;
 }
 
 export interface AggregatedMoney {
@@ -280,6 +301,20 @@ export async function setPurchaseGoal(
   );
 }
 
+/**
+ * Привязать расчёт к квартире каталога либо снять привязку (`null`).
+ * Цена цели покупки при привязке берётся у объекта; при снятии — остаётся.
+ */
+export async function setTargetProperty(
+  caseId: string,
+  ref: { source: "NEW_BUILD" | "SECONDARY"; id: string } | null,
+): Promise<{ purchase_goal: PurchaseGoal }> {
+  return call<{ purchase_goal: PurchaseGoal }>(
+    `/v2/cases/${encodeURIComponent(caseId)}/purchase-goal/target-property`,
+    { method: "PUT", body: JSON.stringify({ target_property: ref }) },
+  );
+}
+
 export async function addDownPaymentSource(
   caseId: string,
   source: { kind: string; amount: string | null; status: ProfileFieldStatus },
@@ -358,7 +393,8 @@ export interface ScoringResult {
   };
   disclaimer: string;
   sources: {
-    target_price: "apartment" | "purchase_goal";
+    target_price: "apartment" | "linked_property" | "purchase_goal";
+    linked_property?: TargetProperty | null;
     monthly_credit_payments: "credit_report" | null;
     credit_report_id: string | null;
   };

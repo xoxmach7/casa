@@ -16,6 +16,7 @@ import {
   trafficLightClass,
   trafficLightLabel,
 } from "@/lib/secondary-market"
+import { SecondaryTabs } from "@/components/marketplace/SecondaryTabs"
 
 interface DealRoomListItem {
   id: string
@@ -62,6 +63,7 @@ export default function DealRoomBoardPage() {
 
   return (
     <div className="p-6 space-y-6">
+      <SecondaryTabs />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Сделки (вторичка)</h1>

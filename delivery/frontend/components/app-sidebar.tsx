@@ -79,8 +79,6 @@ interface MenuSection {
   icon: any
   url?: string
   roles: string[]
-  /** Раздел показывается раскрытым: подпункты видны сразу, без выпадашки. */
-  alwaysOpen?: boolean
   subItems?: {
     title: string
     url: string
@@ -111,19 +109,14 @@ const menuItems: MenuSection[] = [
     url: "/dashboard/projects",
     roles: ["ADMIN", "BROKER", "REALTOR", "AGENCY"],
   },
-  // Контур вторички — сразу под новостройками. Раздел раскрыт всегда:
-  // подпункты видны без клика (заказчик просил не выпадашку).
+  // Вторичка — ОДИН пункт меню сразу под новостройками. Площадка, фиксации,
+  // сделки и оценка живут вкладками ВНУТРИ страницы (SecondaryTabs): четырьмя
+  // строками в панели навигация перегружалась. Тот же приём у «Ипотеки» и CRM.
   {
     title: "Вторичка",
     icon: Handshake,
+    url: "/dashboard/marketplace",
     roles: ["ADMIN", "BROKER", "AGENCY"],
-    alwaysOpen: true,
-    subItems: [
-      { title: "Площадка", url: "/dashboard/marketplace", icon: Store },
-      { title: "Мои фиксации", url: "/dashboard/marketplace/fixations", icon: BadgeCheck },
-      { title: "Сделки", url: "/dashboard/deal-room", icon: Handshake },
-      { title: "Оценка объектов", url: "/dashboard/valuations", icon: Ruler },
-    ],
   },
   // 2a. Кабинет собственника (роль OWNER): единственный раздел. Собственник
   // не покупатель и не агент — ему нечего делать в CRM, ипотеке и подборках.
@@ -318,52 +311,13 @@ export function AppSidebar() {
                   ? pathname === item.url
                   : item.subItems?.some(sub => pathname === sub.url || pathname.startsWith(sub.url.split("?")[0]))
 
-                // Раздел без своей страницы: пункты живут ВНУТРИ него, а не
-                // висят отдельными строками под ним. Поэтому это не кнопка с
-                // выпадашкой, а панель-контейнер с заголовком и содержимым.
-                if (item.subItems && item.alwaysOpen) {
-                  const subs = item.subItems.filter(
-                    (subItem) => !subItem.roles || subItem.roles.includes(user?.role || "BROKER"),
-                  )
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <div className="rounded-lg border border-sidebar-border/60 bg-sidebar-accent/30 p-1">
-                        <div className="flex items-center gap-2 px-2 pb-1 pt-1.5">
-                          <item.icon className="h-4 w-4 shrink-0 text-sidebar-foreground/60" />
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">
-                            {item.title}
-                          </span>
-                        </div>
-                        <div className="space-y-0.5">
-                          {subs.map((subItem) => {
-                            const isSubActive =
-                              pathname === subItem.url || pathname.startsWith(subItem.url.split("?")[0])
-                            return (
-                              <a
-                                key={subItem.title}
-                                href={subItem.url}
-                                className={cn(
-                                  "flex h-8 items-center rounded-md px-2 text-sidebar-foreground/70 transition-colors duration-150 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                                  isSubActive && "bg-sidebar-accent text-[#FFD700] hover:text-[#FFD700]",
-                                )}
-                              >
-                                {subItem.icon && <subItem.icon className="mr-2 h-3.5 w-3.5 shrink-0" />}
-                                <span className="text-[13px] font-medium">{subItem.title}</span>
-                              </a>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </SidebarMenuItem>
-                  )
-                }
 
                 return item.subItems ? (
                   <Collapsible
                     key={item.title}
                     asChild
-                    open={item.alwaysOpen ? true : (openMenus[item.title] ?? false)}
-                    onOpenChange={() => { if (!item.alwaysOpen) toggleMenu(item.title) }}
+                    open={openMenus[item.title] ?? false}
+                    onOpenChange={() => toggleMenu(item.title)}
                     className="group/collapsible"
                   >
                     <SidebarMenuItem>
@@ -383,7 +337,7 @@ export function AppSidebar() {
                             isActive && "text-[#FFD700]"
                           )} />
                           <span className="text-[13px] font-medium">{item.title}</span>
-                          {!item.alwaysOpen && (
+                          {(
                             <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-sidebar-foreground/30 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                           )}
                         </SidebarMenuButton>

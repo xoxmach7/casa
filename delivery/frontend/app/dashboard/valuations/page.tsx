@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table"
 import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
 import { formatRange, valuationNeedsAttention, valuationStatusLabel } from "@/lib/secondary-market"
+import { SecondaryTabs } from "@/components/marketplace/SecondaryTabs"
 
 interface ValuationListItem {
   id: string
@@ -61,6 +62,7 @@ export default function ValuationsPage() {
 
   return (
     <div className="space-y-6 p-6">
+      <SecondaryTabs />
       <div>
         <h1 className="text-2xl font-bold">Оценка объектов</h1>
         <p className="text-muted-foreground">

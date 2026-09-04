@@ -224,6 +224,32 @@ describe("с выбранным реальным кейсом", () => {
     expect(screen.queryByText(/^21 000 000/)).toBeNull();
   });
 
+  it("не закрывает расчёт стеной проверок по реестрам", async () => {
+    // Пока источники не подключены, каждая карточка M02 говорит одно и то же —
+    // «проверьте вручную», — и десяток таких карточек стоял между брокером и
+    // расчётом. Проверки остались на экране, но свёрнутыми в одну строку.
+    api.getMortgageCase.mockResolvedValue({
+      id: "case_real_1", client_id: "cl_1", status: "DRAFT", version: 3,
+      client_name: "Сериков Асхат",
+      parties: [{ id: "party_1", role: "PRIMARY" }],
+    });
+
+    render(<MortgagePage />);
+    await screen.findByText("Сериков Асхат");
+
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/Нужна ручная проверка/);
+    expect(text).not.toMatch(/enforcement_proceedings/);
+    expect(text).not.toMatch(/Доказательство/);
+
+    // Расчёт — на экране, а проверки — за одной свёрнутой строкой.
+    expect(screen.getByText("Шаг 3. Расчёт кредита")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Проверки по госреестрам/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
   it("не показывает запрещённые для релиза выходы", async () => {
     render(<MortgagePage />);
     await screen.findByText("Сериков Асхат");

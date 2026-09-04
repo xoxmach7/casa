@@ -181,7 +181,7 @@ export function DocumentIntakeSection({ caseId }: { caseId: string }) {
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">
         <FileUp className="mt-0.5 h-5 w-5 text-primary" aria-hidden />
         <div>
-          <h2 className="text-base font-semibold leading-tight">Шаг 2. Документы клиента</h2>
+          <h2 className="text-base font-semibold leading-tight">Шаг 1. Документы клиента</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Кредитная история (ПКБ) и выписка ЕНПФ. PDF до 25 МБ, распознавание из
             текстового слоя. Распознанное значение — не вывод о клиенте: поля с низкой

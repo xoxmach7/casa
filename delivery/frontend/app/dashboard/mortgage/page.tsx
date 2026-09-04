@@ -25,7 +25,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calculator, User2, ShieldCheck, Info, TriangleAlert, RefreshCw, FolderOpen,
-  Plus, ArrowRight, FileText, Landmark, X, Home,
+  Plus, ArrowRight, FileText, Landmark, X, Home, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -92,8 +92,8 @@ function showMoney(serverValue: string | null | undefined): string {
 
 // --- UI-примитивы -----------------------------------------------------------
 
-function Card({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <section className={cn("rounded-xl border border-border bg-card text-card-foreground shadow-sm", className)}>{children}</section>;
+function Card({ children, className, id }: { children: React.ReactNode; className?: string; id?: string }) {
+  return <section id={id} className={cn("rounded-xl border border-border bg-card text-card-foreground shadow-sm", className)}>{children}</section>;
 }
 
 function CardHead({ icon, title, sub }: { icon: React.ReactNode; title: string; sub?: string }) {
@@ -286,6 +286,9 @@ function MortgageWorkspace() {
   const [match, setMatch] = useState<PropertyMatch | null>(null);
   const [matchBusy, setMatchBusy] = useState(false);
   const [matchRooms, setMatchRooms] = useState("");
+
+  // Проверки по госреестрам открываются по требованию — см. блок внизу экрана.
+  const [checksOpen, setChecksOpen] = useState(false);
 
   // --- Загрузка списка кейсов ---
   useEffect(() => {
@@ -575,23 +578,29 @@ function MortgageWorkspace() {
                   <p className="text-sm text-muted-foreground">Расчёт по ипотеке</p>
                 </div>
               </div>
-              {mortgageCase && <CaseStatusBadge status={mortgageCase.status} />}
+              <div className="flex items-center gap-2">
+                {mortgageCase && <CaseStatusBadge status={mortgageCase.status} />}
+                {/* Расчёт — цель визита, но он ниже документов и анкеты, потому
+                    что считается по ним. Одна кнопка снимает вопрос «где он». */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => document.getElementById("calc-block")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                >
+                  <Calculator className="mr-1.5 h-4 w-4" />К расчёту
+                </Button>
+              </div>
             </div>
           </Card>
 
-          {/* Шаг 1. ИИН и проверка по официальным реестрам (M02) */}
-          {primaryPartyId && (
-            <SourceCheckSection caseId={profile.case_id} partyId={primaryPartyId} />
-          )}
-
-          {/* Шаг 2. Документы клиента (M03 / M04) */}
+          {/* Шаг 1. Документы клиента (M03 / M04) */}
           <DocumentIntakeSection caseId={profile.case_id} />
 
-          {/* Шаг 3. Деньги клиента (M05) */}
+          {/* Шаг 2. Деньги клиента (M05) */}
           <Card>
             <CardHead
               icon={<ShieldCheck className="h-5 w-5" />}
-              title="Шаг 3. Деньги клиента"
+              title="Шаг 2. Деньги клиента"
               sub="Стоимость квартиры и первоначальный взнос. Пустая сумма не считается нулём — она остаётся неизвестной."
             />
             <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
@@ -703,11 +712,12 @@ function MortgageWorkspace() {
             </div>
           </Card>
 
-          {/* Расчёт (M06) */}
-          <Card>
+          {/* Расчёт (M06). Ради него брокер и открыл экран, поэтому карточка
+              выделена рамкой: её нельзя принять за очередной служебный блок. */}
+          <Card id="calc-block" className="border-primary/50 shadow-md">
             <CardHead
               icon={<Calculator className="h-5 w-5" />}
-              title="Шаг 4. Расчёт кредита"
+              title="Шаг 3. Расчёт кредита"
               sub="Сумма кредита = стоимость квартиры минус взнос. Платёж — аннуитетный. Считает сервер, не браузер."
             />
             <div className="grid gap-5 px-5 py-4 md:grid-cols-2">
@@ -868,6 +878,39 @@ function MortgageWorkspace() {
                 </ul>
               )}
             </Card>
+          )}
+
+          {/* Проверки по госреестрам (M02). Пока подключения к источникам нет,
+              каждая карточка говорит одно и то же — «сходите на сайт и
+              посмотрите сами», — а десяток таких карточек закрывал собой
+              расчёт, ради которого брокер сюда и пришёл. Функция сохранена
+              целиком и открывается по требованию; смонтирована она тоже только
+              в открытом виде, чтобы не дёргать источники впустую. */}
+          {primaryPartyId && (
+            <div className="rounded-lg border border-border bg-muted/20">
+              <button
+                type="button"
+                onClick={() => setChecksOpen((v) => !v)}
+                aria-expanded={checksOpen}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm"
+              >
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <ShieldCheck className="h-4 w-4 shrink-0" />
+                  Проверки по госреестрам — пока вручную, на сайтах источников
+                </span>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                    checksOpen && "rotate-180",
+                  )}
+                />
+              </button>
+              {checksOpen && (
+                <div className="border-t border-border p-4">
+                  <SourceCheckSection caseId={profile.case_id} partyId={primaryPartyId} />
+                </div>
+              )}
+            </div>
           )}
 
           {/* Идентификаторы нужны поддержке при разборе обращения, поэтому они

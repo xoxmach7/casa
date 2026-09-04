@@ -312,7 +312,7 @@ export function SourceCheckSection({ caseId, partyId }: { caseId: string; partyI
       <div className="flex items-start gap-3 border-b border-border px-5 py-4">
         <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" aria-hidden />
         <div>
-          <h2 className="text-base font-semibold leading-tight">Шаг 1. Проверка по официальным реестрам</h2>
+          <h2 className="text-base font-semibold leading-tight">Проверка по официальным реестрам</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Автоматические подключения к источникам отключены: проверки выполняются
             вручную на официальных сайтах и подтверждаются доказательством.
